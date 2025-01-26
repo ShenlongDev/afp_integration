@@ -133,6 +133,7 @@ JAZZMIN_SETTINGS = {
     "site_title": "WS Admin",  
     "site_header": "WS Admin",  
     "site_brand": "WS",  
+    
     "welcome_sign": "Welcome to Williansstanley Admin Panel",
     "copyright": "WS © 2024",
     "search_model": "auth.User",
