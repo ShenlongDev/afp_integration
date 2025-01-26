@@ -41,9 +41,8 @@ class IntegrationAccessToken(models.Model):
         default="XERO"
     )
     token = models.TextField()
+    
     expires_at = models.DateTimeField()
-    token_type = models.CharField(max_length=50, default="bearer")
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

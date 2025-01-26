@@ -139,9 +139,9 @@ JAZZMIN_SETTINGS = {
     "search_model": "auth.User",
 
     # Logo and Icon
-    "site_logo": "images/logo.png", 
-    "site_logo_classes": "img-fluid", 
-    "site_icon": "images/logo.ico", 
+    # "site_logo": "images/logo.png", 
+    # "site_logo_classes": "img-fluid", 
+    # "site_icon": "images/logo.ico", 
     
     "sidebar": True,
     "navigation_expanded": True,
@@ -149,7 +149,7 @@ JAZZMIN_SETTINGS = {
     "show_ui_builder": True,
     "hide_apps": [],
     "hide_models": [],
-    "order_with_respect_to": ["auth", "restapp", "payment"],
+    # "order_with_respect_to": ["auth", "restapp", "payment"],
     "custom_links": {
         "auth": [{
             "name": "Google",
@@ -177,8 +177,8 @@ JAZZMIN_SETTINGS = {
     },
 
     # Change view layout
-    "changeform_format": "collapsible",  # Options: 'single', 'collapsible', 'tabs'
-    "changeform_format_overrides": {"payment.Subscription": "tabs"},
+    "changeform_format": "collapsible", 
+    # "changeform_format_overrides": {"payment.Subscription": "tabs"},
 
     # Hide/show certain UI elements
     "show_sidebar": True,

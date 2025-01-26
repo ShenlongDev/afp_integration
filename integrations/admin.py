@@ -10,7 +10,7 @@ class IntegrationAdmin(admin.ModelAdmin):
     
 class IntegrationAccessTokenAdmin(admin.ModelAdmin):
     list_display = ('integration', 'integration_type', 'expires_at', 'created_at')
-    search_fields = ('integration', 'integration_type', 'expires_at', 'token_type', 'created_at')
+    search_fields = ('integration', 'integration_type', 'expires_at', 'created_at')
     
     
 admin.site.register(Integration, IntegrationAdmin)
