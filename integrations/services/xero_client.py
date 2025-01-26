@@ -1,8 +1,9 @@
 import requests
-import time
 from datetime import datetime, timedelta
 from django.utils import timezone
 from typing import Iterator, Dict, Any
+from integrations.models import IntegrationAccessToken
+from rest_framework.response import Response
 
 
 def get_xero_access_token(xero_integration) -> str:
@@ -13,11 +14,9 @@ def get_xero_access_token(xero_integration) -> str:
     """
 
     if xero_integration.access_token and xero_integration.access_token_expires_at:
-        # If we still have > 1 minute left, return the existing token
         if xero_integration.access_token_expires_at > timezone.now() + timedelta(minutes=1):
             return xero_integration.access_token
 
-    # Otherwise, fetch a new token
     token_url = "https://identity.xero.com/connect/token"
     auth = (xero_integration.client_id, xero_integration.client_secret)
     data = {
@@ -30,9 +29,8 @@ def get_xero_access_token(xero_integration) -> str:
 
     token_json = response.json()
     new_access_token = token_json["access_token"]
-    expires_in = token_json.get("expires_in", 1800)  # typically 1800 seconds (30 min)
-
-    # Update the DB model
+    expires_in = token_json.get("expires_in", 1800)  
+    
     xero_integration.access_token = new_access_token
     xero_integration.access_token_expires_at = timezone.now() + timedelta(seconds=expires_in)
     xero_integration.save(update_fields=["access_token", "access_token_expires_at"])
@@ -44,7 +42,7 @@ def get_journals(xero_integration, since_date: datetime | None = None, offset: i
     """
     Retrieve journals for the specified XeroIntegration's tenant.
     """
-    access_token = get_xero_access_token(xero_integration)  # get fresh or existing token
+    access_token = get_xero_access_token(xero_integration) 
 
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -52,7 +50,6 @@ def get_journals(xero_integration, since_date: datetime | None = None, offset: i
         "Accept": "application/json",
     }
     if since_date:
-        # Format in RFC-3339 for If-Modified-Since
         headers["If-Modified-Since"] = since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
 
     endpoint = "https://api.xero.com/api.xro/2.0/Journals"
@@ -70,7 +67,6 @@ def get_journals(xero_integration, since_date: datetime | None = None, offset: i
         if len(data) < 100:
             break
 
-        # increment offset
         offset = data[-1]["JournalNumber"]
         
         
@@ -88,3 +84,50 @@ def get_accounts(xero_integration, since_date=None):
     resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     return resp.json()["Accounts"]
+
+
+def authorize_xero(integration, scope):
+    client_id = integration.xero_client_id
+    client_secret = integration.xero_client_secret
+    if not client_id or not client_secret:
+        return Response(
+            {"detail": "Xero client credentials not set on this Integration."},
+            status=400
+        )
+
+    token_url = "https://identity.xero.com/connect/token"
+    auth = (client_id, client_secret)
+
+    data = {
+        "grant_type": "client_credentials",
+        "scope": scope
+    }
+
+    resp = requests.post(token_url, data=data, auth=auth)
+    if resp.status_code != 200:
+        return Response(
+            {"detail": f"Xero token request failed: {resp.text}"},
+            status=resp.status_code
+        )
+
+    token_data = resp.json()
+    access_token = token_data["access_token"]
+    expires_in = token_data.get("expires_in", 3600)
+    expires_at = timezone.now() + timedelta(seconds=expires_in)
+
+    IntegrationAccessToken.objects.create(
+        integration=integration,
+        integration_type="XERO",
+        token=access_token,
+        token_type="bearer",
+        expires_at=expires_at
+    )
+
+    return Response(
+        {
+            "detail": "Xero token acquired successfully.",
+            "access_token": access_token,
+            "expires_at": expires_at.isoformat(),
+        },
+        status=200
+    )
