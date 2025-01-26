@@ -25,18 +25,24 @@ SECRET_KEY = 'django-insecure-kve9)owh2lw08-srm!rl&_22h6!$oj%@z1#f_@^+z+r3x&84fk
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    "jazzmin",
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'core',
+    'rest_framework',
+    'rest_framework.authtoken',
+    'corsheaders',
+    'integrations',
 ]
 
 MIDDLEWARE = [
@@ -121,3 +127,67 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+JAZZMIN_SETTINGS = {
+    "site_title": "WS Admin",  
+    "site_header": "WS Admin",  
+    "site_brand": "WS",  
+    "welcome_sign": "Welcome to Williansstanley Admin Panel",
+    "copyright": "WS © 2024",
+    "search_model": "auth.User",
+
+    # Logo and Icon
+    "site_logo": "images/logo.png", 
+    "site_logo_classes": "img-fluid", 
+    "site_icon": "images/logo.ico", 
+    
+    "sidebar": True,
+    "navigation_expanded": True,
+    "sidebar_hideable": True,
+    "show_ui_builder": True,
+    "hide_apps": [],
+    "hide_models": [],
+    "order_with_respect_to": ["auth", "restapp", "payment"],
+    "custom_links": {
+        "auth": [{
+            "name": "Google",
+            "url": "https://www.google.com",
+            "icon": "fas fa-google",
+        }],
+    },
+    "custom_css": "css/custom_admin.css",
+    "custom_js": "js/custom_admin.js",
+
+    # Top menu links
+    "topmenu_links": [
+        {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"model": "auth.User"},  
+        {"app": "restapp"}, 
+    ],
+
+    # Icons for apps and models
+    "icons": {
+        "auth": "fas fa-users-cog", 
+        "auth.user": "fas fa-user",
+        "restapp": "fas fa-cogs",
+        "payment.Subscription": "fas fa-subscript",
+        "payment.StripeEvent": "fas fa-bell",
+    },
+
+    # Change view layout
+    "changeform_format": "collapsible",  # Options: 'single', 'collapsible', 'tabs'
+    "changeform_format_overrides": {"payment.Subscription": "tabs"},
+
+    # Hide/show certain UI elements
+    "show_sidebar": True,
+    "navigation_expanded": True,
+
+    # Dynamic UI features
+    "related_modal_active": True,
+
+    # Custom user app and model (if you have a custom user model)
+    "custom_icons": True,
+    
+    "theme": "darkly",
+}
