@@ -4,6 +4,11 @@ from django.utils import timezone
 from typing import Iterator, Dict, Any
 from integrations.models import IntegrationAccessToken
 from rest_framework.response import Response
+from integrations.services.dynamic_tables import sanitize_table_name, create_account_table, rename_account_table, insert_transaction_row
+from dateutil.parser import parse as date_parse
+from django.db import transaction
+from integrations.models import ChartOfAccounts
+
 
 
 def get_xero_access_token(xero_integration) -> str:
@@ -133,7 +138,7 @@ def authorize_xero(integration, scope):
     )
     
     
-def get_valid_xero_token(integration: Integration) -> str:
+def get_valid_xero_token(integration):
     """
     Fetch the most recent, non-expired token from IntegrationAccessToken
     for the given Xero integration. If none is valid, raise or handle re-auth.
@@ -171,7 +176,7 @@ def parse_xero_datetime(dt_str: str):
     
     
 @transaction.atomic
-def sync_xero_chart_of_accounts(integration: Integration, since_date=None):
+def sync_xero_chart_of_accounts(integration, since_date=None):
     """
     Pull /Accounts from Xero, upsert into ChartOfAccounts,
     create or rename the dynamic tables as needed.
@@ -234,7 +239,7 @@ def sync_xero_chart_of_accounts(integration: Integration, since_date=None):
 
 
 @transaction.atomic
-def import_xero_journal_lines(integration: Integration, since_date=None):
+def import_xero_journal_lines(integration, since_date=None):
     """
     Fetch /Journals from Xero, insert each JournalLine into the
     correct dynamic account table.
