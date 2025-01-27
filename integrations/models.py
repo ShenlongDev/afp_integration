@@ -75,3 +75,17 @@ class ChartOfAccounts(models.Model):
 
     def __str__(self):
         return f"{self.integration.org.name} - {self.account_id}"
+
+
+class OrphanBankTransaction(models.Model):
+    integration = models.ForeignKey(
+        Integration,
+        on_delete=models.CASCADE,
+        related_name="orphan_bank_transactions"
+    )
+    raw_data = models.JSONField()
+    mapped = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Orphan Transaction for {self.integration.org.name} at {self.created_at}"

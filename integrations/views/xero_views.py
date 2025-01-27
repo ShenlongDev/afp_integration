@@ -3,7 +3,7 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from datetime import datetime
 from integrations.models import Integration
-from integrations.services.xero_client import get_journals, import_xero_journal_lines, sync_xero_chart_of_accounts
+from integrations.services.xero_client import import_xero_journal_lines, sync_xero_chart_of_accounts
 from rest_framework.views import APIView
 
 
@@ -12,12 +12,18 @@ class XeroJournalImportView(APIView):
     POST /api/integrations/<int:pk>/xero-import-journals/?since=YYYY-MM-DD
     Example usage:
       POST /api/integrations/5/xero-import-journals/?since=2023-01-01
-    This triggers the import of Xero Journal Lines from the given date to now.
     """
-
+    
     def post(self, request, pk=None):
         integration = get_object_or_404(Integration, pk=pk)
-
+        
+        # Verify Xero credentials are present
+        if not (integration.xero_client_id and integration.xero_client_secret):
+            return Response(
+                {"error": "Xero credentials are not fully set on this Integration."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         since_param = request.query_params.get("since", None)
         since_date = None
         if since_param:
@@ -28,14 +34,20 @@ class XeroJournalImportView(APIView):
                     {"error": f"Invalid 'since' date format: {since_param}"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
+        
         try:
             import_xero_journal_lines(integration, since_date=since_date)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response({"detail": "Xero Journal lines imported successfully."}, status=200)
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
+        return Response(
+            {"detail": "Xero Journal lines imported successfully."},
+            status=status.HTTP_200_OK
+        )
+
 
 class XeroChartOfAccountsSyncView(APIView):
     """
