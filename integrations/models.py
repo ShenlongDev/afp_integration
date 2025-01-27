@@ -19,6 +19,10 @@ class Integration(models.Model):
     xero_client_secret = models.CharField(max_length=255, blank=True, null=True)
     xero_tenant_id = models.CharField(max_length=255, blank=True, null=True)
 
+    netsuite_account_id = models.CharField(max_length=255, blank=True, null=True)
+    netsuite_client_id = models.CharField(max_length=255, blank=True, null=True)
+    netsuite_client_secret = models.CharField(max_length=255, blank=True, null=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -62,6 +62,7 @@ db.sqlite3-journal
 **/migrations/*.pyo
 **/migrations/*.pyd
 **/migrations/*.py[cod]
+**/migrations/*.py
 
 # VS Code
 .vscode/
