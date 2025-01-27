@@ -2,36 +2,43 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from integrations.models import Integration
-from integrations.services.xero_client import get_journals
+from integrations.services.xero_client import get_journals, import_xero_journal_lines
 from rest_framework.views import APIView
 
 
-class IntegrationJournalsImportView(APIView):
+class XeroJournalImportView(APIView):
     """
-    POST /api/integrations/<int:pk>/import-journals/
-    
-    Example of manually triggering a Xero data import. 
-    (We assume integration_type == "XERO" for now.)
+    POST /api/integrations/<int:pk>/xero-import-journals/?since=YYYY-MM-DD
+    Example usage:
+      POST /api/integrations/5/xero-import-journals/?since=2023-01-01
+    This triggers the import of Xero Journal Lines from the given date to now.
     """
 
     def post(self, request, pk=None):
         integration = get_object_or_404(Integration, pk=pk)
-
         if integration.integration_type != "XERO":
             return Response(
-                {"detail": "Integration type is not XERO."},
+                {"error": "Integration is not of type XERO."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        total_imported = 0
-        for journal in get_journals(integration):
-            # Save the journal or transform as needed...
-            total_imported += 1
+        since_param = request.query_params.get("since", None)
+        since_date = None
+        if since_param:
+            try:
+                since_date = datetime.strptime(since_param, "%Y-%m-%d")
+            except ValueError:
+                return Response(
+                    {"error": f"Invalid 'since' date format: {since_param}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response(
-            {"message": "Xero Journals imported", "count": total_imported},
-            status=status.HTTP_200_OK
-        )
+        try:
+            import_xero_journal_lines(integration, since_date=since_date)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"detail": "Xero Journal lines imported successfully."}, status=200)
         
 
 class XeroChartOfAccountsSyncView(APIView):
