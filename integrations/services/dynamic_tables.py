@@ -11,7 +11,7 @@ def sanitize_table_name(code: str, name: str) -> str:
 def create_account_table(table_name: str):
     sql = f"""
     CREATE TABLE IF NOT EXISTS "{table_name}" (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id BIGSERIAL PRIMARY KEY,
         insights_unique_id TEXT NOT NULL, 
         date DATE,
         reference VARCHAR(255),

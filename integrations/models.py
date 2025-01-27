@@ -74,4 +74,4 @@ class ChartOfAccounts(models.Model):
     insights_imported_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"[{self.integration.integration_type}] {self.code} - {self.name}"
+        return f"{self.integration.org.name} - {self.account_id}"
