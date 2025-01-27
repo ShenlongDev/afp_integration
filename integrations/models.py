@@ -51,3 +51,23 @@ class IntegrationAccessToken(models.Model):
             f"{self.integration.org.name})"
         )
 
+
+class ChartOfAccounts(models.Model):
+    integration = models.ForeignKey(Integration, on_delete=models.CASCADE, related_name="chart_of_accounts")
+    account_id = models.CharField(max_length=36, unique=True)  # e.g. Xero's or NetSuite's ID
+    code = models.CharField(max_length=50, blank=True, null=True)
+    name = models.CharField(max_length=255, blank=True, null=True)
+    table_name = models.CharField(max_length=255, blank=True, null=True)
+
+    status = models.CharField(max_length=50, blank=True, null=True)
+    account_type = models.CharField(max_length=50, blank=True, null=True)
+    currency_code = models.CharField(max_length=10, blank=True, null=True)
+    tax_type = models.CharField(max_length=50, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+
+    updated_utc = models.DateTimeField(blank=True, null=True)
+    insights_source = models.CharField(max_length=50, default="Xero")  # or "NetSuite"
+    insights_imported_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"[{self.integration.integration_type}] {self.code} - {self.name}"

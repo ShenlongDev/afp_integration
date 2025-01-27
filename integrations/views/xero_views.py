@@ -32,3 +32,24 @@ class IntegrationJournalsImportView(APIView):
             {"message": "Xero Journals imported", "count": total_imported},
             status=status.HTTP_200_OK
         )
+        
+
+class XeroChartOfAccountsSyncView(APIView):
+    """
+    POST /api/integrations/<int:pk>/xero-sync-accounts/
+    """
+
+    def post(self, request, pk=None):
+        integration = get_object_or_404(Integration, pk=pk)
+        if integration.integration_type != "XERO":
+            return Response(
+                {"error": "Integration is not of type XERO."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            sync_xero_chart_of_accounts(integration)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"detail": "Successfully synced Xero Chart of Accounts."}, status=200)
