@@ -61,7 +61,6 @@ def insert_transaction_row(table_name: str, data: dict):
     values = []
 
     for key, val in data.items():
-        # Serialize dicts and lists to JSON strings
         if isinstance(val, (dict, list)):
             val = json.dumps(val)
         columns.append(f'"{key}"')
@@ -70,7 +69,6 @@ def insert_transaction_row(table_name: str, data: dict):
 
     col_str = ", ".join(columns)
     ph_str = ", ".join(placeholders)
-    print(f"table_name: {table_name}, columns: {columns}")
     sql = f'INSERT INTO "{table_name}" ({col_str}) VALUES ({ph_str});'
     
     with connection.cursor() as cursor:
