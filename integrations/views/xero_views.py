@@ -1,8 +1,9 @@
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from datetime import datetime
 from integrations.models import Integration
-from integrations.services.xero_client import get_journals, import_xero_journal_lines
+from integrations.services.xero_client import get_journals, import_xero_journal_lines, sync_xero_chart_of_accounts
 from rest_framework.views import APIView
 
 
@@ -16,11 +17,6 @@ class XeroJournalImportView(APIView):
 
     def post(self, request, pk=None):
         integration = get_object_or_404(Integration, pk=pk)
-        if integration.integration_type != "XERO":
-            return Response(
-                {"error": "Integration is not of type XERO."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
         since_param = request.query_params.get("since", None)
         since_date = None
@@ -48,15 +44,13 @@ class XeroChartOfAccountsSyncView(APIView):
 
     def post(self, request, pk=None):
         integration = get_object_or_404(Integration, pk=pk)
-        if integration.integration_type != "XERO":
+        if not integration.xero_client_id or not integration.xero_client_secret:
             return Response(
                 {"error": "Integration is not of type XERO."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            sync_xero_chart_of_accounts(integration)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        sync_xero_chart_of_accounts(integration)
+
 
         return Response({"detail": "Successfully synced Xero Chart of Accounts."}, status=200)

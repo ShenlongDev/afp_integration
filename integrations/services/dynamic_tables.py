@@ -11,8 +11,8 @@ def sanitize_table_name(code: str, name: str) -> str:
 def create_account_table(table_name: str):
     sql = f"""
     CREATE TABLE IF NOT EXISTS "{table_name}" (
-        id SERIAL PRIMARY KEY,
-        insights_unique_id UUID NOT NULL, 
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        insights_unique_id TEXT NOT NULL, 
         date DATE,
         reference VARCHAR(255),
         currency_code VARCHAR(10),
@@ -27,8 +27,8 @@ def create_account_table(table_name: str):
         tax_type VARCHAR(50),
         tax_amount NUMERIC(14,2),
         line_amount NUMERIC(14,2),
-        tracking JSONB,
-        created_at TIMESTAMP DEFAULT now()
+        tracking TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """
     with connection.cursor() as cursor:

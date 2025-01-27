@@ -30,14 +30,4 @@ class IntegrationAuthView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        if integration.integration_type == "XERO":
-            scope = request.data.get("scope",
-                "accounting.transactions accounting.settings "
-                "accounting.reports.read accounting.journals.read "
-                "accounting.budgets.read"
-            )
-            return authorize_xero(integration, scope)
-        elif integration.integration_type == "NETSUITE":
-            return Response({"detail": "NetSuite flow not implemented."}, status=501)
-        else:
-            return Response({"detail": "Integration type not recognized."}, status=400)
+        return authorize_xero(integration)

@@ -135,7 +135,7 @@ JAZZMIN_SETTINGS = {
     "site_brand": "WS",  
     
     "welcome_sign": "Welcome to Williansstanley Admin Panel",
-    "copyright": "WS © 2024",
+    "copyright": "WS © 2025",
     "search_model": "auth.User",
 
     # Logo and Icon

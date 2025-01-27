@@ -27,7 +27,7 @@ class Integration(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.org.name} - {self.integration_type}"
+        return f"{self.org.name}"
     
     
 class IntegrationAccessToken(models.Model):

@@ -91,7 +91,7 @@ def get_accounts(xero_integration, since_date=None):
     return resp.json()["Accounts"]
 
 
-def authorize_xero(integration, scope):
+def authorize_xero(integration):
     client_id = integration.xero_client_id
     client_secret = integration.xero_client_secret
     if not client_id or not client_secret:
@@ -105,7 +105,7 @@ def authorize_xero(integration, scope):
 
     data = {
         "grant_type": "client_credentials",
-        "scope": scope
+        "scope": "accounting.transactions accounting.settings accounting.reports.read accounting.journals.read accounting.budgets.read"
     }
 
     resp = requests.post(token_url, data=data, auth=auth)
@@ -124,7 +124,6 @@ def authorize_xero(integration, scope):
         integration=integration,
         integration_type="XERO",
         token=access_token,
-        token_type="bearer",
         expires_at=expires_at
     )
 
@@ -181,9 +180,6 @@ def sync_xero_chart_of_accounts(integration, since_date=None):
     Pull /Accounts from Xero, upsert into ChartOfAccounts,
     create or rename the dynamic tables as needed.
     """
-    if integration.integration_type != "XERO":
-        raise ValueError("Integration is not type XERO, cannot sync Xero Chart of Accounts.")
-
     # 1) Retrieve a valid short-lived token
     access_token = get_valid_xero_token(integration)
     tenant_id = integration.xero_tenant_id
@@ -245,9 +241,6 @@ def import_xero_journal_lines(integration, since_date=None):
     correct dynamic account table.
     If since_date is set, pass it as If-Modified-Since to only get new journals.
     """
-    if integration.integration_type != "XERO":
-        raise ValueError("Integration is not type XERO, cannot import Xero Journals.")
-
     access_token = get_valid_xero_token(integration)
     tenant_id = integration.xero_tenant_id
 
@@ -265,8 +258,7 @@ def import_xero_journal_lines(integration, since_date=None):
     journals_data = resp.json().get("Journals", [])
 
     for journal in journals_data:
-        journal_date_str = journal.get("JournalDate")
-        journal_date = parse_xero_datetime(journal_date_str)
+        journal_date = parse_xero_datetime(journal.get("JournalDate"))
         journal_id = journal.get("JournalID") 
         reference = journal.get("Reference")
         source_currency = journal.get("SourceCurrencyCode", "")
@@ -302,3 +294,4 @@ def import_xero_journal_lines(integration, since_date=None):
             }
 
             insert_transaction_row(co.table_name, row_data)
+            
