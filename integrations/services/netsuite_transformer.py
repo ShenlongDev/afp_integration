@@ -14,6 +14,8 @@ from ..models.netsuite.analytics import *
 
 
 class NetSuiteTransformer:
+    
+    
     @transaction.atomic
     def transform_transactions(self):
         """Transform transactions matching the original SQL"""
