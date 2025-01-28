@@ -1,0 +1,233 @@
+from django.db import models
+
+
+class NetSuiteAccounts(models.Model):
+    company_name = models.CharField(max_length=255)
+    account_id = models.CharField(max_length=255)
+    account_number = models.CharField(max_length=255)
+    account_name = models.CharField(max_length=255)
+    account_hierarchy = models.CharField(max_length=255)
+    account_display_name = models.CharField(max_length=255)
+    account_display_hierarchy = models.CharField(max_length=255)
+    parent_id = models.CharField(max_length=255, null=True)
+    parent_account = models.CharField(max_length=255, null=True)
+    account_type = models.CharField(max_length=255)
+    sspecacct = models.CharField(max_length=255, null=True)
+    description = models.TextField(null=True)
+    eliminate = models.BooleanField(null=True)
+    external_id = models.CharField(max_length=255, null=True)
+    include_children = models.BooleanField(null=True)
+    inventory = models.BooleanField(null=True)
+    is_inactive = models.BooleanField(null=True)
+    is_summary = models.BooleanField(null=True)
+    last_modified_date = models.DateTimeField(null=True)
+    reconcile_with_matching = models.BooleanField(null=True)
+    revalue = models.BooleanField(null=True)
+    subsidiary = models.CharField(max_length=255, null=True)
+    balance = models.DecimalField(max_digits=19, decimal_places=2, null=True)
+    record_date = models.DateTimeField()
+
+
+    class Meta:
+        db_table = 'netsuite.accounts'
+
+
+class NetSuiteTransactions(models.Model):
+    company_name = models.CharField(max_length=255)
+    abbrevtype = models.CharField(max_length=255)
+    transactionid = models.CharField(max_length=255)
+    uniquekey = models.CharField(max_length=255)
+    linesequencenumber = models.IntegerField()
+    lineid = models.CharField(max_length=255)
+    approvalstatus = models.CharField(max_length=255)
+    number = models.CharField(max_length=255)
+    source = models.CharField(max_length=255)
+    status = models.CharField(max_length=255)
+    trandisplayname = models.CharField(max_length=255)
+    tranid = models.CharField(max_length=255)
+    transactionnumber = models.CharField(max_length=255)
+    type = models.CharField(max_length=255)
+    recordtype = models.CharField(max_length=255)
+    createdby = models.CharField(max_length=255)
+    createddate = models.DateTimeField()
+    lastmodifiedby = models.CharField(max_length=255)
+    lastmodifieddate = models.DateTimeField()
+    postingperiod = models.CharField(max_length=255)
+    yearperiod = models.IntegerField()
+    trandate = models.DateField()
+    subsidiary = models.CharField(max_length=255)
+    subsidiaryfullname = models.CharField(max_length=255)
+    subsidiaryid = models.CharField(max_length=255)
+    department = models.CharField(max_length=255, null=True)
+    departmentid = models.CharField(max_length=255, null=True)
+    location = models.CharField(max_length=255, null=True)
+    class_field = models.CharField(db_column='class', max_length=255, null=True)
+    memo = models.TextField(null=True)
+    linememo = models.TextField(null=True)
+    externalid = models.CharField(max_length=255, null=True)
+    entity = models.CharField(max_length=255, null=True)
+    entityid = models.CharField(max_length=255, null=True)
+    account = models.CharField(max_length=255)
+    acctnumber = models.CharField(max_length=255)
+    accountsearchdisplayname = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=19, decimal_places=2)
+    debit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
+    credit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
+    netamount = models.DecimalField(max_digits=19, decimal_places=2)
+    currency = models.CharField(max_length=3)
+    exchangerate = models.DecimalField(max_digits=19, decimal_places=6)
+    record_date = models.DateTimeField()
+    duplicate_check = models.IntegerField()
+
+
+    class Meta:
+        db_table = 'netsuite.transactions'
+        indexes = [
+            models.Index(fields=['transactionid', 'linesequencenumber'])
+        ]
+
+
+class NetSuiteGeneralLedger(models.Model):
+    company_name = models.CharField(max_length=255)
+    abbrevtype = models.CharField(max_length=255)
+    transactionid = models.CharField(max_length=255)
+    uniquekey = models.CharField(max_length=255)
+    linesequencenumber = models.IntegerField()
+    lineid = models.CharField(max_length=255)
+    approvalstatus = models.CharField(max_length=255)
+    postingperiod = models.CharField(max_length=255)
+    yearperiod = models.IntegerField()
+    trandate = models.DateField()
+    subsidiary = models.CharField(max_length=255)
+    account = models.CharField(max_length=255)
+    acctnumber = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=19, decimal_places=2)
+    debit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
+    credit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
+    netamount = models.DecimalField(max_digits=19, decimal_places=2)
+    currency = models.CharField(max_length=3)
+    exchangerate = models.DecimalField(max_digits=19, decimal_places=6)
+    record_date = models.DateTimeField()
+
+
+    class Meta:
+        db_table = 'netsuite.general_ledger'
+
+
+
+
+class NetSuiteAccountingPeriods(models.Model):
+    company_name = models.CharField(max_length=255)
+    period_id = models.CharField(max_length=255)
+    period_name = models.CharField(max_length=255)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    closed = models.BooleanField()
+    all_locked = models.BooleanField()
+    fiscal_calendar = models.CharField(max_length=255)
+    year = models.IntegerField()
+    quarter = models.IntegerField()
+    period = models.IntegerField()
+    record_date = models.DateTimeField()
+
+
+    class Meta:
+        db_table = 'netsuite.accounting_periods'
+
+
+class NetSuiteDepartments(models.Model):
+    company_name = models.CharField(max_length=255)
+    department_id = models.CharField(max_length=255)
+    name = models.CharField(max_length=255)
+    full_name = models.CharField(max_length=255)
+    subsidiary = models.CharField(max_length=255)
+    is_inactive = models.BooleanField()
+    record_date = models.DateTimeField()
+
+
+    class Meta:
+        db_table = 'netsuite.departments'
+
+
+class NetSuiteSubsidiaries(models.Model):
+    company_name = models.CharField(max_length=255)
+    subsidiary_id = models.CharField(max_length=255)
+    name = models.CharField(max_length=255)
+    name_nohi = models.CharField(max_length=255)
+    full_name = models.CharField(max_length=255)
+    legal_name = models.CharField(max_length=255)
+    federal_number = models.CharField(max_length=255, null=True)
+    is_elimination = models.BooleanField()
+    currency = models.CharField(max_length=3)
+    country = models.CharField(max_length=255)
+    record_date = models.DateTimeField()
+
+
+    class Meta:
+        db_table = 'netsuite.subsidiaries'
+
+
+class NetSuiteVendors(models.Model):
+    company_name = models.CharField(max_length=255)
+    vendor_id = models.CharField(max_length=255)
+    entity_id = models.CharField(max_length=255)
+    company_name = models.CharField(max_length=255)
+    is_person = models.BooleanField()
+    is_inactive = models.BooleanField()
+    email = models.EmailField(null=True)
+    phone = models.CharField(max_length=255, null=True)
+    currency = models.CharField(max_length=3)
+    subsidiary = models.CharField(max_length=255)
+    terms = models.CharField(max_length=255, null=True)
+    record_date = models.DateTimeField()
+
+
+    class Meta:
+        db_table = 'netsuite.vendors'
+
+
+class NetSuiteBudgetPeriodBalances(models.Model):
+    company_name = models.CharField(max_length=255)
+    budget_id = models.CharField(max_length=255)
+    budget_name = models.CharField(max_length=255)
+    budget_status = models.CharField(max_length=255)
+    budget_type = models.CharField(max_length=255)
+    account_id = models.CharField(max_length=255)
+    account_code = models.CharField(max_length=255)
+    account_name = models.CharField(max_length=255)
+    account_class = models.CharField(max_length=50)
+    department = models.CharField(max_length=255, null=True)
+    location = models.CharField(max_length=255, null=True)
+    period = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=19, decimal_places=2)
+    notes = models.TextField(null=True)
+    updated_date_utc = models.DateTimeField()
+    ingestion_timestamp = models.DateTimeField(auto_now_add=True)
+    source_system = models.CharField(max_length=50, default='NETSUITE')
+
+
+    class Meta:
+        db_table = 'netsuite.budget_period_balances'
+        unique_together = ['company_name', 'budget_id', 'account_id', 'period']
+
+
+class NetSuiteEntity(models.Model):
+    company_name = models.CharField(max_length=255)
+    entity_id = models.CharField(max_length=255)
+    entity_number = models.CharField(max_length=255)
+    company_name = models.CharField(max_length=255)
+    legal_name = models.CharField(max_length=255, null=True)
+    is_person = models.BooleanField()
+    is_inactive = models.BooleanField()
+    parent_entity = models.CharField(max_length=255, null=True)
+    email = models.EmailField(null=True)
+    phone = models.CharField(max_length=255, null=True)
+    currency = models.CharField(max_length=3)
+    subsidiary = models.CharField(max_length=255)
+    terms = models.CharField(max_length=255, null=True)
+    last_modified_date = models.DateTimeField()
+    record_date = models.DateTimeField()
+
+
+    class Meta:
+        db_table = 'netsuite.entity'

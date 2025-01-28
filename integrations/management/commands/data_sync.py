@@ -1,7 +1,7 @@
 import logging
 import os
 from django.core.management.base import BaseCommand
-from integrations.models import Integration
+from config.integrations.models.models import Integration
 from integrations.services.xero_client import (
     authorize_xero,
     import_xero_journal_lines,

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from integrations.models import (
+from integrations.models.models import (
     Integration, IntegrationAccessToken, ChartOfAccounts, OrphanBankTransaction
 )
 

@@ -1,5 +1,3 @@
-# integrations/services/xero_client.py
-
 import requests
 from datetime import datetime, timedelta
 from dateutil.parser import parse as date_parse
@@ -8,7 +6,7 @@ from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework import status
 
-from integrations.models import (
+from integrations.models.models import (
     Integration,
     IntegrationAccessToken,
     ChartOfAccounts,
@@ -65,7 +63,7 @@ def request_new_xero_token(integration: Integration) -> str:
 
     token_data = response.json()
     access_token = token_data["access_token"]
-    expires_in = token_data.get("expires_in", 1800)  # 30 minutes default
+    expires_in = token_data.get("expires_in", 1800)
     expires_at = timezone.now() + timedelta(seconds=expires_in)
 
     IntegrationAccessToken.objects.create(
