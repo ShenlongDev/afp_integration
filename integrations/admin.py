@@ -23,6 +23,7 @@ from integrations.models.xero.raw import (
 )
 
 
+
 class IntegrationAdmin(admin.ModelAdmin):
     list_display = ('org', 'created_at', 'updated_at')
     search_fields = ('org__name', 'xero_client_id', 'xero_client_secret', 'xero_tenant_id', 'created_at', 'updated_at')

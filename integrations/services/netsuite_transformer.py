@@ -371,42 +371,42 @@ class NetSuiteTransformer:
         )
 
 
-    @transaction.atomic
-    def transform_vendors(self):
-        """Transform vendors"""
-        vendors_data = (
-            NetSuiteRawVendors.objects
-            .select_related('companies')
-            .annotate(
-                company_name=F('companies__company_name'),
-                vendor_id=JsonbExtractPath('raw_payload', 'ID'),
-                entity_id=JsonbExtractPath('raw_payload', 'EntityId'),
-                vendor_name=JsonbExtractPath('raw_payload', 'CompanyName'),
-                is_person=Cast(
-                    JsonbExtractPath('raw_payload', 'IsPerson'),
-                    output_field=CharField()
-                ),
-                is_inactive=Cast(
-                    JsonbExtractPath('raw_payload', 'IsInactive'),
-                    output_field=CharField()
-                ),
-                email=JsonbExtractPath('raw_payload', 'Email'),
-                phone=JsonbExtractPath('raw_payload', 'Phone'),
-                currency=JsonbExtractPath('raw_payload', 'Currency'),
-                subsidiary=JsonbExtractPath('raw_payload', 'Subsidiary'),
-                terms=JsonbExtractPath('raw_payload', 'Terms'),
-                record_date=F('ingestion_timestamp')
-            )
-        )
+    # @transaction.atomic
+    # def transform_vendors(self):
+    #     """Transform vendors"""
+    #     vendors_data = (
+    #         NetSuiteRawVendors.objects
+    #         .select_related('companies')
+    #         .annotate(
+    #             company_name=F('companies__company_name'),
+    #             vendor_id=JsonbExtractPath('raw_payload', 'ID'),
+    #             entity_id=JsonbExtractPath('raw_payload', 'EntityId'),
+    #             vendor_name=JsonbExtractPath('raw_payload', 'CompanyName'),
+    #             is_person=Cast(
+    #                 JsonbExtractPath('raw_payload', 'IsPerson'),
+    #                 output_field=CharField()
+    #             ),
+    #             is_inactive=Cast(
+    #                 JsonbExtractPath('raw_payload', 'IsInactive'),
+    #                 output_field=CharField()
+    #             ),
+    #             email=JsonbExtractPath('raw_payload', 'Email'),
+    #             phone=JsonbExtractPath('raw_payload', 'Phone'),
+    #             currency=JsonbExtractPath('raw_payload', 'Currency'),
+    #             subsidiary=JsonbExtractPath('raw_payload', 'Subsidiary'),
+    #             terms=JsonbExtractPath('raw_payload', 'Terms'),
+    #             record_date=F('ingestion_timestamp')
+    #         )
+    #     )
 
 
-        # Bulk create with PostgreSQL upsert
-        NetSuiteVendors.objects.bulk_create(
-            (NetSuiteVendors(**vendor) for vendor in vendors_data),
-            update_conflicts=True,
-            unique_fields=['company_name', 'vendor_id'],
-            update_fields=['vendor_name', 'email', 'phone', 'record_date']
-        )
+    #     # Bulk create with PostgreSQL upsert
+    #     NetSuiteVendors.objects.bulk_create(
+    #         (NetSuiteVendors(**vendor) for vendor in vendors_data),
+    #         update_conflicts=True,
+    #         unique_fields=['company_name', 'vendor_id'],
+    #         update_fields=['vendor_name', 'email', 'phone', 'record_date']
+    #     )
 
 
     @transaction.atomic
@@ -450,9 +450,8 @@ class NetSuiteTransformer:
 
 
 
-
-    @transaction.atomic
-    def transform_transaction_accounting_lines(self):
+    # @transaction.atomic
+    # def transform_transaction_accounting_lines(self):
         """Transform transaction accounting lines"""
         lines_data = (
             NetSuiteRawTransactionAccountingLine.objects
