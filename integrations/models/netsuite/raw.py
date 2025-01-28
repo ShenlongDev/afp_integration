@@ -69,8 +69,6 @@ class Companies(models.Model):
         db_table = 'netsuite.companies'
 
 
-
-
 class NetSuiteRawBase(models.Model):
     consolidation_key = models.CharField(max_length=255)
     raw_payload = models.JSONField()
