@@ -4,20 +4,12 @@ from dateutil.parser import parse as date_parse
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.response import Response
-from rest_framework import status
-
 from integrations.models.models import (
     Integration,
     IntegrationAccessToken,
-    ChartOfAccounts,
-    OrphanBankTransaction
 )
-from integrations.services.dynamic_tables import (
-    sanitize_table_name,
-    create_account_table,
-    rename_account_table,
-    insert_transaction_row
-)
+from integrations.models.xero.raw import XeroAccountsRaw, XeroJournalsRaw
+
 
 def get_valid_xero_token(integration: Integration) -> str:
     """
@@ -90,7 +82,9 @@ def parse_xero_datetime(dt_str: str):
 @transaction.atomic
 def sync_xero_chart_of_accounts(integration: Integration, since_date=None):
     """
-    Synchronize Chart of Accounts from Xero into local database and dynamic tables.
+    Fetch chart of accounts from Xero and store them in your normal (raw or staging) table.
+    No dynamic table creation. We'll do a raw upsert or store the raw JSON, 
+    similar to the old merges but in Python.
     """
     access_token = get_valid_xero_token(integration)
     tenant_id = integration.xero_tenant_id
@@ -101,6 +95,7 @@ def sync_xero_chart_of_accounts(integration: Integration, since_date=None):
         "Accept": "application/json",
     }
     if since_date:
+        # Xero's If-Modified-Since must be formatted
         headers["If-Modified-Since"] = since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
 
     url = "https://api.xero.com/api.xro/2.0/Accounts"
@@ -108,56 +103,39 @@ def sync_xero_chart_of_accounts(integration: Integration, since_date=None):
     response.raise_for_status()
     accounts_data = response.json().get("Accounts", [])
 
+    now_ts = timezone.now()
+
     for acct in accounts_data:
         account_id = acct["AccountID"]
-        code = acct.get("Code") or ""
-        name = acct.get("Name") or ""
-        org_name = integration.org.name
+        # We'll do a simple "get or create" or "update or create" approach
+        raw, created = XeroAccountsRaw.objects.update_or_create(
+            tenant_id=tenant_id,
+            account_id=account_id,
+            defaults={
+                "name": acct.get("Name"),
+                "status": acct.get("Status"),
+                "type": acct.get("Type"),
+                "updated_date_utc": parse_xero_datetime(acct.get("UpdatedDateUTC")),
+                "raw_payload": acct,  # store entire JSON if desired
+                "ingestion_timestamp": now_ts,
+                "source_system": "XERO",
+            }
+        )
+        raw.save()
 
-        try:
-            co = ChartOfAccounts.objects.get(integration=integration, account_id=account_id)
-            old_table = co.table_name
-        except ChartOfAccounts.DoesNotExist:
-            co = ChartOfAccounts(integration=integration, account_id=account_id)
-            old_table = None
-
-        co.code = code
-        co.name = name
-        co.status = acct.get("Status")
-        co.account_type = acct.get("Type")
-        co.tax_type = acct.get("TaxType")
-        co.currency_code = acct.get("CurrencyCode")
-        co.description = acct.get("Description")
-        co.updated_utc = parse_xero_datetime(acct.get("UpdatedDateUTC"))
-
-        # Generate unique table name using org name to prevent collisions
-        new_table_name = sanitize_table_name(org_name, code, name)
-
-        if not co.table_name:
-            # First-time creation
-            co.table_name = new_table_name
-            co.save()
-            create_account_table(new_table_name)
-        else:
-            # Rename table if the account name or code has changed
-            if old_table != new_table_name:
-                rename_account_table(old_table, new_table_name)
-                co.table_name = new_table_name
-                co.save()
-
-        co.save()
 
 @transaction.atomic
 def import_xero_journal_lines(integration: Integration, since_date=None):
     """
-    Import Journal Lines from Xero and insert them into respective dynamic account tables.
+    Import Journal Lines from Xero, storing them in normalized raw/staging table 
+    (no dynamic table creation).
     """
     access_token = get_valid_xero_token(integration)
     tenant_id = integration.xero_tenant_id
 
     headers = {
         "Authorization": f"Bearer {access_token}",
-        # "xero-tenant-id": tenant_id,
+        "xero-tenant-id": tenant_id,
         "Accept": "application/json"
     }
     if since_date:
@@ -168,49 +146,28 @@ def import_xero_journal_lines(integration: Integration, since_date=None):
     response.raise_for_status()
     journals_data = response.json().get("Journals", [])
 
+    now_ts = timezone.now()
+
     for journal in journals_data:
-        journal_date = parse_xero_datetime(journal.get("JournalDate"))
         journal_id = journal.get("JournalID") 
         reference = journal.get("Reference")
-        source_currency = journal.get("SourceCurrencyCode", "")
-        status = journal.get("Status", "")
-
+        journal_date = parse_xero_datetime(journal.get("JournalDate"))
         lines = journal.get("JournalLines", [])
+
         for line in lines:
-            acct_code = line.get("AccountCode")
-            if not acct_code:
-                continue  # Skip lines without an AccountCode
-
-            try:
-                co = ChartOfAccounts.objects.get(integration=integration, code=acct_code)
-            except ChartOfAccounts.DoesNotExist:
-                # Handle orphan: store in OrphanBankTransaction for manual mapping
-                OrphanBankTransaction.objects.create(
-                    integration=integration,
-                    raw_data=line
-                )
-                continue
-
-            row_data = {
-                "insights_unique_id": journal_id,  
-                "date": journal_date,
-                "reference": reference,
-                "currency_code": source_currency,
-                "status": status,
-                "description": line.get("Description", ""),
-                "quantity": 1,  # Xero JournalLines typically don't have quantity
-                "unit_amount": line.get("NetAmount", 0),
-                "account_code": acct_code,
-                "item_code": line.get("ItemCode"), 
-                "line_item_id": line.get("JournalLineID", ""), 
-                "tax_type": line.get("TaxType"),
-                "tax_amount": line.get("TaxAmount", 0),
-                "line_amount": line.get("GrossAmount", 0),
-                "tracking": line.get("TrackingCategories")  # Store as JSON
-            }
-
-            insert_transaction_row(co.table_name, row_data)
-
+            line_id = line.get("JournalLineID")
+            # Upsert into your raw/staging table, e.g. XeroJournalsRaw
+            XeroJournalsRaw.objects.update_or_create(
+                tenant_id=tenant_id,
+                journal_id=journal_id,
+                defaults={
+                    "reference": reference,
+                    "journal_date": journal_date,
+                    "raw_payload": journal,  # store entire journal JSON if you want
+                    "ingestion_timestamp": now_ts,
+                    "source_system": "XERO"
+                }
+            )
 
 def authorize_xero(integration):
     client_id = integration.xero_client_id
