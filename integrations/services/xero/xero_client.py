@@ -301,14 +301,7 @@ def authorize_xero(integration):
         token=access_token,
         expires_at=expires_at
     )
-
-    return Response(
-        {
-            "detail": "Xero token acquired successfully.",
-            "access_token": access_token,
-            "expires_at": expires_at.isoformat(),
-        },
-        status=200
-    )
     
+    return {"access_token": access_token, "expires_at": expires_at.isoformat()}
+
     

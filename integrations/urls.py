@@ -11,6 +11,10 @@ urlpatterns = [
     path('<int:pk>/auth/', IntegrationAuthView.as_view(), name="integration-auth"),
     path('<int:pk>/import-journals/', XeroJournalImportView.as_view(), name='integration-import-journals'),
     path("<int:pk>/xero-sync-accounts/", XeroChartOfAccountsSyncView.as_view(), name="xero-sync-accounts"),
+
+
+
+    # Xero example endpoints
     path('xero/accounts/', XeroAccountsListCreateView.as_view(), name='xero-accounts-list-create'),
     path('xero/accounts/<str:account_id>/', XeroAccountsDetailView.as_view(), name='xero-accounts-detail'),
     path('xero/bank-transaction-line-items/', XeroBankTransactionLineItemsListCreateView.as_view(), name='xero-bank-transaction-line-items-list-create'),

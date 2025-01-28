@@ -13,8 +13,6 @@ from ..models.netsuite.analytics import *
 
 
 
-
-
 class NetSuiteTransformer:
     @transaction.atomic
     def transform_transactions(self):
@@ -450,66 +448,67 @@ class NetSuiteTransformer:
 
 
 
+
     # @transaction.atomic
     # def transform_transaction_accounting_lines(self):
-        """Transform transaction accounting lines"""
-        lines_data = (
-            NetSuiteRawTransactionAccountingLine.objects
-            .select_related('companies', 'transaction', 'account')
-            .annotate(
-                company_name=F('companies__company_name'),
-                transaction_id=JsonbExtractPath('transaction__raw_payload', 'ID'),
-                account_id=JsonbExtractPath('account__raw_payload', 'ID'),
-                amount=Cast(
-                    Coalesce(JsonbExtractPath('raw_payload', 'Amount'), 0),
-                    output_field=DecimalField(max_digits=19, decimal_places=2)
-                ),
-                amount_foreign=Cast(
-                    Coalesce(JsonbExtractPath('raw_payload', 'AmountForeign'), 0),
-                    output_field=DecimalField(max_digits=19, decimal_places=2)
-                ),
-                credit=Cast(
-                    Coalesce(JsonbExtractPath('raw_payload', 'Credit'), 0),
-                    output_field=DecimalField(max_digits=19, decimal_places=2)
-                ),
-                debit=Cast(
-                    Coalesce(JsonbExtractPath('raw_payload', 'Debit'), 0),
-                    output_field=DecimalField(max_digits=19, decimal_places=2)
-                ),
-                eliminate=Cast(
-                    JsonbExtractPath('raw_payload', 'Eliminate'),
-                    output_field=CharField()
-                ),
-                net_amount=Cast(
-                    Coalesce(JsonbExtractPath('raw_payload', 'NetAmount'), 0),
-                    output_field=DecimalField(max_digits=19, decimal_places=2)
-                ),
-                posting=Cast(
-                    JsonbExtractPath('raw_payload', 'Posting'),
-                    output_field=CharField()
-                ),
-                subsidiary=JsonbExtractPath('raw_payload', 'Subsidiary'),
-                amount_paid=Cast(
-                    Coalesce(JsonbExtractPath('raw_payload', 'AmountPaid'), 0),
-                    output_field=DecimalField(max_digits=19, decimal_places=2)
-                ),
-                amount_unpaid=Cast(
-                    Coalesce(JsonbExtractPath('raw_payload', 'AmountUnpaid'), 0),
-                    output_field=DecimalField(max_digits=19, decimal_places=2)
-                ),
-                record_date=F('ingestion_timestamp')
-            )
-            .order_by('transaction_id', 'account_id')
-        )
+    #     """Transform transaction accounting lines"""
+    #     lines_data = (
+    #         NetSuiteRawTransactionAccountingLine.objects
+    #         .select_related('companies', 'transaction', 'account')
+    #         .annotate(
+    #             company_name=F('companies__company_name'),
+    #             transaction_id=JsonbExtractPath('transaction__raw_payload', 'ID'),
+    #             account_id=JsonbExtractPath('account__raw_payload', 'ID'),
+    #             amount=Cast(
+    #                 Coalesce(JsonbExtractPath('raw_payload', 'Amount'), 0),
+    #                 output_field=DecimalField(max_digits=19, decimal_places=2)
+    #             ),
+    #             amount_foreign=Cast(
+    #                 Coalesce(JsonbExtractPath('raw_payload', 'AmountForeign'), 0),
+    #                 output_field=DecimalField(max_digits=19, decimal_places=2)
+    #             ),
+    #             credit=Cast(
+    #                 Coalesce(JsonbExtractPath('raw_payload', 'Credit'), 0),
+    #                 output_field=DecimalField(max_digits=19, decimal_places=2)
+    #             ),
+    #             debit=Cast(
+    #                 Coalesce(JsonbExtractPath('raw_payload', 'Debit'), 0),
+    #                 output_field=DecimalField(max_digits=19, decimal_places=2)
+    #             ),
+    #             eliminate=Cast(
+    #                 JsonbExtractPath('raw_payload', 'Eliminate'),
+    #                 output_field=CharField()
+    #             ),
+    #             net_amount=Cast(
+    #                 Coalesce(JsonbExtractPath('raw_payload', 'NetAmount'), 0),
+    #                 output_field=DecimalField(max_digits=19, decimal_places=2)
+    #             ),
+    #             posting=Cast(
+    #                 JsonbExtractPath('raw_payload', 'Posting'),
+    #                 output_field=CharField()
+    #             ),
+    #             subsidiary=JsonbExtractPath('raw_payload', 'Subsidiary'),
+    #             amount_paid=Cast(
+    #                 Coalesce(JsonbExtractPath('raw_payload', 'AmountPaid'), 0),
+    #                 output_field=DecimalField(max_digits=19, decimal_places=2)
+    #             ),
+    #             amount_unpaid=Cast(
+    #                 Coalesce(JsonbExtractPath('raw_payload', 'AmountUnpaid'), 0),
+    #                 output_field=DecimalField(max_digits=19, decimal_places=2)
+    #             ),
+    #             record_date=F('ingestion_timestamp')
+    #         )
+    #         .order_by('transaction_id', 'account_id')
+    #     )
 
 
-        # Bulk create with PostgreSQL upsert
-        NetSuiteTransactionAccountingLines.objects.bulk_create(
-            (NetSuiteTransactionAccountingLines(**line) for line in lines_data),
-            update_conflicts=True,
-            unique_fields=['company_name', 'transaction_id', 'account_id'],
-            update_fields=['amount', 'credit', 'debit', 'net_amount', 'record_date']
-        )
+    #     # Bulk create with PostgreSQL upsert
+    #     NetSuiteTransactionAccountingLines.objects.bulk_create(
+    #         (NetSuiteTransactionAccountingLines(**line) for line in lines_data),
+    #         update_conflicts=True,
+    #         unique_fields=['company_name', 'transaction_id', 'account_id'],
+    #         update_fields=['amount', 'credit', 'debit', 'net_amount', 'record_date']
+    #     )
 
 
     @transaction.atomic
