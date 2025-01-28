@@ -64,9 +64,6 @@ class NetSuiteRawBudgetLine(NetSuiteRawBase):
 class Companies(models.Model):
     company_name = models.CharField(max_length=255)
     consolidation_key = models.CharField(max_length=255, unique=True)
-   
-    class Meta:
-        db_table = 'netsuite.companies'
 
 
 class NetSuiteRawBase(models.Model):

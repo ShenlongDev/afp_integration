@@ -34,6 +34,7 @@ class XeroBudgetPeriodBalancesAnalytics(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'budget_id', 'account_id', 'period'), )
+        verbose_name = "Xero Budget Period Balances Analytics"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.budget_id} - {self.account_id} - {self.period}"
@@ -95,6 +96,7 @@ class XeroGeneralLedger(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'journal_id', 'journal_line_id'), )
+        verbose_name = "Xero General Ledger"
 
     def __str__(self):
         return f"{self.tenant_id} - Journal {self.journal_id}, Line {self.journal_line_id}"

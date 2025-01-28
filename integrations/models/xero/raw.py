@@ -24,8 +24,8 @@ class SquareOrders(models.Model):
 class XeroAccountsRaw(models.Model):
     id = models.AutoField(primary_key=True)
 
-    tenant_id = models.CharField(max_length=255)
-    account_id = models.CharField(max_length=255)
+    tenant_id = models.CharField(max_length=255, blank=True, null=True)
+    account_id = models.CharField(max_length=255, blank=True, null=True)
     name = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=50, blank=True, null=True)
     type = models.CharField(max_length=50, blank=True, null=True)
@@ -36,6 +36,7 @@ class XeroAccountsRaw(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'account_id'), )
+        verbose_name = "Xero Account Raw"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.account_id}"
@@ -56,6 +57,7 @@ class XeroBankTransactionsRaw(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'bank_transaction_id'), )
+        verbose_name = "Xero Bank Transaction Raw"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.bank_transaction_id}"
@@ -77,6 +79,7 @@ class XeroBudgetPeriodBalancesRaw(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'budget_id', 'account_id', 'period'), )
+        verbose_name = "Xero Budget Period Balances Raw"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.budget_id} - {self.account_id} - {self.period}"
@@ -97,6 +100,7 @@ class XeroBudgetsRaw(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'budget_id'), )
+        verbose_name = "Xero Budgets Raw"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.budget_id}"
@@ -116,6 +120,7 @@ class XeroConnectionsRaw(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'user_id'), )
+        verbose_name = "Xero Connections Raw"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.user_id}"
@@ -134,6 +139,7 @@ class XeroContactsRaw(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'contact_id'), )
+        verbose_name = "Xero Contacts Raw"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.contact_id}"
@@ -156,6 +162,7 @@ class XeroInvoicesRaw(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'invoice_id'), )
+        verbose_name = "Xero Invoices Raw"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.invoice_id}"
@@ -163,10 +170,9 @@ class XeroInvoicesRaw(models.Model):
 
 class XeroJournalsRaw(models.Model):
     id = models.AutoField(primary_key=True)
-
-    journal_id = models.CharField(max_length=255)
-    journal_number = models.IntegerField()
-    tenant_id = models.CharField(max_length=255)
+    journal_id = models.CharField(max_length=255, null=True)
+    journal_number = models.IntegerField(null=True)
+    tenant_id = models.CharField(max_length=255, null=True)
     reference = models.TextField(blank=True, null=True)
     source_id = models.CharField(max_length=255, blank=True, null=True)
     source_type = models.CharField(max_length=255, blank=True, null=True)
@@ -177,8 +183,8 @@ class XeroJournalsRaw(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."raw_data"."xero_journals"'
         unique_together = (('tenant_id', 'journal_id'), )
+        verbose_name = "Xero Journals Raw"
 
     def __str__(self):
         return f"{self.tenant_id} - {self.journal_id}"

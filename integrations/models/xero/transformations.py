@@ -23,6 +23,9 @@ class XeroAccounts(models.Model):
     def __str__(self):
         return f"{self.account_id} - {self.name}"
 
+    class Meta:
+        verbose_name = "Xero Account"
+
 
 class XeroBankTransactionLineItems(models.Model):
     tenant_id = models.CharField(max_length=50)
@@ -59,12 +62,15 @@ class XeroBankTransactionLineItems(models.Model):
     def __str__(self):
         return f"{self.bank_transaction_id} - {self.line_item_id}"
 
+    class Meta:
+        verbose_name = "Xero Bank Transaction Line Item"
+
 
 class XeroJournalLines(models.Model):
     journal_line_id = models.CharField(max_length=50, primary_key=True)
     journal_id = models.CharField(max_length=50, blank=True, null=True)
     journal_number = models.CharField(max_length=50, blank=True, null=True)
-    tenant_id = models.CharField(max_length=50)
+    tenant_id = models.CharField(max_length=50, blank=True, null=True)
     reference = models.TextField(blank=True, null=True)
     source_id = models.CharField(max_length=50, blank=True, null=True)
     source_type = models.CharField(max_length=50, blank=True, null=True)
@@ -81,8 +87,14 @@ class XeroJournalLines(models.Model):
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
     
+    tracking_category_name = models.CharField(max_length=255, blank=True, null=True)
+    tracking_category_option = models.CharField(max_length=255, blank=True, null=True)
+
     def __str__(self):
         return f"{self.journal_line_id}"
+
+    class Meta:
+        verbose_name = "Xero Journal Line"
 
 
 class XeroJournalLineTrackingCategories(models.Model):
@@ -101,6 +113,9 @@ class XeroJournalLineTrackingCategories(models.Model):
 
     def __str__(self):
         return f"TrackingCat {self.tracking_category_id} / {self.tracking_option_id}"
+
+    class Meta:
+        verbose_name = "Xero Journal Line Tracking Category"
 
 
 class XeroInvoiceLineItems(models.Model):
@@ -137,6 +152,9 @@ class XeroInvoiceLineItems(models.Model):
 
     def __str__(self):
         return f"{self.invoice_id} - {self.line_item_id}"
+
+    class Meta:
+        verbose_name = "Xero Invoice Line Item"
 
 
 class XeroBudgetPeriodBalances(models.Model):

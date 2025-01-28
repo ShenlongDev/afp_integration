@@ -1,10 +1,11 @@
 from django.contrib import admin
-from integrations.models.models import (
+from .models.models import (
     Integration,
     IntegrationAccessToken,
     ChartOfAccounts,
     OrphanBankTransaction
 )
+
 from integrations.models.xero.transformations import (
     XeroAccounts,
     XeroBankTransactionLineItems,

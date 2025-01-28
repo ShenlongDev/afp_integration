@@ -1,11 +1,10 @@
 from rest_framework import viewsets
 from integrations.models.models import Integration, IntegrationAccessToken
 from integrations.serializers.general import IntegrationSerializer
-from integrations.services.xero_client import authorize_xero
+from integrations.services.xero.xero_client import authorize_xero
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-
 
 class IntegrationViewSet(viewsets.ModelViewSet):
     queryset = Integration.objects.all()
