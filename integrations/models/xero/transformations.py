@@ -20,10 +20,6 @@ class XeroAccounts(models.Model):
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
-    class Meta:
-        db_table = '"production"."staging"."xero_accounts"'
-        managed = False
-
     def __str__(self):
         return f"{self.account_id} - {self.name}"
 
@@ -60,10 +56,6 @@ class XeroBankTransactionLineItems(models.Model):
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
-    class Meta:
-        db_table = '"production"."staging"."xero_bank_transaction_line_items"'
-        managed = False
-
     def __str__(self):
         return f"{self.bank_transaction_id} - {self.line_item_id}"
 
@@ -88,11 +80,7 @@ class XeroJournalLines(models.Model):
     created_date_utc = models.DateTimeField(blank=True, null=True)
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
-
-    class Meta:
-        db_table = '"production"."staging"."xero_journal_lines"'
-        managed = False
-
+    
     def __str__(self):
         return f"{self.journal_line_id}"
 
@@ -110,10 +98,6 @@ class XeroJournalLineTrackingCategories(models.Model):
     option = models.CharField(max_length=255, blank=True, null=True)
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
-
-    class Meta:
-        db_table = '"production"."staging"."xero_journal_line_tracking_categories"'
-        managed = False
 
     def __str__(self):
         return f"TrackingCat {self.tracking_category_id} / {self.tracking_option_id}"
@@ -151,10 +135,6 @@ class XeroInvoiceLineItems(models.Model):
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
-    class Meta:
-        db_table = '"production"."staging"."xero_invoice_line_items"'
-        managed = False
-
     def __str__(self):
         return f"{self.invoice_id} - {self.line_item_id}"
 
@@ -183,9 +163,6 @@ class XeroBudgetPeriodBalances(models.Model):
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
-    class Meta:
-        db_table = '"production"."analytics"."xero_budget_period_balances"'
-        managed = False
 
     def __str__(self):
         return f"{self.budget_id} - {self.period}"
@@ -215,9 +192,6 @@ class XeroBudgetPeriodBalances(models.Model):
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
-    class Meta:
-        db_table = '"production"."analytics"."xero_budget_period_balances"'
-        managed = False
 
     def __str__(self):
         return f"{self.budget_id} - {self.period}"
@@ -267,9 +241,6 @@ class XeroGeneralLedger(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
     duplicate_check = models.IntegerField(blank=True, null=True)
 
-    class Meta:
-        db_table = '"production"."analytics"."xero_general_ledger"'
-        managed = False
-
     def __str__(self):
         return f"GL line {self.journal_line_id} (Tenant {self.tenant_id})"
+

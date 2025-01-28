@@ -17,10 +17,6 @@ class SquareOrders(models.Model):
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=255, blank=True, null=True)
 
-    class Meta:
-        db_table = '"production"."raw_data"."square_orders"'
-        managed = False
-
     def __str__(self):
         return self.order_id
 
@@ -39,8 +35,6 @@ class XeroAccountsRaw(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."raw_data"."xero_accounts"'
-        managed = False
         unique_together = (('tenant_id', 'account_id'), )
 
     def __str__(self):
@@ -61,8 +55,6 @@ class XeroBankTransactionsRaw(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."raw_data"."xero_bank_transactions"'
-        managed = False
         unique_together = (('tenant_id', 'bank_transaction_id'), )
 
     def __str__(self):
@@ -84,8 +76,6 @@ class XeroBudgetPeriodBalancesRaw(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."raw_data"."xero_budget_period_balances"'
-        managed = False
         unique_together = (('tenant_id', 'budget_id', 'account_id', 'period'), )
 
     def __str__(self):
@@ -106,8 +96,6 @@ class XeroBudgetsRaw(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."raw_data"."xero_budgets"'
-        managed = False
         unique_together = (('tenant_id', 'budget_id'), )
 
     def __str__(self):
@@ -127,8 +115,6 @@ class XeroConnectionsRaw(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."raw_data"."xero_connections"'
-        managed = False
         unique_together = (('tenant_id', 'user_id'), )
 
     def __str__(self):
@@ -147,8 +133,6 @@ class XeroContactsRaw(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."raw_data"."xero_contacts"'
-        managed = False
         unique_together = (('tenant_id', 'contact_id'), )
 
     def __str__(self):
@@ -171,8 +155,6 @@ class XeroInvoicesRaw(models.Model):
     source_system = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."raw_data"."xero_invoices"'
-        managed = False
         unique_together = (('tenant_id', 'invoice_id'), )
 
     def __str__(self):
@@ -196,7 +178,6 @@ class XeroJournalsRaw(models.Model):
 
     class Meta:
         db_table = '"production"."raw_data"."xero_journals"'
-        managed = False
         unique_together = (('tenant_id', 'journal_id'), )
 
     def __str__(self):

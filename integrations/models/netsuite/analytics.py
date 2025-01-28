@@ -28,10 +28,6 @@ class NetSuiteAccounts(models.Model):
     record_date = models.DateTimeField()
 
 
-    class Meta:
-        db_table = 'netsuite.accounts'
-
-
 class NetSuiteTransactions(models.Model):
     company_name = models.CharField(max_length=255)
     abbrevtype = models.CharField(max_length=255)
@@ -81,7 +77,6 @@ class NetSuiteTransactions(models.Model):
 
 
     class Meta:
-        db_table = 'netsuite.transactions'
         indexes = [
             models.Index(fields=['transactionid', 'linesequencenumber'])
         ]
@@ -110,12 +105,6 @@ class NetSuiteGeneralLedger(models.Model):
     record_date = models.DateTimeField()
 
 
-    class Meta:
-        db_table = 'netsuite.general_ledger'
-
-
-
-
 class NetSuiteAccountingPeriods(models.Model):
     company_name = models.CharField(max_length=255)
     period_id = models.CharField(max_length=255)
@@ -131,10 +120,6 @@ class NetSuiteAccountingPeriods(models.Model):
     record_date = models.DateTimeField()
 
 
-    class Meta:
-        db_table = 'netsuite.accounting_periods'
-
-
 class NetSuiteDepartments(models.Model):
     company_name = models.CharField(max_length=255)
     department_id = models.CharField(max_length=255)
@@ -143,10 +128,6 @@ class NetSuiteDepartments(models.Model):
     subsidiary = models.CharField(max_length=255)
     is_inactive = models.BooleanField()
     record_date = models.DateTimeField()
-
-
-    class Meta:
-        db_table = 'netsuite.departments'
 
 
 class NetSuiteSubsidiaries(models.Model):
@@ -163,10 +144,6 @@ class NetSuiteSubsidiaries(models.Model):
     record_date = models.DateTimeField()
 
 
-    class Meta:
-        db_table = 'netsuite.subsidiaries'
-
-
 class NetSuiteVendors(models.Model):
     company_name = models.CharField(max_length=255)
     vendor_id = models.CharField(max_length=255)
@@ -180,10 +157,6 @@ class NetSuiteVendors(models.Model):
     subsidiary = models.CharField(max_length=255)
     terms = models.CharField(max_length=255, null=True)
     record_date = models.DateTimeField()
-
-
-    class Meta:
-        db_table = 'netsuite.vendors'
 
 
 class NetSuiteBudgetPeriodBalances(models.Model):
@@ -207,7 +180,6 @@ class NetSuiteBudgetPeriodBalances(models.Model):
 
 
     class Meta:
-        db_table = 'netsuite.budget_period_balances'
         unique_together = ['company_name', 'budget_id', 'account_id', 'period']
 
 
@@ -227,7 +199,3 @@ class NetSuiteEntity(models.Model):
     terms = models.CharField(max_length=255, null=True)
     last_modified_date = models.DateTimeField()
     record_date = models.DateTimeField()
-
-
-    class Meta:
-        db_table = 'netsuite.entity'

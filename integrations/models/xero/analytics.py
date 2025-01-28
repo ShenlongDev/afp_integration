@@ -33,8 +33,6 @@ class XeroBudgetPeriodBalancesAnalytics(models.Model):
     source_system = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."analytics"."xero_budget_period_balances"'
-        managed = False
         unique_together = (('tenant_id', 'budget_id', 'account_id', 'period'), )
 
     def __str__(self):
@@ -96,8 +94,6 @@ class XeroGeneralLedger(models.Model):
     duplicate_check = models.SmallIntegerField(blank=True, null=True)
 
     class Meta:
-        db_table = '"production"."analytics"."xero_general_ledger"'
-        managed = False
         unique_together = (('tenant_id', 'journal_id', 'journal_line_id'), )
 
     def __str__(self):
