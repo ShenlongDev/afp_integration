@@ -13,7 +13,10 @@ from integrations.models.xero.transformations import (
     XeroJournalLineTrackingCategories,
     XeroInvoiceLineItems,
     XeroBudgetPeriodBalances,
-    XeroGeneralLedger
+)
+from integrations.models.xero.analytics import (
+    XeroGeneralLedger,
+    XeroBudgetPeriodBalancesAnalytics,
 )
 from integrations.models.xero.raw import (
     XeroAccountsRaw,
@@ -21,6 +24,7 @@ from integrations.models.xero.raw import (
     XeroBudgetsRaw,
     XeroJournalsRaw
 )
+
 
 
 
@@ -111,6 +115,11 @@ class XeroBudgetsRawAdmin(admin.ModelAdmin):
 class XeroJournalsRawAdmin(admin.ModelAdmin):
     list_display = ('tenant_id', 'journal_id', 'reference', 'journal_date', 'ingestion_timestamp')
     search_fields = ('tenant_id', 'journal_id', 'reference')
+    
+    
+class XeroBudgetPeriodBalancesAnalyticsAdmin(admin.ModelAdmin):
+    list_display = ('tenant_id', 'budget_id', 'account_id', 'period', 'amount')
+    search_fields = ('tenant_id', 'budget_id', 'account_id', 'period')
 
 
 admin.site.register(Integration, IntegrationAdmin)
@@ -123,7 +132,7 @@ admin.site.register(XeroJournalLineTrackingCategories, XeroJournalLineTrackingCa
 admin.site.register(XeroInvoiceLineItems, XeroInvoiceLineItemsAdmin)
 admin.site.register(XeroBudgetPeriodBalances, XeroBudgetPeriodBalancesAdmin)
 admin.site.register(XeroGeneralLedger, XeroGeneralLedgerAdmin)
-
+admin.site.register(XeroBudgetPeriodBalancesAnalytics, XeroBudgetPeriodBalancesAnalyticsAdmin)
 admin.site.register(XeroAccountsRaw, XeroAccountsRawAdmin)
 admin.site.register(XeroBudgetPeriodBalancesRaw, XeroBudgetPeriodBalancesRawAdmin)
 admin.site.register(XeroBudgetsRaw, XeroBudgetsRawAdmin)

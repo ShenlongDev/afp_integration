@@ -1,10 +1,11 @@
 from django.db import models
+from integrations.models.models import Organisation
+
 
 class XeroBudgetPeriodBalancesAnalytics(models.Model):
     """
     Mirrors production.analytics.xero_budget_period_balances table in Snowflake.
     """
-
     # We add a synthetic primary key for Django
     id = models.AutoField(primary_key=True)
 
@@ -44,16 +45,19 @@ class XeroGeneralLedger(models.Model):
     """
     Mirrors production.analytics.xero_general_ledger table in Snowflake.
     """
+    org = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name="xero_general_ledgers",
+        null=True
+    )
+    tenant_id = models.CharField(max_length=255, null=True)
+    tenant_name = models.CharField(max_length=255, null=True)
 
-    id = models.AutoField(primary_key=True)
-
-    tenant_id = models.CharField(max_length=255)
-    tenant_name = models.CharField(max_length=255)
-    journal_id = models.CharField(max_length=255)
-    journal_number = models.IntegerField()
+    journal_id = models.CharField(max_length=255, null=True)
+    journal_number = models.IntegerField(null=True)
     journal_date = models.DateField(blank=True, null=True)
     created_date = models.DateTimeField(blank=True, null=True)
-
     journal_line_id = models.CharField(max_length=255)
     journal_reference = models.TextField(blank=True, null=True)
     source_id = models.CharField(max_length=255, blank=True, null=True)
@@ -75,28 +79,12 @@ class XeroGeneralLedger(models.Model):
     statement = models.CharField(max_length=2, blank=True, null=True)
     bank_account_type = models.CharField(max_length=255, blank=True, null=True)
     journal_line_description = models.TextField(blank=True, null=True)
-
     net_amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
     gross_amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
     tax_amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
-
     invoice_number = models.CharField(max_length=255, blank=True, null=True)
     invoice_url = models.TextField(blank=True, null=True)
-    invoice_description = models.TextField(blank=True, null=True)
-    contact_id = models.CharField(max_length=255, blank=True, null=True)
-    contact_name = models.CharField(max_length=255, blank=True, null=True)
-    amount_due = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
-    amount_paid = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
-    invoice_date = models.DateField(blank=True, null=True)
-    invoice_due_date = models.DateField(blank=True, null=True)
-
-    ingestion_timestamp = models.DateTimeField(blank=True, null=True)
-    source_system = models.CharField(max_length=255, blank=True, null=True)
-    duplicate_check = models.SmallIntegerField(blank=True, null=True)
 
     class Meta:
         unique_together = (('tenant_id', 'journal_id', 'journal_line_id'), )
         verbose_name = "Xero General Ledger"
-
-    def __str__(self):
-        return f"{self.tenant_id} - Journal {self.journal_id}, Line {self.journal_line_id}"

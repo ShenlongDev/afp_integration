@@ -7,7 +7,6 @@ from integrations.models.xero.transformations import (
     XeroJournalLineTrackingCategories,
     XeroInvoiceLineItems,
     XeroBudgetPeriodBalances,
-    XeroGeneralLedger
 )
 
 class XeroAccountsSerializer(serializers.ModelSerializer):
@@ -43,10 +42,4 @@ class XeroInvoiceLineItemsSerializer(serializers.ModelSerializer):
 class XeroBudgetPeriodBalancesSerializer(serializers.ModelSerializer):
     class Meta:
         model = XeroBudgetPeriodBalances
-        fields = '__all__'
-
-
-class XeroGeneralLedgerSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = XeroGeneralLedger
         fields = '__all__'

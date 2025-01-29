@@ -71,8 +71,7 @@ class NetSuiteRawBase(models.Model):
     raw_payload = models.JSONField()
     ingestion_timestamp = models.DateTimeField(auto_now_add=True)
     companies = models.ForeignKey('Companies', on_delete=models.CASCADE)
-
-
+    
     class Meta:
         abstract = True
 
@@ -82,5 +81,4 @@ class NetSuiteRawJournal(NetSuiteRawBase):
         db_table = 'raw_data.netsuite_journals'
         indexes = [
             models.Index(fields=['consolidation_key', 'ingestion_timestamp']),
-            # Add additional indexes as needed
         ]

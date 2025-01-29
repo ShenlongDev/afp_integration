@@ -9,9 +9,14 @@ from integrations.models.models import (
     IntegrationAccessToken,
 )
 from integrations.models.xero.raw import XeroAccountsRaw, XeroJournalsRaw
-from integrations.models.xero.transformations import XeroJournalLines
+from integrations.models.xero.transformations import XeroJournalLines, XeroJournalLineTrackingCategories
+from integrations.models.xero.analytics import XeroGeneralLedger
+from decimal import Decimal
 import logging
 import datetime
+from datetime import timezone as tz
+import re
+
 
 logger = logging.getLogger(__name__)
 
@@ -71,19 +76,18 @@ def request_new_xero_token(integration: Integration) -> str:
 
     return access_token
 
-def parse_xero_datetime(xero_date_str):
+def parse_xero_datetime(xero_date_str: str) -> datetime:
     """
-    Parses Xero's date format and returns a Python datetime object.
-    Example input: "/Date(1671753600000+0000)/"
+    Parse Xero date string in the format '/Date(1672533421427+0000)/' and return a timezone-aware datetime.
     """
-    if not xero_date_str:
-        return None
-    try:
-        timestamp = int(xero_date_str.strip("/Date()").split("+")[0])
-        return datetime.datetime.fromtimestamp(timestamp / 1000, tz=datetime.timezone.utc)
-    except (ValueError, IndexError) as e:
-        logger.error(f"Error parsing date string '{xero_date_str}': {e}")
-        return None
+    match = re.match(r'/Date\((\d+)([+-]\d{4})\)/', xero_date_str)
+    if not match:
+        raise ValueError(f"Unknown date format: {xero_date_str}")
+
+    timestamp_ms, offset_str = match.groups()
+    timestamp = int(timestamp_ms) / 1000.0
+    dt = datetime.datetime.fromtimestamp(timestamp, tz=tz.utc)
+    return dt
 
 @transaction.atomic
 def sync_xero_chart_of_accounts(integration: Integration, since_date=None):
@@ -113,7 +117,6 @@ def sync_xero_chart_of_accounts(integration: Integration, since_date=None):
 
     for acct in accounts_data:
         account_id = acct["AccountID"]
-        # We'll do a simple "get or create" or "update or create" approach
         raw, created = XeroAccountsRaw.objects.update_or_create(
             tenant_id=tenant_id,
             account_id=account_id,
@@ -155,6 +158,9 @@ def import_xero_journal_lines(integration: Integration, since_date=None):
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         journals_data = response.json().get("Journals", [])
+        # Sync general ledger
+        transform_journals_to_general_ledger(integration.org)
+        # xero_general_ledger(journals_data, integration, tenant_id)
 
         now_ts = timezone.now()
 
@@ -163,15 +169,28 @@ def import_xero_journal_lines(integration: Integration, since_date=None):
                 journal_id = journal.get("JournalID")
                 journal_number = journal.get("JournalNumber")
                 reference = journal.get("Reference")
-                journal_date = parse_xero_datetime(journal.get("JournalDate"))
-                created_date_utc = parse_xero_datetime(journal.get("CreatedDateUTC"))
+                journal_date_str = journal.get("JournalDate")
+                created_date_utc_str = journal.get("CreatedDateUTC")
                 raw_payload = journal  # Assuming you assign raw_payload correctly
-                ingestion_timestamp = now_ts  # Ensure ingestion_timestamp is set
+                ingestion_timestamp = now_ts
                 source_system = "XERO"
 
                 if not journal_id:
                     logger.error(f"Missing 'JournalID' in journal data: {journal}")
                     continue
+
+                # Parse dates
+                try:
+                    journal_date = parse_xero_datetime(journal_date_str) if journal_date_str else None
+                except ValueError as e:
+                    logger.error(f"Failed to parse journal_date for JournalID={journal_id}: {e}")
+                    journal_date = None
+
+                try:
+                    created_date_utc = parse_xero_datetime(created_date_utc_str) if created_date_utc_str else None
+                except ValueError as e:
+                    logger.error(f"Failed to parse created_date_utc for JournalID={journal_id}: {e}")
+                    created_date_utc = None
 
                 # Upsert into XeroJournalsRaw
                 journal_raw, created = XeroJournalsRaw.objects.update_or_create(
@@ -265,6 +284,77 @@ def import_xero_journal_lines(integration: Integration, since_date=None):
         logger.error(f"Request error while importing Xero journal lines: {req_err}")
     except Exception as e:
         logger.exception(f"Unexpected error in import_xero_journal_lines: {e}")
+
+
+@transaction.atomic
+def transform_journals_to_general_ledger(organisation):
+    """
+    Merges data from:
+      - XeroJournalsRaw (journal header)
+      - XeroJournalLines (line detail)
+    into XeroGeneralLedger.
+    """
+    lines = XeroJournalLines.objects.all()
+
+    for line in lines:
+        header = None
+        if line.tenant_id and line.journal_id:
+            try:
+                header = XeroJournalsRaw.objects.get(
+                    tenant_id=line.tenant_id,
+                    journal_id=line.journal_id
+                )
+            except XeroJournalsRaw.DoesNotExist:
+                header = None
+
+        # Build the dictionary
+        data = {}
+
+        # Combine from header
+        if header:
+            data["tenant_id"] = header.tenant_id
+            data["journal_id"] = header.journal_id
+            data["journal_number"] = header.journal_number
+            data["journal_date"] = header.journal_date.date() if header.journal_date else None
+            data["created_date"] = header.created_date_utc
+            data["journal_reference"] = header.reference
+        else:
+            # fallback to line or defaults
+            data["tenant_id"] = line.tenant_id
+            data["journal_id"] = line.journal_id
+            data["journal_number"] = int(line.journal_number) if line.journal_number else None
+            data["journal_date"] = line.journal_date
+            data["created_date"] = line.created_date_utc
+            data["journal_reference"] = line.reference
+
+        # Combine from line
+        data["journal_line_id"] = line.journal_line_id
+        data["source_id"] = line.source_id
+        data["source_type"] = line.source_type
+        data["tracking_category_name"] = line.tracking_category_name
+        data["tracking_category_option"] = line.tracking_category_option
+        data["account_id"] = line.account_id
+        data["account_code"] = line.account_code
+        data["account_type"] = line.account_type
+        data["account_name"] = line.account_name
+        data["journal_line_description"] = line.description
+        data["net_amount"] = line.net_amount
+        data["gross_amount"] = line.gross_amount
+        data["tax_amount"] = line.tax_amount
+
+        # If you want to set 'tenant_name' from somewhere:
+        # data["tenant_name"] = "My Tenant" # or from your Organisation reference
+
+        # Upsert into XeroGeneralLedger
+        
+        XeroGeneralLedger.objects.update_or_create(
+            org = organisation,
+            tenant_id=data["tenant_id"],
+            journal_id=data["journal_id"],
+            journal_line_id=data["journal_line_id"],
+            defaults=data
+        )
+
 
 def authorize_xero(integration):
     client_id = integration.xero_client_id
