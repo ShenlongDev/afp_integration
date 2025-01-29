@@ -199,3 +199,30 @@ class NetSuiteEntity(models.Model):
     terms = models.CharField(max_length=255, null=True)
     last_modified_date = models.DateTimeField()
     record_date = models.DateTimeField()
+
+
+class NetSuiteJournals(models.Model):
+    company_name = models.CharField(max_length=255, db_index=True)
+    journal_id = models.CharField(max_length=255, db_index=True)
+    date = models.DateField(db_index=True)
+    memo = models.TextField(null=True)
+    account = models.CharField(max_length=255)
+    debit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
+    credit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
+    currency = models.CharField(max_length=3)
+    exchangerate = models.DecimalField(max_digits=19, decimal_places=6)
+    record_date = models.DateTimeField()
+
+    class Meta:
+        db_table = 'netsuite.journals'
+        indexes = [
+            models.Index(fields=['company_name', 'journal_id']),
+            models.Index(fields=['date']),
+            models.Index(fields=['account']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company_name', 'journal_id'],
+                name='unique_journal_entry'
+            )
+        ]

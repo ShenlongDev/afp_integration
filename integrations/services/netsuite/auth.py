@@ -28,8 +28,7 @@ class NetSuiteAuthService:
        
         if not token:
             token = self._refresh_token(integration)
-            # Cache token for slightly less than its expiry time
-            cache.set(cache_key, token, timeout=1700)  # 30 minutes - 100 seconds
+            cache.set(cache_key, token, timeout=1700)
            
         return token
 

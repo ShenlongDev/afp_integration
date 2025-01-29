@@ -75,3 +75,12 @@ class NetSuiteRawBase(models.Model):
 
     class Meta:
         abstract = True
+
+
+class NetSuiteRawJournal(NetSuiteRawBase):
+    class Meta:
+        db_table = 'raw_data.netsuite_journals'
+        indexes = [
+            models.Index(fields=['consolidation_key', 'ingestion_timestamp']),
+            # Add additional indexes as needed
+        ]

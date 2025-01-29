@@ -115,8 +115,6 @@ class NetSuiteImporter:
         WHERE t.id > %s
         ORDER BY t.id ASC
         """
-
-
     
         for transaction in self.client.execute_suiteql(query, min_id=min_id):
             NetSuiteRawTransactions.objects.create(
@@ -445,5 +443,31 @@ class NetSuiteImporter:
             NetSuiteRawAccounts.objects.create(
                 consolidation_key=self.consolidation_key,
                 raw_payload=account,
+                ingestion_timestamp=timezone.now()
+            )
+
+    @transaction.atomic
+    def import_journals(self, min_id: Optional[str] = None):
+        """Import journals with SuiteQL syntax"""
+        query = """
+        SELECT
+            j.id,
+            j.date,
+            j.memo,
+            jl.account,
+            jl.debit,
+            jl.credit,
+            j.currency,
+            j.exchangerate
+        FROM journalentry j
+        JOIN journalline jl ON j.id = jl.journalentry
+        WHERE j.id > %s
+        ORDER BY j.id ASC
+        """
+
+        for journal in self.client.execute_suiteql(query, min_id=min_id):
+            NetSuiteRawJournal.objects.create(
+                consolidation_key=self.consolidation_key,
+                raw_payload=journal,
                 ingestion_timestamp=timezone.now()
             )

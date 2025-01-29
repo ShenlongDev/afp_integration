@@ -554,6 +554,46 @@ class NetSuiteTransformer:
         )
 
 
+    @transaction.atomic
+    def transform_journals(self):
+        """Transform journals matching the original SQL"""
+        journals_data = (
+            NetSuiteRawJournal.objects
+            .select_related('companies')
+            .annotate(
+                company_name=F('companies__company_name'),
+                journal_id=JsonbExtractPath('raw_payload', 'id'),
+                date=JsonbExtractPath('raw_payload', 'date'),
+                memo=JsonbExtractPath('raw_payload', 'memo'),
+                account=JsonbExtractPath('raw_payload__journalline', 'account'),
+                debit=Cast(
+                    JsonbExtractPath('raw_payload__journalline', 'debit'),
+                    output_field=DecimalField()
+                ),
+                credit=Cast(
+                    JsonbExtractPath('raw_payload__journalline', 'credit'),
+                    output_field=DecimalField()
+                ),
+                currency=JsonbExtractPath('raw_payload', 'currency'),
+                exchangerate=Cast(
+                    JsonbExtractPath('raw_payload', 'exchangerate'),
+                    output_field=DecimalField()
+                ),
+                record_date=F('ingestion_timestamp'),
+            )
+            .order_by('journal_id')
+        )
+
+
+        # Bulk create with PostgreSQL upsert
+        NetSuiteJournals.objects.bulk_create(
+            (NetSuiteJournals(**journal) for journal in journals_data),
+            update_conflicts=True,
+            unique_fields=['company_name', 'journal_id'],
+            update_fields=['memo', 'record_date']
+        )
+
+
     def transform_all(self):
         """Run all transformations in the correct order"""
         # First transform reference data
@@ -561,14 +601,17 @@ class NetSuiteTransformer:
         self.transform_departments()
         self.transform_accounting_periods()
         self.transform_accounts()
-        self.transform_vendors()
+        # self.transform_vendors()
         self.transform_entity()
         self.transform_budget_period_balances()
        
         # Then transform transactions and related data
         self.transform_transactions()
-        self.transform_transaction_lines()
-        self.transform_transaction_accounting_lines()
+        # self.transform_transaction_lines()
+        # self.transform_transaction_accounting_lines()
+       
+        # Transform journals
+        self.transform_journals()
        
         # Finally transform general ledger
         self.transform_general_ledger()
