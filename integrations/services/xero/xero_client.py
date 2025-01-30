@@ -62,7 +62,7 @@ def request_new_xero_token(integration: Integration) -> str:
     """
     client_id = integration.xero_client_id
     client_secret = integration.xero_client_secret
-    scopes = "accounting.transactions accounting.settings accounting.reports.read accounting.journals.read accounting.budgets.read"
+    scopes = "accounting.transactions accounting.settings accounting.reports.read accounting.journals.read accounting.budgets.read accounting.contacts"
 
     if not client_id or not client_secret:
         raise ValueError("Xero client credentials not set on this Integration.")
@@ -776,7 +776,7 @@ def import_xero_data(integration: Integration, since_date=None):
     import_xero_journal_lines(integration, since_date)
 
     # 3. Contacts
-    # import_xero_contacts(integration, since_date)
+    import_xero_contacts(integration, since_date)
 
     # 4. Invoices
     import_xero_invoices(integration, since_date)

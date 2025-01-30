@@ -1,25 +1,5 @@
 from django.db import models
 
-class SquareOrders(models.Model):
-    id = models.AutoField(primary_key=True)
-
-    order_id = models.CharField(max_length=255, unique=True)
-    customer_id = models.CharField(max_length=255, blank=True, null=True)
-    location_id = models.CharField(max_length=255, blank=True, null=True)
-
-    created_at = models.DateTimeField(blank=True, null=True)
-    updated_at = models.DateTimeField(blank=True, null=True)
-    closed_at = models.DateTimeField(blank=True, null=True)
-
-    # raw_payload is a JSON (VARIANT). In Django, we might store as TextField or JSONField if available.
-    raw_payload = models.JSONField(blank=True, null=True)
-
-    ingestion_timestamp = models.DateTimeField(blank=True, null=True)
-    source_system = models.CharField(max_length=255, blank=True, null=True)
-
-    def __str__(self):
-        return self.order_id
-
 
 class XeroAccountsRaw(models.Model):
     id = models.AutoField(primary_key=True)
@@ -130,7 +110,7 @@ class XeroContactsRaw(models.Model):
     id = models.AutoField(primary_key=True)
 
     contact_id = models.CharField(max_length=255)
-    tenant_id = models.CharField(max_length=255)
+    tenant_id = models.CharField(max_length=255, blank=True, null=True)
     name = models.CharField(max_length=255, blank=True, null=True)
     updated_date_utc = models.DateTimeField(blank=True, null=True)
     raw_payload = models.JSONField(blank=True, null=True)

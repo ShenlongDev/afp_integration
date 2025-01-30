@@ -23,7 +23,6 @@ from integrations.models.xero.raw import (
     XeroBudgetPeriodBalancesRaw,
     XeroBudgetsRaw,
     XeroJournalsRaw,
-    SquareOrders,
     XeroBankTransactionsRaw,
     XeroConnectionsRaw,
     XeroContactsRaw,
@@ -127,11 +126,6 @@ class XeroBudgetPeriodBalancesAnalyticsAdmin(admin.ModelAdmin):
     search_fields = ('tenant_id', 'budget_id', 'account_id', 'period')
 
 
-class SquareOrdersAdmin(admin.ModelAdmin):
-    list_display = ('order_id', 'customer_id', 'location_id', 'created_at')
-    search_fields = ('order_id', 'customer_id', 'location_id')
-
-
 class XeroBankTransactionsRawAdmin(admin.ModelAdmin):
     list_display = ('bank_transaction_id', 'tenant_id', 'type', 'status', 'date')
     search_fields = ('bank_transaction_id', 'tenant_id', 'type', 'status')
@@ -167,7 +161,6 @@ admin.site.register(XeroAccountsRaw, XeroAccountsRawAdmin)
 admin.site.register(XeroBudgetPeriodBalancesRaw, XeroBudgetPeriodBalancesRawAdmin)
 admin.site.register(XeroBudgetsRaw, XeroBudgetsRawAdmin)
 admin.site.register(XeroJournalsRaw, XeroJournalsRawAdmin)
-admin.site.register(SquareOrders, SquareOrdersAdmin)
 admin.site.register(XeroBankTransactionsRaw, XeroBankTransactionsRawAdmin)
 admin.site.register(XeroConnectionsRaw, XeroConnectionsRawAdmin)
 admin.site.register(XeroContactsRaw, XeroContactsRawAdmin)
