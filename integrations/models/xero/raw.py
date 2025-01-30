@@ -46,7 +46,7 @@ class XeroBankTransactionsRaw(models.Model):
     id = models.AutoField(primary_key=True)
 
     bank_transaction_id = models.CharField(max_length=255)
-    tenant_id = models.CharField(max_length=255)
+    tenant_id = models.CharField(max_length=255, blank=True, null=True)
     type = models.CharField(max_length=50, blank=True, null=True)
     status = models.CharField(max_length=50, blank=True, null=True)
     date = models.DateTimeField(blank=True, null=True)
@@ -89,9 +89,9 @@ class XeroBudgetsRaw(models.Model):
     id = models.AutoField(primary_key=True)
 
     budget_id = models.CharField(max_length=255)
-    tenant_id = models.CharField(max_length=255)
-    status = models.CharField(max_length=50)
-    type = models.CharField(max_length=50)
+    tenant_id = models.CharField(max_length=255, blank=True, null=True)
+    status = models.CharField(max_length=50, blank=True, null=True)
+    type = models.CharField(max_length=50, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     updated_date_utc = models.DateTimeField(blank=True, null=True)
     raw_payload = models.JSONField(blank=True, null=True)
@@ -150,7 +150,7 @@ class XeroInvoicesRaw(models.Model):
 
     invoice_id = models.CharField(max_length=255)
     invoice_number = models.CharField(max_length=255, blank=True, null=True)
-    tenant_id = models.CharField(max_length=255)
+    tenant_id = models.CharField(max_length=255, blank=True, null=True)
     reference = models.CharField(max_length=255, blank=True, null=True)
     date = models.DateTimeField(blank=True, null=True)
     due_date = models.DateTimeField(blank=True, null=True)

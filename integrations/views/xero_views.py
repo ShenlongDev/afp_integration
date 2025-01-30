@@ -3,7 +3,7 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from datetime import datetime
 from integrations.models.models import Integration
-from integrations.services.xero.xero_client import import_xero_journal_lines, sync_xero_chart_of_accounts
+from integrations.services.xero.xero_client import import_xero_data
 from rest_framework.views import APIView
 from rest_framework import generics
 from integrations.models.xero.transformations import XeroAccounts, XeroBankTransactionLineItems, XeroJournalLines
@@ -14,9 +14,9 @@ from integrations.serializers.xero.transformations import (
 )
 
 
-class XeroJournalImportView(APIView):
+class XeroDataImportView(APIView):
     """
-    POST /api/integrations/<int:pk>/xero-import-journals/?since=YYYY-MM-DD
+    POST /api/integrations/<int:pk>/xero-import-data/?since=YYYY-MM-DD
     """
     def post(self, request, pk=None):
         integration = get_object_or_404(Integration, pk=pk)
@@ -32,29 +32,21 @@ class XeroJournalImportView(APIView):
                 return Response({"error": f"Invalid date: {since_param}"}, status=400)
 
         try:
-            import_xero_journal_lines(integration, since_date)
+            import_xero_data(integration, since_date)
+            return Response({
+                "detail": "Xero data imported successfully",
+                "components": [
+                    "chart_of_accounts",
+                    "journals",
+                    "invoices",
+                    "bank_transactions",
+                    "contacts",
+                    "budgets"
+                ]
+            }, status=200)
+            
         except Exception as e:
             return Response({"error": str(e)}, status=500)
-
-        return Response({"detail": "Xero Journal lines imported successfully."}, status=200)
-
-
-class XeroChartOfAccountsSyncView(APIView):
-    """
-    POST /api/integrations/<int:pk>/xero-sync-accounts/
-    """
-    def post(self, request, pk=None):
-        integration = get_object_or_404(Integration, pk=pk)
-        if not (integration.xero_client_id and integration.xero_client_secret):
-            return Response({"error": "Xero credentials not fully set."}, status=400)
-
-        try:
-            sync_xero_chart_of_accounts(integration)
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-        return Response({"detail": "Successfully synced Xero Chart of Accounts."}, status=200)
-
 
 class XeroAccountsListCreateView(generics.ListCreateAPIView):
     queryset = XeroAccounts.objects.all()

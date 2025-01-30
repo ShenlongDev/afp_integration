@@ -22,7 +22,12 @@ from integrations.models.xero.raw import (
     XeroAccountsRaw,
     XeroBudgetPeriodBalancesRaw,
     XeroBudgetsRaw,
-    XeroJournalsRaw
+    XeroJournalsRaw,
+    SquareOrders,
+    XeroBankTransactionsRaw,
+    XeroConnectionsRaw,
+    XeroContactsRaw,
+    XeroInvoicesRaw,
 )
 
 
@@ -122,6 +127,31 @@ class XeroBudgetPeriodBalancesAnalyticsAdmin(admin.ModelAdmin):
     search_fields = ('tenant_id', 'budget_id', 'account_id', 'period')
 
 
+class SquareOrdersAdmin(admin.ModelAdmin):
+    list_display = ('order_id', 'customer_id', 'location_id', 'created_at')
+    search_fields = ('order_id', 'customer_id', 'location_id')
+
+
+class XeroBankTransactionsRawAdmin(admin.ModelAdmin):
+    list_display = ('bank_transaction_id', 'tenant_id', 'type', 'status', 'date')
+    search_fields = ('bank_transaction_id', 'tenant_id', 'type', 'status')
+
+
+class XeroConnectionsRawAdmin(admin.ModelAdmin):
+    list_display = ('tenant_id', 'user_id', 'tenant_name', 'created_at')
+    search_fields = ('tenant_id', 'user_id', 'tenant_name')
+
+
+class XeroContactsRawAdmin(admin.ModelAdmin):
+    list_display = ('contact_id', 'tenant_id', 'name', 'updated_date_utc')
+    search_fields = ('contact_id', 'tenant_id', 'name')
+
+
+class XeroInvoicesRawAdmin(admin.ModelAdmin):
+    list_display = ('invoice_id', 'invoice_number', 'tenant_id', 'date')
+    search_fields = ('invoice_id', 'invoice_number', 'tenant_id', 'status')
+
+
 admin.site.register(Integration, IntegrationAdmin)
 admin.site.register(IntegrationAccessToken, IntegrationAccessTokenAdmin)
 admin.site.register(ChartOfAccounts, ChartOfAccountsAdmin)
@@ -137,3 +167,8 @@ admin.site.register(XeroAccountsRaw, XeroAccountsRawAdmin)
 admin.site.register(XeroBudgetPeriodBalancesRaw, XeroBudgetPeriodBalancesRawAdmin)
 admin.site.register(XeroBudgetsRaw, XeroBudgetsRawAdmin)
 admin.site.register(XeroJournalsRaw, XeroJournalsRawAdmin)
+admin.site.register(SquareOrders, SquareOrdersAdmin)
+admin.site.register(XeroBankTransactionsRaw, XeroBankTransactionsRawAdmin)
+admin.site.register(XeroConnectionsRaw, XeroConnectionsRawAdmin)
+admin.site.register(XeroContactsRaw, XeroContactsRawAdmin)
+admin.site.register(XeroInvoicesRaw, XeroInvoicesRawAdmin)

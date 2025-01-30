@@ -103,7 +103,7 @@ class XeroJournalLineTrackingCategories(models.Model):
     id = models.AutoField(primary_key=True)
 
     journal_line_id = models.CharField(max_length=50)
-    tenant_id = models.CharField(max_length=50)
+    tenant_id = models.CharField(max_length=50, null=True)
     tracking_category_id = models.CharField(max_length=50, blank=True, null=True)
     tracking_option_id = models.CharField(max_length=50, blank=True, null=True)
     name = models.CharField(max_length=255, blank=True, null=True)
