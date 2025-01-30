@@ -171,7 +171,7 @@ def sync_xero_chart_of_accounts(integration: Integration, since_date=None):
                     "source_system": "XERO",
                 }
             )
-            created.save()
+            obj.save()
            
         except Exception as e:
             logger.error(f"Error saving XeroAccountsRaw for AccountID {account_id}: {e}")
