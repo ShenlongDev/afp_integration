@@ -206,23 +206,35 @@ JAZZMIN_SETTINGS = {
 }
 
 
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
         },
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': os.getenv('DJANGO_LOG_FILE', '/var/www/WS-Insights/logs/django_debug.log'),
+            'formatter': 'verbose',
+        },
     },
     'loggers': {
-        'integrations': {
-            'handlers': ['console'],
+        'django': {
+            'handlers': ['console'] if ENVIRONMENT == 'development' else ['file'],
             'level': 'DEBUG',
-            'propagate': False,
+            'propagate': True,
         },
     },
 }
