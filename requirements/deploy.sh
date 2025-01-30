@@ -20,7 +20,7 @@ git pull origin "$CURRENT_BRANCH" || { echo "Git pull failed"; exit 1; }
 source venv/bin/activate || { echo "Failed to activate virtual environment"; exit 1; }
 
 # Install Python dependencies
-pip install -r requirements.txt || { echo "pip install failed"; exit 1; }
+pip install -r requirements/requirements.txt || { echo "pip install failed"; exit 1; }
 
 # Run Django management commands
 python manage.py makemigrations || { echo "makemigrations failed"; exit 1; }

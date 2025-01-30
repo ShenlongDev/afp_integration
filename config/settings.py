@@ -270,3 +270,15 @@ JAZZMIN_UI_TWEAKS = {
         "success": "btn-success"
     }
 }
+
+
+# URL to use when referring to static files
+STATIC_URL = '/static/'
+
+# Directory where static files will be collected
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Additional locations the staticfiles app will traverse
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
