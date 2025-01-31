@@ -1,7 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from integrations.views.general import IntegrationViewSet, IntegrationAuthView
+from integrations.views.general import IntegrationViewSet, IntegrationAuthView, IntegrationCallbackView
 from integrations.views.xero_views import XeroDataImportView, XeroAccountsListCreateView, XeroAccountsDetailView, XeroBankTransactionLineItemsListCreateView, XeroBankTransactionLineItemsDetailView, XeroJournalLinesListCreateView, XeroJournalLinesDetailView
+from integrations.views.netsuite_views import NetsuiteImportDataView
 
 router = DefaultRouter()
 router.register(r'', IntegrationViewSet, basename='integration')
@@ -10,8 +11,12 @@ urlpatterns = [
     path('', include(router.urls)),  
     path('<int:pk>/auth/', IntegrationAuthView.as_view(), name="integration-auth"),
     path('<int:pk>/xero_import-data/', XeroDataImportView.as_view(), name='integration-import-journals'),
-
-
+    path('<int:pk>/netsuite_import-data/', NetsuiteImportDataView.as_view(), name='integration-import-netsuite'),
+     path(
+        'auth/callback/',
+        IntegrationCallbackView.as_view(),
+        name='integration_callback'
+    ),
 
     # Xero example endpoints
     path('xero/accounts/', XeroAccountsListCreateView.as_view(), name='xero-accounts-list-create'),

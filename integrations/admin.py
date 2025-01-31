@@ -29,7 +29,60 @@ from integrations.models.xero.raw import (
     XeroInvoicesRaw,
 )
 
+from integrations.models.netsuite.analytics import (
+    NetSuiteVendors,
+    NetSuiteAccounts,
+    NetSuiteTransactions,
+    NetSuiteSubsidiaries,
+    NetSuiteDepartments,
+    NetSuiteGeneralLedger,
+    NetSuiteJournals,
+    NetSuiteEntity,
+    NetSuiteAccountingPeriods,
+)
 
+
+class NetSuiteAccountingPeriodsAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
+    search_fields = ('company_name', 'period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
+
+class NetSuiteEntityAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'entity_id', 'entity_number', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'subsidiary', 'terms', 'last_modified_date', 'record_date')
+    search_fields = ('company_name', 'entity_id', 'entity_number', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'subsidiary', 'terms', 'last_modified_date', 'record_date')
+
+class NetSuiteSubsidiariesAdmin(admin.ModelAdmin):
+    list_display = ('subsidiary_id', 'company_name', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')
+    search_fields = ('subsidiary_id', 'company_name', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')
+
+
+class NetSuiteDepartmentsAdmin(admin.ModelAdmin):
+    list_display = ('department_id', 'company_name', 'name', 'full_name', 'is_inactive', 'record_date')
+    search_fields = ('department_id', 'company_name', 'name', 'full_name', 'is_inactive', 'record_date')
+
+
+class NetSuiteGeneralLedgerAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'record_date')  # Removed invalid fields
+    search_fields = ('company_name', 'is_inactive', 'record_date')
+
+
+class NetSuiteJournalsAdmin(admin.ModelAdmin):
+    list_display = ('journal_id', 'company_name', 'record_date')  # Removed invalid fields
+    search_fields = ('journal_id', 'company_name', 'record_date')
+
+
+class NetSuiteTransactionsAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'abbrevtype', 'createdby', 'transactionid')
+    search_fields = ('company_name', 'abbrevtype', 'createdby', 'transactionid')
+
+
+class NetSuiteVendorsAdmin(admin.ModelAdmin):
+    list_display = ('vendor_id', 'company_name', 'entity_id', 'is_person', 'is_inactive', 'email', 'phone', 'currency', 'subsidiary', 'terms', 'record_date')
+    search_fields = ('vendor_id', 'company_name', 'entity_id', 'is_person', 'is_inactive', 'email', 'phone', 'currency', 'subsidiary', 'terms', 'record_date')
+
+
+class NetSuiteAccountsAdmin(admin.ModelAdmin):
+    list_display = ('account_id', 'company_name', 'record_date')  # Removed invalid fields
+    search_fields = ('account_id', 'company_name', 'is_inactive', 'record_date')
 
 
 class IntegrationAdmin(admin.ModelAdmin):
@@ -39,7 +92,7 @@ class IntegrationAdmin(admin.ModelAdmin):
 
 class IntegrationAccessTokenAdmin(admin.ModelAdmin):
     list_display = ('integration', 'integration_type', 'expires_at', 'created_at')
-    search_fields = ('integration__org__name', 'integration_type', 'expires_at', 'created_at')
+    search_fields = ('integration__org__name', 'integration_type', 'token', 'refresh_token', 'expires_at', 'created_at')
 
 
 class ChartOfAccountsAdmin(admin.ModelAdmin):
@@ -97,8 +150,8 @@ class XeroBudgetPeriodBalancesAdmin(admin.ModelAdmin):
 
 
 class XeroGeneralLedgerAdmin(admin.ModelAdmin):
-    list_display = ( 'tenant_id', 'account_id')
-    search_fields = ( 'tenant_id', 'account_id')
+    list_display = ('tenant_id', 'account_id')
+    search_fields = ('tenant_id', 'account_id')
 
 
 class XeroAccountsRawAdmin(admin.ModelAdmin):
@@ -119,8 +172,8 @@ class XeroBudgetsRawAdmin(admin.ModelAdmin):
 class XeroJournalsRawAdmin(admin.ModelAdmin):
     list_display = ('tenant_id', 'journal_id', 'reference', 'journal_date', 'ingestion_timestamp')
     search_fields = ('tenant_id', 'journal_id', 'reference')
-    
-    
+
+
 class XeroBudgetPeriodBalancesAnalyticsAdmin(admin.ModelAdmin):
     list_display = ('tenant_id', 'budget_id', 'account_id', 'period', 'amount')
     search_fields = ('tenant_id', 'budget_id', 'account_id', 'period')
@@ -165,3 +218,14 @@ admin.site.register(XeroBankTransactionsRaw, XeroBankTransactionsRawAdmin)
 admin.site.register(XeroConnectionsRaw, XeroConnectionsRawAdmin)
 admin.site.register(XeroContactsRaw, XeroContactsRawAdmin)
 admin.site.register(XeroInvoicesRaw, XeroInvoicesRawAdmin)
+
+# Netsuite
+admin.site.register(NetSuiteVendors, NetSuiteVendorsAdmin)
+admin.site.register(NetSuiteAccounts, NetSuiteAccountsAdmin)
+admin.site.register(NetSuiteTransactions, NetSuiteTransactionsAdmin)
+admin.site.register(NetSuiteSubsidiaries, NetSuiteSubsidiariesAdmin)
+admin.site.register(NetSuiteDepartments, NetSuiteDepartmentsAdmin)
+admin.site.register(NetSuiteGeneralLedger, NetSuiteGeneralLedgerAdmin)
+admin.site.register(NetSuiteJournals, NetSuiteJournalsAdmin)
+admin.site.register(NetSuiteEntity, NetSuiteEntityAdmin)
+admin.site.register(NetSuiteAccountingPeriods, NetSuiteAccountingPeriodsAdmin)

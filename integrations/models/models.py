@@ -45,6 +45,7 @@ class IntegrationAccessToken(models.Model):
         default="XERO"
     )
     token = models.TextField()
+    refresh_token = models.TextField(null=True, blank=True)
     
     expires_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
