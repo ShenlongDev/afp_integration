@@ -20,13 +20,9 @@ from integrations.models.xero.raw import (
 )
 from integrations.models.xero.transformations import (
     XeroJournalLines,
-    XeroJournalLineTrackingCategories, # if you have that model
     XeroInvoiceLineItems,
-    XeroBankTransactionLineItems,
 )
-from integrations.models.xero.analytics import (
-    XeroGeneralLedger
-)
+
 
 
 logger = logging.getLogger(__name__)

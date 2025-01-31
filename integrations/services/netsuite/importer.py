@@ -322,7 +322,7 @@ class NetSuiteImporter:
         limit = 1000
         total_imported = 0
 
-        while True:
+        while offset < 2000:
             print(f"Importing accounts at offset {offset}.")
             query = f"SELECT * FROM Account ORDER BY id ASC OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
             rows = list(self.client.execute_suiteql(query))
