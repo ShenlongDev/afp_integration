@@ -7,7 +7,10 @@ echo "Activating virtual environment..."
 source /var/www/WS-Insights/venv/bin/activate
 
 echo "Installing dependencies..."
-pip install -r requirements.txt
+pip install -r requirements/requirements.txt
+
+echo "Running migrations..."
+python manage.py makemigrations
 
 echo "Applying migrations..."
 python manage.py migrate
