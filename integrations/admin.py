@@ -47,7 +47,7 @@ class NetSuiteAccountingPeriodsAdmin(admin.ModelAdmin):
     search_fields = ('company_name', 'period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
 
 class NetSuiteEntityAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'entity_id', 'entity_number', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'subsidiary', 'terms', 'last_modified_date', 'record_date')
+    list_display = ('company_name', 'entity_id', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'subsidiary', 'terms', 'last_modified_date', 'record_date')
     search_fields = ('company_name', 'entity_id', 'entity_number', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'subsidiary', 'terms', 'last_modified_date', 'record_date')
 
 class NetSuiteSubsidiariesAdmin(admin.ModelAdmin):

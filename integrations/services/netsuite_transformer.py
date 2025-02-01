@@ -418,7 +418,6 @@ class NetSuiteTransformer:
 
 
 
-
     # @transaction.atomic
     # def transform_transaction_accounting_lines(self):
     #     """Transform transaction accounting lines"""
@@ -538,8 +537,8 @@ class NetSuiteTransformer:
     #     # self.transform_transaction_lines()
     #     # self.transform_transaction_accounting_lines()
        
-    #     # Transform journals
-    #     self.transform_journals()
+        # Transform journals
+        self.transform_journals()
        
     #     # Finally transform general ledger
     #     self.transform_general_ledger()

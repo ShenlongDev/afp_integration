@@ -26,35 +26,27 @@ class NetsuiteImportDataView(APIView):
 
         importer = NetSuiteImporter(integration)
         try:
-            importer.import_vendors(load_type="drop_and_reload")
-            importer.import_accounts()
-            importer.import_transactions()
-            importer.import_vendors()
-            importer.import_subsidiaries()
-            importer.import_departments()
-            importer.import_entities()
-            importer.import_accounting_periods()
-            # importer.import_general_ledger()
+            # importer.import_vendors(load_type="drop_and_reload")
+            # importer.import_accounts()
+            # importer.import_transactions()
+            # importer.import_vendors()
+            # importer.import_subsidiaries()
+            # importer.import_departments()
+            # importer.import_entities()
+            # importer.import_accounting_periods()
+            importer.map_net_suite_general_ledger()
 
             
             # After importing raw data, transform it
-            transformer = NetSuiteTransformer()
+            # transformer = NetSuiteTransformer()
             
-            transformer.transform_general_ledger(integration)
+            # transformer.transform_general_ledger(integration)
             # transformer.transform_accounts()
             # Example: transformer.transform_transactions()
             # Example: transformer.transform_vendors()
             
             return Response({
                 "detail": "NetSuite data imported successfully",
-                "components": [
-                    "accounts",
-                    "transactions",
-                    "vendors",
-                    # Add other components as needed
-                ]
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-

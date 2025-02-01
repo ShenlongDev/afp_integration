@@ -260,7 +260,6 @@ def import_xero_journal_lines(integration: Integration, since_date=None):
 
 
 ### 4. Contacts ###
-
 def get_contacts(access_token: str, tenant_id: str, since_date=None):
     """
     Generator that fetches Xero Contacts with optional If-Modified-Since.

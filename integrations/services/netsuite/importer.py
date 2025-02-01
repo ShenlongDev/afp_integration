@@ -66,6 +66,10 @@ class NetSuiteImporter:
 
         query = "SELECT * FROM Vendor"
         rows = list(self.client.execute_suiteql(query))
+        print(f"Importing {len(rows)} vendors...")
+        for r in rows:
+            print(r)
+            break
 
         for r in rows:
             try:
@@ -221,21 +225,28 @@ class NetSuiteImporter:
         query = "SELECT * FROM entity"
         rows = list(self.client.execute_suiteql(query))
 
-        for r in rows:
+        # Filter rows based on today's last modified date
+        today = timezone.now().date()
+        filtered_rows = [r for r in rows if self.parse_datetime(r.get("lastmodifieddate")).date() == today]
+
+        for r in filtered_rows:
             try:
-                ent_id = r.get("id")
+                ent_id = r.get("entityid")
                 if not ent_id:
                     logger.warning(f"Entity row missing 'id': {r}")
                     continue
 
-                subsidiary = r.get("subsidiaryedition") or "Unknown"  # Adjust as needed
+                subsidiary = r.get("subsidiaryedition") or "Unknown" 
 
+                # Update or create only if the entity exists
                 NetSuiteEntity.objects.update_or_create(
                     entity_id=ent_id,
                     defaults={
                         "company_name": r.get("companyname") or self.org_name,
-                        "entity_number": r.get("entitynumber"),
-                        "company_display_name": r.get("companyname"),  # Adjust if needed
+                        "entity_title": r.get("entitytitle"),
+                        "type": r.get("type"),
+                        "external_id": r.get("externalid"),
+                        "company_display_name": r.get("altname"), 
                         "legal_name": r.get("legalname"),
                         "is_person": bool_from_str(r.get("isperson")),
                         "is_inactive": bool_from_str(r.get("isinactive")),
@@ -252,7 +263,7 @@ class NetSuiteImporter:
             except Exception as e:
                 logger.error(f"Error importing entity row={r}: {e}", exc_info=True)
 
-        logger.info(f"Imported {len(rows)} NetSuite Entities (load_type={load_type}).")
+        logger.info(f"Imported {len(filtered_rows)} NetSuite Entities (load_type={load_type}).")
 
     # ------------------------------------------------------------
     # 5) Import Accounting Periods
@@ -382,7 +393,7 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     @transaction.atomic
     def import_transactions(self, min_id: Optional[str] = None):
-        """Imports NetSuite Transactions into NetSuiteTransactions model incrementally."""
+        """Imports NetSuite Transactions into NetSuiteTransactions model incrementally based on lastmodifieddate."""
         logger.info("Importing NetSuite Transactions incrementally...")
 
         if not min_id:
@@ -411,23 +422,32 @@ class NetSuiteImporter:
             externalid,
             entity,
             currency,
-            exchangerate,
+            exchangerate
         FROM Transaction
         WHERE id > {min_id}
         ORDER BY id ASC
         """
         rows = list(self.client.execute_suiteql(query))
+        today = timezone.now().date()
+        filtered_rows = [
+            r for r in rows 
+            if self.parse_datetime(r.get("lastmodifieddate")) 
+               and self.parse_datetime(r.get("lastmodifieddate")).date() == today
+        ]
 
-        for r in rows:
+        logger.info(f"Fetched {len(rows)} transactions, importing {len(filtered_rows)} modified today.")
+
+        for r in filtered_rows:
             try:
                 trans_id = r.get("id")
                 if not trans_id:
                     logger.warning(f"Transaction row missing 'id': {r}")
                     continue
 
-                subsidiary = r.get("subsidiaryedition") or "Unknown"  # Adjust field as needed
+                subsidiary = r.get("subsidiaryedition") or "Unknown"
 
                 trandate = self.parse_date(r.get("trandate"))
+                last_modified = self.parse_datetime(r.get("lastmodifieddate"))
 
                 NetSuiteTransactions.objects.update_or_create(
                     transactionid=str(trans_id),
@@ -449,7 +469,7 @@ class NetSuiteImporter:
                         "createdby": r.get("createdby"),
                         "createddate": self.parse_datetime(r.get("createddate")),
                         "lastmodifiedby": r.get("lastmodifiedby"),
-                        "lastmodifieddate": self.parse_datetime(r.get("lastmodifieddate")),
+                        "lastmodifieddate": last_modified,
                         "postingperiod": r.get("postingperiod"),
                         "yearperiod": int(r.get("yearperiod", 0)),
                         "trandate": trandate,
@@ -474,146 +494,89 @@ class NetSuiteImporter:
                         "netamount": decimal_or_none(r.get("netamount")),
                         "currency": r.get("currency"),
                         "exchangerate": decimal_or_none(r.get("exchangerate")),
-                        "record_date": self.now_ts,
+                        "record_date": last_modified,
                         "duplicate_check": 1  # Adjust based on logic
                     }
                 )
             except Exception as e:
                 logger.error(f"Error importing transaction row={r}: {e}", exc_info=True)
 
-        logger.info(f"Imported {len(rows)} NetSuite Transactions (min_id={min_id}).")
+        logger.info(f"Imported {len(filtered_rows)} NetSuite Transactions (min_id={min_id}).")
 
     # ------------------------------------------------------------
     # 8) Import General Ledger
     # ------------------------------------------------------------
     @transaction.atomic
-    def import_general_ledger(self, min_id: Optional[str] = None):
-        """Imports NetSuite General Ledger data into NetSuiteGeneralLedger model."""
-        logger.info("Importing NetSuite General Ledger data...")
+    def map_net_suite_general_ledger(self):
+        """
+        Map data from NetSuiteTransactions (and, if available, NetSuiteAccounts) into
+        the NetSuiteGeneralLedger model.
 
-        if not min_id:
-            min_id = "0"
+        For each transaction record, we:
+        1. Attempt to fetch additional account details (such as acctnumber) from
+            NetSuiteAccounts using txn.account.
+        2. Build a dictionary of fields for the general ledger. (If a field is missing,
+            it will simply remain None.)
+        3. Upsert (update_or_create) a NetSuiteGeneralLedger record using a unique
+            combination (company_name, transactionid, linesequencenumber).
 
-        limit = 1000  # Number of records to process per batch
-        total_rows_imported = 0
+        Any fields missing in the source will be ignored.
+        """
+        transactions = NetSuiteTransactions.objects.all()
+        total_mapped = 0
 
-        while True:
-            query = f"""
-            SELECT
-                T.TRANSACTIONID AS TRANSACTIONID,
-                T.TRANDATE AS TRANDATE,
-                T.POSTINGPERIOD AS POSTINGPERIOD,
-                T.ABBREVTYPE AS ABBREVTYPE,
-                L.SUBSIDIARY AS SUBSIDIARY,
-                L.ACCOUNT AS ACCOUNT,
-                A.ACCTNUMBER AS ACCTNUMBER,
-                L.AMOUNT AS AMOUNT,
-                L.NETAMOUNT AS NETAMOUNT,
-                T.CURRENCY AS CURRENCY,
-                T.EXCHANGERATE AS EXCHANGERATE,
-                L.UNIQUEKEY AS UNIQUEKEY,
-                L.LINESEQUENCENUMBER AS LINESEQUENCENUMBER,
-                L.ID AS LINEID,
-                T.APPROVALSTATUS AS APPROVALSTATUS
-            FROM PROD.NETSUITE.TRANSACTION T
-            JOIN PROD.NETSUITE.TRANSACTIONLINE L ON L.TRANSACTIONID = T.TRANSACTIONID
-            JOIN PROD.NETSUITE.ACCOUNT A ON A.ID = L.ACCOUNT
-            WHERE T.TRANSACTIONID > {min_id}
-            ORDER BY T.TRANSACTIONID ASC, L.UNIQUEKEY ASC
-            """
-
+        for txn in transactions:
             try:
-                logger.debug(f"Executing SuiteQL Query: {query}")
-                rows = list(self.client.execute_suiteql(query))
+                # Try to retrieve the corresponding account record to enhance mapping.
+                account_obj = None
+                if txn.account:
+                    try:
+                        account_obj = NetSuiteAccounts.objects.get(account_id=txn.account)
+                    except NetSuiteAccounts.DoesNotExist:
+                        account_obj = None
+
+                # Build the defaults for the general ledger entry.
+                # Note: if a field is missing in txn, it will be stored as None.
+                defaults = {
+                    'abbrevtype': txn.abbrevtype,
+                    'uniquekey': txn.uniquekey,
+                    'linesequencenumber': txn.linesequencenumber,
+                    'lineid': txn.lineid,
+                    'approvalstatus': txn.approvalstatus,
+                    'postingperiod': txn.postingperiod,
+                    'yearperiod': txn.yearperiod,
+                    'trandate': txn.trandate,
+                    'subsidiary': txn.subsidiary,
+                    'account': txn.account,
+                    # Prefer the account's acctnumber if found; otherwise, use the one in txn.
+                    'acctnumber': account_obj.acctnumber if account_obj and account_obj.acctnumber else txn.acctnumber,
+                    'amount': txn.amount,
+                    'debit': txn.debit,
+                    'credit': txn.credit,
+                    'netamount': txn.netamount,
+                    'currency': txn.currency,
+                    'exchangerate': txn.exchangerate,
+                    'record_date': txn.record_date,
+                }
+
+                # The unique key is defined by the combination of the company, transaction ID, and line sequence.
+                gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
+                    company_name=txn.company_name,  # Note: company_name is a ForeignKey to Organisation.
+                    transactionid=txn.transactionid,
+                    linesequencenumber=txn.linesequencenumber,
+                    defaults=defaults
+                )
+                total_mapped += 1
+
+                if created:
+                    logger.info(f"Created GL entry for transaction {txn.transactionid}, line {txn.linesequencenumber}")
+                else:
+                    logger.info(f"Updated GL entry for transaction {txn.transactionid}, line {txn.linesequencenumber}")
+
             except Exception as e:
-                logger.error(f"SuiteQL Query Failed: {e}", exc_info=True)
-                return  # Exit the function if the query fails
+                logger.error(f"Error mapping transaction {txn.transactionid}: {e}", exc_info=True)
 
-            if not rows:
-                break  # No more rows to process
-
-            ledger_entries = []
-            max_transactionid = min_id  # Initialize to current min_id
-
-            for r in rows:
-                try:
-                    trans_id = r.get("TRANSACTIONID")
-                    if not trans_id:
-                        logger.warning(f"General Ledger row missing 'TRANSACTIONID': {r}")
-                        continue
-
-                    # Update max_transactionid for the next iteration
-                    if trans_id > max_transactionid:
-                        max_transactionid = trans_id
-
-                    trandate = self.parse_date(r.get("TRANDATE"))
-                    posting_period = r.get("POSTINGPERIOD", "")
-
-                    # Calculate YEARPERIOD in Python
-                    year_period = None
-                    if 'FY' in posting_period:
-                        fy_index = posting_period.find('FY')
-                        if fy_index != -1 and fy_index + 4 <= len(posting_period):
-                            year_part = posting_period[fy_index + 2: fy_index + 4]
-                            try:
-                                year_int = int(year_part)
-                            except ValueError:
-                                year_int = 0
-                        else:
-                            year_int = 0
-
-                        if 'ADJUSTMENT' in posting_period.upper():
-                            year_period = 200000 + (year_int * 100) + 13
-                        else:
-                            try:
-                                month_part = int(posting_period[1:3])
-                                quarter = (month_part - 1) // 3 + 1
-                                year_period = 200000 + (year_int * 100) + quarter
-                            except (ValueError, IndexError):
-                                year_period = 200000 + (year_int * 100)
-
-                    ledger_entry = NetSuiteGeneralLedger(
-                        company_name=self.org_name,
-                        abbrevtype=r.get("ABBREVTYPE"),
-                        transactionid=str(trans_id),
-                        uniquekey=str(r.get("UNIQUEKEY")),
-                        linesequencenumber=int(r.get("LINESEQUENCENUMBER", 0)),
-                        lineid=str(r.get("LINEID")),
-                        approvalstatus=r.get("APPROVALSTATUS"),
-                        postingperiod=posting_period,
-                        yearperiod=year_period,
-                        trandate=trandate,
-                        subsidiary=r.get("SUBSIDIARY"),
-                        account=r.get("ACCOUNT"),
-                        acctnumber=r.get("ACCTNUMBER"),
-                        amount=decimal_or_none(r.get("AMOUNT")),
-                        debit=decimal_or_none(r.get("DEBIT")),
-                        credit=decimal_or_none(r.get("CREDIT")),
-                        netamount=decimal_or_none(r.get("NETAMOUNT")),
-                        currency=r.get("CURRENCY"),
-                        exchangerate=decimal_or_none(r.get("EXCHANGERATE")),
-                        record_date=self.now_ts
-                    )
-
-                    ledger_entries.append(ledger_entry)
-                except Exception as e:
-                    logger.error(f"Error importing general ledger row={r}: {e}", exc_info=True)
-
-            if not ledger_entries:
-                break  # No entries to add
-
-            # Bulk create ledger entries
-            try:
-                NetSuiteGeneralLedger.objects.bulk_create(ledger_entries, ignore_conflicts=True)
-                total_rows_imported += len(ledger_entries)
-                logger.info(f"Imported {len(ledger_entries)} NetSuite General Ledger records (min_id={min_id}).")
-            except Exception as e:
-                logger.error(f"Bulk create failed: {e}", exc_info=True)
-
-            # Update the min_id to the highest TRANSACTIONID fetched for the next batch
-            min_id = max_transactionid
-
-        logger.info(f"Total records imported: {total_rows_imported}")
+        logger.info(f"Completed mapping general ledger: {total_mapped} entries processed.")
 
 
     # ------------------------------------------------------------
