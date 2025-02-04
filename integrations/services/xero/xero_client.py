@@ -78,11 +78,13 @@ def request_new_xero_token(integration: Integration) -> str:
     expires_in = token_data.get("expires_in", 1800)
     expires_at = timezone.now() + timedelta(seconds=expires_in)
 
-    IntegrationAccessToken.objects.create(
+    IntegrationAccessToken.objects.update_or_create(
         integration=integration,
         integration_type="XERO",
-        token=access_token,
-        expires_at=expires_at
+        defaults={
+            "token": access_token,
+            "expires_at": expires_at
+        }
     )
 
     return access_token
