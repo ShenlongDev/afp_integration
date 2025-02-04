@@ -18,10 +18,8 @@ python manage.py migrate
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
-
-
-echo "Restarting Gunicorn service..."
-sudo systemctl restart gunicorn
+echo "Killing existing Gunicorn instances..."
+pkill -f "gunicorn config.wsgi:application --bind 127.0.0.1:8000"
 
 echo "Starting Gunicorn..."
 gunicorn config.wsgi:application --bind 127.0.0.1:8000 --timeout 300 --workers 2
