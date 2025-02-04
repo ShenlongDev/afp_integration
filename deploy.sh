@@ -22,5 +22,5 @@ echo "Killing existing Gunicorn instances..."
 pkill -f "gunicorn config.wsgi:application --bind 127.0.0.1:8000"
 
 echo "Starting Gunicorn..."
-gunicorn config.wsgi:application --bind 127.0.0.1:8000 --timeout 300 --workers 2
+gunicorn config.wsgi:application --bind 127.0.0.1:8000 --timeout 300 --workers 2 --daemon
 echo "Deployment completed successfully!"
