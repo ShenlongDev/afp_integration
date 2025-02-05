@@ -88,11 +88,14 @@ class Command(BaseCommand):
                         'vendors': lambda: importer.import_vendors(load_type="drop_and_reload"),
                         'accounts': importer.import_accounts,
                         'transactions': importer.import_transactions,
+                        'transaction_accounting_lines': importer.import_transaction_accounting_lines,
+                        'transaction_lines': importer.import_transaction_lines,
                         'subsidiaries': importer.import_subsidiaries,
                         'departments': importer.import_departments,
                         'entities': importer.import_entities,
+
                         'accounting_periods': importer.import_accounting_periods,
-                        'general_ledger': importer.map_net_suite_general_ledger,
+                        # 'general_ledger': importer.map_net_suite_general_ledger,
                     }
 
                     if not components:

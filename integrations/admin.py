@@ -39,10 +39,22 @@ from integrations.models.netsuite.analytics import (
     NetSuiteJournals,
     NetSuiteEntity,
     NetSuiteAccountingPeriods,
+    NetSuiteTransactionLine,
+    NetSuiteTransactionAccountingLine
 )
 
 
+class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'transaction_id', 'line_id', 'account', 'amount', 'debit', 'credit', 'net_amount', 'last_modified_date', 'record_date')
+    search_fields = ('company_name', 'transaction_id', 'line_id', 'account', 'amount', 'debit', 'credit', 'net_amount', 'last_modified_date', 'record_date')
+    
+class NetSuiteTransactionLinesAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'transaction_id')
+    search_fields = ('company_name', 'transaction_id')
+
+
 class NetSuiteAccountingPeriodsAdmin(admin.ModelAdmin):
+
     list_display = ('company_name', 'period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
     search_fields = ('company_name', 'period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
 
@@ -81,8 +93,8 @@ class NetSuiteVendorsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteAccountsAdmin(admin.ModelAdmin):
-    list_display = ('account_id', 'company_name', 'record_date')  # Removed invalid fields
-    search_fields = ('account_id', 'company_name', 'is_inactive', 'record_date')
+    list_display = ('account_id', 'company_name')  # Removed invalid fields
+    search_fields = ('account_id', 'company_name', 'is_inactive')
 
 
 class IntegrationAdmin(admin.ModelAdmin):
@@ -229,3 +241,5 @@ admin.site.register(NetSuiteGeneralLedger, NetSuiteGeneralLedgerAdmin)
 admin.site.register(NetSuiteJournals, NetSuiteJournalsAdmin)
 admin.site.register(NetSuiteEntity, NetSuiteEntityAdmin)
 admin.site.register(NetSuiteAccountingPeriods, NetSuiteAccountingPeriodsAdmin)
+admin.site.register(NetSuiteTransactionLine, NetSuiteTransactionLinesAdmin)
+admin.site.register(NetSuiteTransactionAccountingLine)

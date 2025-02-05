@@ -1,10 +1,10 @@
 import logging
 from django.db import transaction
 from django.utils import timezone
-from typing import Optional, Dict, Iterator
+from typing import Optional
 from datetime import timezone as tz
 from .client import NetSuiteClient
-from integrations.models.models import Integration
+from integrations.models.models import Integration, Organisation
 from integrations.models.netsuite.analytics import (
     NetSuiteVendors,
     NetSuiteSubsidiaries,
@@ -14,8 +14,8 @@ from integrations.models.netsuite.analytics import (
     NetSuiteAccounts,
     NetSuiteTransactions,
     NetSuiteGeneralLedger,
-    NetSuiteBudgetPeriodBalances,
-    NetSuiteJournals,
+    NetSuiteTransactionLine,
+    NetSuiteTransactionAccountingLine,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ class NetSuiteImporter:
         self.client = NetSuiteClient(self.consolidation_key, integration)
         self.org_name = integration.org
         self.now_ts = timezone.now()
+        self.org = Organisation.objects.get(name=self.org_name)
 
     # ------------------------------------------------------------
     # 1) Import Vendors
@@ -321,62 +322,59 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     @transaction.atomic
     def import_accounts(self, load_type="drop_and_reload"):
-        """Imports NetSuite Accounts into NetSuiteAccounts model with pagination."""
+        """
+        Imports NetSuite Accounts into the NetSuiteAccounts model using pagination.
+        The query and mapping are adjusted to the actual table columns.
+        """
         logger.info("Importing NetSuite Accounts...")
-
-        # if load_type == "drop_and_reload":
-        #     NetSuiteAccounts.objects.filter(
-        #         company_name=self.org_name
-        #     ).delete()
-
         offset = 0
         limit = 1000
         total_imported = 0
 
-        while offset < 2000:
-            print(f"Importing accounts at offset {offset}.")
-            query = f"SELECT * FROM Account ORDER BY id ASC OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+        while offset < 10000:
+            query = f"""
+            SELECT *
+            FROM Account
+            ORDER BY ID ASC
+            OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
+            """
             rows = list(self.client.execute_suiteql(query))
+            print(f"Importing {len(rows)} accounts at offset {offset}.")
             if not rows:
                 break
-                
-            print(f"Importing {len(rows)} accounts at offset {offset}.")
 
             for r in rows:
                 try:
-                    acct_id = r.get("id")
-                    if not acct_id:
-                        logger.warning(f"Account row missing 'id': {r}")
+                    account_id = r.get("id")
+                    if not account_id:
+                        logger.warning(f"Account row missing 'ID': {r}")
                         continue
 
-                    subsidiary = r.get("subsidiaryedition") or "Unknown"  # Adjust field as needed
-
                     NetSuiteAccounts.objects.update_or_create(
-                        account_id=acct_id,
+                        account_id=account_id,
                         defaults={
                             "company_name": self.org_name,
-                            "account_number": r.get("acctnumber"),
-                            "account_name": r.get("accountsearchdisplaynamecopy"),
-                            "account_hierarchy": r.get("fullname"),
-                            "account_display_name": r.get("accountsearchdisplayname"),
-                            "account_display_hierarchy": r.get("displaynamewithhierarchy"),
-                            "parent_id": r.get("parent"),  # Adjust if needed
-                            "parent_account": r.get("parent_account"),  # Ensure correct field
-                            "account_type": r.get("accttype"),
-                            "sspecacct": r.get("sspecacct"),
-                            "description": r.get("description"),
-                            "eliminate": bool_from_str(r.get("eliminate")),
-                            "external_id": r.get("externalid"),
-                            "include_children": bool_from_str(r.get("includechildren")),
-                            "inventory": bool_from_str(r.get("inventory")),
-                            "is_inactive": bool_from_str(r.get("isinactive")),
-                            "is_summary": bool_from_str(r.get("issummary")),
-                            "last_modified_date": self.parse_datetime(r.get("lastmodifieddate")),
-                            "reconcile_with_matching": bool_from_str(r.get("reconcilewithmatching")),
-                            "revalue": bool_from_str(r.get("revalue")),
-                            "subsidiary": subsidiary,
-                            "balance": decimal_or_none(r.get("balance")),
-                            "record_date": self.now_ts
+                            "acctnumber": r.get("ACCTNUMBER"),
+                            "accountsearchdisplaynamecopy": r.get("ACCOUNTSEARCHDISPLAYNAMECOPY"),
+                            "fullname": r.get("FULLNAME"),
+                            "accountsearchdisplayname": r.get("ACCOUNTSEARCHDISPLAYNAME"),
+                            "displaynamewithhierarchy": r.get("DISPLAYNAMEWITHHIERARCHY"),
+                            "parent": r.get("PARENT"),
+                            "accttype": r.get("ACCTTYPE"),
+                            "sspecacct": r.get("SSPECACCT"),
+                            "description": r.get("DESCRIPTION"),
+                            "eliminate": bool_from_str(r.get("ELIMINATE")),
+                            "externalid": r.get("EXTERNALID"),
+                            "include_children": bool_from_str(r.get("INCLUDECHILDREN")),
+                            "inventory": bool_from_str(r.get("INVENTORY")),
+                            "is_inactive": bool_from_str(r.get("ISINACTIVE")),
+                            "is_summary": bool_from_str(r.get("ISSUMMARY")),
+                            "last_modified_date": self.parse_datetime(r.get("LASTMODIFIEDDATE")),
+                            "reconcile_with_matching": bool_from_str(r.get("RECONCILEWITHMATCHING")),
+                            "revalue": bool_from_str(r.get("REVALUE")),
+                            "subsidiary": r.get("SUBSIDIARY"),
+                            "balance": decimal_or_none(r.get("BALANCE")),
+                            "record_date": self.now_ts,
                         }
                     )
                 except Exception as e:
@@ -393,7 +391,11 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     @transaction.atomic
     def import_transactions(self, min_id: Optional[str] = None):
-        """Imports NetSuite Transactions into NetSuiteTransactions model incrementally based on lastmodifieddate."""
+        """
+        Imports NetSuite Transactions into the NetSuiteTransactions model incrementally.
+        Uses the table structure (with columns such as LINKS, ABBREVTYPE, etc.) as found
+        in NetSuite.
+        """
         logger.info("Importing NetSuite Transactions incrementally...")
 
         if not min_id:
@@ -401,101 +403,136 @@ class NetSuiteImporter:
 
         query = f"""
         SELECT 
-            id,
-            abbrevtype,
-            approvalstatus,
-            number,
-            source,
-            status,
-            trandisplayname,
-            tranid,
-            transactionnumber,
-            type,
-            recordtype,
-            createdby,
-            createddate,
-            lastmodifiedby,
-            lastmodifieddate,
-            postingperiod,
-            trandate,
-            memo,
-            externalid,
-            entity,
-            currency,
-            exchangerate
+            ID,
+            ABBREVTYPE,
+            APPROVALSTATUS,
+            BALSEGSTATUS,
+            BILLINGSTATUS,
+            CLOSEDATE,
+            CREATEDBY,
+            CREATEDDATE,
+            CURRENCY,
+            CUSTBODY_CASH_REGISTER,
+            CUSTBODY_NONDEDUCTIBLE_PROCESSED,
+            CUSTBODY_REPORT_TIMESTAMP,
+            CUSTOMTYPE,
+            DAYSOPEN,
+            DAYSOVERDUESEARCH,
+            DUEDATE,
+            ENTITY,
+            EXCHANGERATE,
+            EXTERNALID,
+            FOREIGNAMOUNTPAID,
+            FOREIGNAMOUNTUNPAID,
+            FOREIGNTOTAL,
+            NUMBER,
+            ISFINCHRG,
+            ISREVERSAL,
+            LASTMODIFIEDBY,
+            LASTMODIFIEDDATE,
+            NEXUS,
+            ORDPICKED,
+            PAYMENTHOLD,
+            POSTING,
+            POSTINGPERIOD,
+            PRINTEDPICKINGTICKET,
+            RECORDTYPE,
+            SOURCE,
+            STATUS,
+            TERMS,
+            TOBEPRINTED,
+            TRANDATE,
+            TRANDISPLAYNAME,
+            TRANID,
+            TRANSACTIONNUMBER,
+            TYPE,
+            USEREVENUEARRANGEMENT,
+            VISIBLETOCUSTOMER,
+            VOID,
+            VOIDED,
+            CUSTBODY_NEXUS_NOTC,
+            MEMO,
         FROM Transaction
-        WHERE id > {min_id}
-        ORDER BY id ASC
+        WHERE ID > {min_id}
+        ORDER BY ID ASC
         """
         rows = list(self.client.execute_suiteql(query))
         today = timezone.now().date()
         filtered_rows = [
             r for r in rows 
-            if self.parse_datetime(r.get("lastmodifieddate")) 
-               and self.parse_datetime(r.get("lastmodifieddate")).date() == today
+            if self.parse_datetime(r.get("LASTMODIFIEDDATE")) and 
+            self.parse_datetime(r.get("LASTMODIFIEDDATE")).date() == today
         ]
 
         logger.info(f"Fetched {len(rows)} transactions, importing {len(filtered_rows)} modified today.")
 
         for r in filtered_rows:
             try:
-                trans_id = r.get("id")
-                if not trans_id:
-                    logger.warning(f"Transaction row missing 'id': {r}")
+                transaction_id = r.get("id")
+                if not transaction_id:
+                    logger.warning(f"Transaction row missing 'ID': {r}")
                     continue
 
-                subsidiary = r.get("subsidiaryedition") or "Unknown"
-
-                trandate = self.parse_date(r.get("trandate"))
-                last_modified = self.parse_datetime(r.get("lastmodifieddate"))
+                last_modified = self.parse_datetime(r.get("LASTMODIFIEDDATE"))
 
                 NetSuiteTransactions.objects.update_or_create(
-                    transactionid=str(trans_id),
+                    transactionid=str(transaction_id),
                     defaults={
-                        "company_name": self.org_name,
-                        "abbrevtype": r.get("abbrevtype"),
-                        "uniquekey": r.get("uniquekey"),
-                        "linesequencenumber": int(r.get("linesequencenumber", 0)),
-                        "lineid": r.get("lineid"),
-                        "approvalstatus": r.get("approvalstatus"),
-                        "number": r.get("number"),
-                        "source": r.get("source"),
-                        "status": r.get("status"),
-                        "trandisplayname": r.get("trandisplayname"),
-                        "tranid": r.get("tranid"),
-                        "transactionnumber": r.get("transactionnumber"),
-                        "type": r.get("type"),
-                        "recordtype": r.get("recordtype"),
-                        "createdby": r.get("createdby"),
-                        "createddate": self.parse_datetime(r.get("createddate")),
-                        "lastmodifiedby": r.get("lastmodifiedby"),
+                        "links": r.get("LINKS"),
+                        "abbrevtype": r.get("ABBREVTYPE"),
+                        "approvalstatus": r.get("APPROVALSTATUS"),
+                        "balsegstatus": r.get("BALSEGSTATUS"),
+                        "billingstatus": r.get("BILLINGSTATUS"),
+                        "closedate": self.parse_date(r.get("CLOSEDATE")),
+                        "createdby": r.get("CREATEDBY"),
+                        "createddate": self.parse_date(r.get("CREATEDDATE")),
+                        "currency": r.get("CURRENCY"),
+                        "custbody5": r.get("CUSTBODY5"),
+                        "custbody_cash_register": r.get("CUSTBODY_CASH_REGISTER"),
+                        "custbody_nondeductible_processed": r.get("CUSTBODY_NONDEDUCTIBLE_PROCESSED"),
+                        "custbody_report_timestamp": self.parse_datetime(r.get("CUSTBODY_REPORT_TIMESTAMP")),
+                        "custbody_wrong_subs": r.get("CUSTBODY_WRONG_SUBS"),
+                        "customtype": r.get("CUSTOMTYPE"),
+                        "daysopen": r.get("DAYSOPEN"),
+                        "daysoverduesearch": r.get("DAYSOVERDUESEARCH"),
+                        "duedate": self.parse_date(r.get("DUEDATE")),
+                        "entity": r.get("ENTITY"),
+                        "exchangerate": r.get("EXCHANGERATE"),
+                        "externalid": r.get("EXTERNALID"),
+                        "foreignamountpaid": r.get("FOREIGNAMOUNTPAID"),
+                        "foreignamountunpaid": r.get("FOREIGNAMOUNTUNPAID"),
+                        "foreigntotal": r.get("FOREIGNTOTAL"),
+                        "number": r.get("NUMBER"),
+                        "intercoadj": r.get("INTERCOADJ"),
+                        "isfinchrg": r.get("ISFINCHRG"),
+                        "isreversal": r.get("ISREVERSAL"),
+                        "lastmodifiedby": r.get("LASTMODIFIEDBY"),
                         "lastmodifieddate": last_modified,
-                        "postingperiod": r.get("postingperiod"),
-                        "yearperiod": int(r.get("yearperiod", 0)),
-                        "trandate": trandate,
-                        "subsidiary": subsidiary,
-                        "subsidiaryfullname": r.get("subsidiaryfullname"),
-                        "subsidiaryid": r.get("subsidiaryid"),
-                        "department": r.get("department"),
-                        "departmentid": r.get("departmentid"),
-                        "location": r.get("location"),
-                        "class_field": r.get("class"),
-                        "memo": r.get("memo"),
-                        "linememo": r.get("linememo"),
-                        "externalid": r.get("externalid"),
-                        "entity": r.get("entity"),
-                        "entityid": r.get("entityid"),
-                        "account": r.get("account"),
-                        "acctnumber": r.get("acctnumber"),
-                        "accountsearchdisplayname": r.get("accountsearchdisplayname"),
-                        "amount": decimal_or_none(r.get("amount")),
-                        "debit": decimal_or_none(r.get("debit")),
-                        "credit": decimal_or_none(r.get("credit")),
-                        "netamount": decimal_or_none(r.get("netamount")),
-                        "currency": r.get("currency"),
-                        "exchangerate": decimal_or_none(r.get("exchangerate")),
+                        "nexus": r.get("NEXUS"),
+                        "ordpicked": r.get("ORDPICKED"),
+                        "paymenthold": r.get("PAYMENTHOLD"),
+                        "posting": r.get("POSTING"),
+                        "postingperiod": r.get("POSTINGPERIOD"),
+                        "printedpickingticket": r.get("PRINTEDPICKINGTICKET"),
+                        "recordtype": r.get("RECORDTYPE"),
+                        "source": r.get("SOURCE"),
+                        "status": r.get("STATUS"),
+                        "subsidiary": r.get("SUBSIDIARY"),
+                        "terms": r.get("TERMS"),
+                        "tobeprinted": r.get("TOBEPRINTED"),
+                        "trandate": self.parse_date(r.get("TRANDATE")),
+                        "trandisplayname": r.get("TRANDISPLAYNAME"),
+                        "tranid": r.get("TRANID"),
+                        "transactionnumber": r.get("TRANSACTIONNUMBER"),
+                        "type": r.get("TYPE"),
+                        "userevenuearrangement": r.get("USEREVENUEARRANGEMENT"),
+                        "visibletocustomer": r.get("VISIBLETOCUSTOMER"),
+                        "void_field": r.get("VOID"),
+                        "voided": r.get("VOIDED"),
+                        "custbody_nexus_notc": r.get("CUSTBODY_NEXUS_NOTC"),
+                        "memo": r.get("MEMO"),
+                        "consolidation_key": r.get("CONSOLIDATION_KEY"),
                         "record_date": last_modified,
-                        "duplicate_check": 1  # Adjust based on logic
                     }
                 )
             except Exception as e:
@@ -509,77 +546,341 @@ class NetSuiteImporter:
     @transaction.atomic
     def map_net_suite_general_ledger(self):
         """
-        Map data from NetSuiteTransactions (and, if available, NetSuiteAccounts) into
-        the NetSuiteGeneralLedger model.
+        Map data from NetSuiteTransactions (header records) plus 
+        NetSuiteTransactionAccountingLine (detail lines) into NetSuiteGeneralLedger.
 
-        For each transaction record, we:
-        1. Attempt to fetch additional account details (such as acctnumber) from
-            NetSuiteAccounts using txn.account.
-        2. Build a dictionary of fields for the general ledger. (If a field is missing,
-            it will simply remain None.)
-        3. Upsert (update_or_create) a NetSuiteGeneralLedger record using a unique
-            combination (company_name, transactionid, linesequencenumber).
+        Because the NetSuiteTransactions model doesn't have an 'account' or 
+        'acctnumber', we rely on line-level data from NetSuiteTransactionAccountingLine
+        for debits, credits, accounts, etc.
 
-        Any fields missing in the source will be ignored.
+        Steps:
+        1) For each transaction:
+            a) Retrieve all accounting lines from NetSuiteTransactionAccountingLine 
+                where transaction=transactionid.
+            b) For each line:
+                - Convert line.account (BigInteger) to a string
+                - If that exists in NetSuiteAccounts.account_id, fetch the account record 
+                for additional details (like .acctnumber or .fullname).
+                - Insert/Update a GL entry with line's monetary values.
+            c) If no lines, optionally create a fallback GL entry with empty monetary fields.
         """
-        transactions = NetSuiteTransactions.objects.all()
+        logger.info("Mapping NetSuite General Ledger from Transactions + Accounting Lines...")
         total_mapped = 0
 
+        # Retrieve all transactions
+        transactions = NetSuiteTransactions.objects.all()
+
         for txn in transactions:
-            try:
-                # Try to retrieve the corresponding account record to enhance mapping.
-                account_obj = None
-                if txn.account:
+            # All lines that belong to this transaction
+            lines = NetSuiteTransactionAccountingLine.objects.filter(transaction=txn.transactionid)
+
+            if lines.exists():
+                # -- Create/Update a GL record for each line
+                for line in lines:
+                    print(f"Processing line: {line.account}")
                     try:
-                        account_obj = NetSuiteAccounts.objects.get(account_id=txn.account)
-                    except NetSuiteAccounts.DoesNotExist:
+                        # Convert numeric 'account' to string to match NetSuiteAccounts.account_id
+                        account_str = str(line.account) if line.account is not None else None
+
+                        # If we can find a matching account record, fetch it
                         account_obj = None
+                        if account_str:
+                            try:
+                                account_obj = NetSuiteAccounts.objects.get(account_id=account_str)
+                            except NetSuiteAccounts.DoesNotExist:
+                                pass
 
-                # Build the defaults for the general ledger entry.
-                # Note: if a field is missing in txn, it will be stored as None.
-                defaults = {
-                    'abbrevtype': txn.abbrevtype,
-                    'uniquekey': txn.uniquekey,
-                    'linesequencenumber': txn.linesequencenumber,
-                    'lineid': txn.lineid,
-                    'approvalstatus': txn.approvalstatus,
-                    'postingperiod': txn.postingperiod,
-                    'yearperiod': txn.yearperiod,
-                    'trandate': txn.trandate,
-                    'subsidiary': txn.subsidiary,
-                    'account': txn.account,
-                    # Prefer the account's acctnumber if found; otherwise, use the one in txn.
-                    'acctnumber': account_obj.acctnumber if account_obj and account_obj.acctnumber else txn.acctnumber,
-                    'amount': txn.amount,
-                    'debit': txn.debit,
-                    'credit': txn.credit,
-                    'netamount': txn.netamount,
-                    'currency': txn.currency,
-                    'exchangerate': txn.exchangerate,
-                    'record_date': txn.record_date,
-                }
+                        # Decide what to store in the GL's "account" field
+                        # - If you want to store the actual numeric ID, use account_str
+                        # - If you prefer the 'account_id' from account_obj, also account_str (same thing)
+                        # - If you want a more descriptive field, e.g. 'acctnumber' from the account record, see below
+                        gl_account = account_str
 
-                # The unique key is defined by the combination of the company, transaction ID, and line sequence.
-                gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
-                    company_name=txn.company_name,  # Note: company_name is a ForeignKey to Organisation.
-                    transactionid=txn.transactionid,
-                    linesequencenumber=txn.linesequencenumber,
-                    defaults=defaults
-                )
-                total_mapped += 1
+                        # For the GL 'acctnumber' field, you could store the
+                        # NetSuiteAccounts.acctnumber or the account_id. Choose whichever is meaningful.
+                        acct_number = account_obj.acctnumber if (account_obj and account_obj.acctnumber) else account_str
 
-                if created:
-                    logger.info(f"Created GL entry for transaction {txn.transactionid}, line {txn.linesequencenumber}")
-                else:
-                    logger.info(f"Updated GL entry for transaction {txn.transactionid}, line {txn.linesequencenumber}")
+                        # Monetary fields come directly from line-level data
+                        defaults = {
+                            'abbrevtype':        txn.abbrevtype,
+                            'approvalstatus':    txn.approvalstatus,
+                            'postingperiod':     txn.postingperiod,
+                            # net date => if your transaction date is a DateField, 
+                            # Django will convert automatically to DateTime for the GL.
+                            'trandate':          txn.trandate,  
+                            'subsidiary':        txn.subsidiary,
 
-            except Exception as e:
-                logger.error(f"Error mapping transaction {txn.transactionid}: {e}", exc_info=True)
+                            # The 'account' field in NetSuiteGeneralLedger is a CharField
+                            'account':           gl_account,
+                            'acctnumber':        acct_number,
+
+                            'amount':            line.amount,
+                            'debit':             line.debit,
+                            'credit':            line.credit,
+                            'netamount':         line.netamount,
+
+                            # Pull currency and exchange rate from the transaction header
+                            'currency':          txn.currency,
+                            'exchangerate':      txn.exchangerate,
+
+                            # record_date => prefer line.lastmodifieddate if present
+                            'record_date':       line.lastmodifieddate if line.lastmodifieddate else txn.record_date,
+                        }
+
+                        # Use the line's transaction_line as the 'linesequencenumber'
+                        line_seq = line.transaction_line if line.transaction_line else 0
+
+                        # Insert/update the GL record
+                        gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
+                            company_name=txn.company_name,
+                            transactionid=txn.transactionid,
+                            linesequencenumber=line_seq,
+                            defaults=defaults
+                        )
+                        total_mapped += 1
+
+                        if created:
+                            logger.info(
+                                f"Created GL entry: Txn={txn.transactionid}, line_seq={line_seq}"
+                            )
+                        else:
+                            logger.info(
+                                f"Updated GL entry: Txn={txn.transactionid}, line_seq={line_seq}"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"Error mapping Txn={txn.transactionid}, line={line.transaction_line}: {e}",
+                            exc_info=True
+                        )
+
+            else:
+                # -- If no lines exist, create one fallback GL entry (optional)
+                try:
+                    # Because there's no line-level info, we can't get account from the transaction
+                    # => store them as None or your chosen default
+                    defaults = {
+                        'abbrevtype':     txn.abbrevtype,
+                        'approvalstatus': txn.approvalstatus,
+                        'postingperiod':  txn.postingperiod,
+                        'trandate':       txn.trandate,
+                        'subsidiary':     txn.subsidiary,
+
+                        'account':        None,
+                        'acctnumber':     None,
+
+                        'amount':         None,
+                        'debit':          None,
+                        'credit':         None,
+                        'netamount':      None,
+
+                        'currency':       txn.currency,
+                        'exchangerate':   txn.exchangerate,
+                        'record_date':    txn.record_date,
+                    }
+
+                    gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
+                        company_name=txn.company_name,
+                        transactionid=txn.transactionid,
+                        linesequencenumber=0,  # fallback line number
+                        defaults=defaults
+                    )
+                    total_mapped += 1
+
+                    if created:
+                        logger.info(
+                            f"Created fallback GL entry: Txn={txn.transactionid} (no lines)"
+                        )
+                    else:
+                        logger.info(
+                            f"Updated fallback GL entry: Txn={txn.transactionid} (no lines)"
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Error mapping fallback GL for Txn={txn.transactionid}: {e}",
+                        exc_info=True
+                    )
 
         logger.info(f"Completed mapping general ledger: {total_mapped} entries processed.")
 
 
     # ------------------------------------------------------------
+    # 9) Import Transaction Lines
+    # ------------------------------------------------------------
+    @transaction.atomic
+    def import_transaction_lines(self, min_id: Optional[str] = None):
+        """
+        Imports NetSuite Transaction Lines into the NetSuiteTransactionLine model.
+        """
+        logger.info("Importing NetSuite Transaction Lines...")
+        if not min_id:
+            min_id = "0"
+
+        query = f"""
+        SELECT
+            id,
+            ISBILLABLE,
+            ISCLOSED,
+            ISCOGS,
+            ISCUSTOMGLLINE,
+            ISFULLYSHIPPED,
+            ISFXVARIANCE,
+            ISINVENTORYAFFECTING,
+            ISREVRECTRANSACTION,
+            LINELASTMODIFIEDDATE,
+            LINESEQUENCENUMBER,
+            LOCATION,
+            MAINLINE,
+            MEMO,
+            NETAMOUNT,
+            OLDCOMMITMENTFIRM,
+            QUANTITYBILLED,
+            QUANTITYREJECTED,
+            QUANTITYSHIPRECV,
+            SUBSIDIARY,
+            TAXLINE,
+            TRANSACTIONDISCOUNT
+        FROM TransactionLine
+        WHERE id > {min_id}
+        ORDER BY id ASC
+        OFFSET 500 ROWS FETCH NEXT 500 ROWS ONLY
+        """
+        try:
+            rows = list(self.client.execute_suiteql(query))
+            logger.info(f"Fetched {len(rows)} transaction line records.")
+        except Exception as e:
+            logger.error(f"Error importing transaction_lines: {e}", exc_info=True)
+            return
+
+        for r in rows:
+            try:
+                netsuite_id = r.get("id")
+                if not netsuite_id:
+                    logger.warning(f"Transaction Line row missing 'id': {r}")
+                    continue
+
+                # Parse the LINELASTMODIFIEDDATE; assuming parse_datetime returns a datetime.
+                last_modified = self.parse_datetime(r.get("LINELASTMODIFIEDDATE"))
+
+                NetSuiteTransactionLine.objects.update_or_create(
+                    netsuite_id=netsuite_id,
+                    defaults={
+                        "company_name": self.org_name,
+                        "is_billable": r.get("isbillable"),
+                        "is_closed": r.get("isclosed"),
+                        "is_cogs": r.get("iscogs"),
+                        "is_custom_gl_line": r.get("iscustomglline"),
+                        "is_fully_shipped": r.get("isfullyshipped"),
+                        "is_fx_variance": r.get("isfxvariance"),
+                        "is_inventory_affecting": r.get("isinventoryaffecting"),
+                        "is_rev_rec_transaction": r.get("isrevrectransaction"),
+                        "line_last_modified_date": last_modified.date() if last_modified else None,
+                        "line_sequence_number": r.get("linesequencenumber"),
+                        "links": r.get("links"),
+                        "location": r.get("location"),
+                        "main_line": r.get("mainline"),
+                        "match_bill_to_receipt": r.get("matchbilltoreceipt"),
+                        "memo": r.get("memo"),
+                        "net_amount": decimal_or_none(r.get("netamount")),
+                        "old_commitment_firm": r.get("oldcommitmentfirm"),
+                        "quantity_billed": r.get("quantitybilled"),
+                        "quantity_rejected": r.get("quantityrejected"),
+                        "quantity_ship_recv": r.get("quantityshiprecv"),
+                        "source_uri": r.get("source_uri"),
+                        "subsidiary": r.get("subsidiary"),
+                        "subsidiary_id": r.get("subsidiaryid"),
+                        "tax_line": r.get("taxline"),
+                        "transaction_discount": r.get("transactiondiscount"),
+                        "transaction_id": r.get("transactionid"),
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error importing transaction line row={r}: {e}", exc_info=True)
+
+        logger.info("Transaction Line import complete.")
+
+
+    # ------------------------------------------------------------
+    # 10) Transaction Accounting Lines
+    # ------------------------------------------------------------
+    @transaction.atomic
+    def import_transaction_accounting_lines(self, min_id: Optional[str] = None):
+        """
+        Imports NetSuite Transaction Accounting Lines (from the TransactionAccountingLine table)
+        into the NetSuiteTransactionAccountingLine model using keyset pagination to avoid offset issues.
+        """
+        logger.info("Importing Transaction Accounting Lines...")
+        if not min_id:
+            min_id = "0"
+        
+        limit = 500
+        offset = 500
+        total_imported = 0
+
+        while offset < 2000:
+            query = f"""
+            SELECT
+                TRANSACTION,              
+                TRANSACTIONLINE,
+                ACCOUNT,
+                ACCOUNTINGBOOK,
+                AMOUNT,
+                AMOUNTLINKED,
+                DEBIT,
+                NETAMOUNT,
+                PAYMENTAMOUNTUNUSED,
+                PAYMENTAMOUNTUSED,
+                POSTING,
+                CREDIT,
+                AMOUNTPAID,
+                AMOUNTUNPAID,
+                LASTMODIFIEDDATE,
+                PROCESSEDBYREVCOMMIT
+            FROM TransactionAccountingLine L
+            WHERE L.Transaction > {min_id}
+            ORDER BY L.Transaction ASC
+            OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
+            """
+            rows = list(self.client.execute_suiteql(query))
+            logger.info(f"Fetched {len(rows)} transaction accounting line records with min_id > {min_id}.")
+
+            if not rows:
+                break
+
+            for r in rows:
+                try:
+                    last_modified = self.parse_datetime(r.get("LASTMODIFIEDDATE"))
+                    NetSuiteTransactionAccountingLine.objects.update_or_create(
+                        org=self.org,
+                        transaction=r.get("transaction"),
+                        transaction_line=r.get("transactionline"),
+                        defaults={
+                            "links": r.get("links"),
+                            "account": r.get("account"),
+                            "accountingbook": r.get("accountingbook"),
+                            "amount": decimal_or_none(r.get("amount")),
+                            "amountlinked": decimal_or_none(r.get("amountlinked")),
+                            "debit": decimal_or_none(r.get("debit")),
+                            "netamount": decimal_or_none(r.get("netamount")),
+                            "paymentamountunused": decimal_or_none(r.get("paymentamountunused")),
+                            "paymentamountused": decimal_or_none(r.get("paymentamountused")),
+                            "posting": r.get("posting"),
+                            "credit": decimal_or_none(r.get("credit")),
+                            "amountpaid": decimal_or_none(r.get("amountpaid")),
+                            "amountunpaid": decimal_or_none(r.get("amountunpaid")),
+                            "lastmodifieddate": last_modified,
+                            "processedbyrevcommit": r.get("processedbyrevcommit"),
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Error importing transaction accounting line row: {r} - {e}", exc_info=True)
+            total_imported += len(rows)
+            offset += limit
+        
+        logger.info(f"Imported {total_imported} Transaction Accounting Lines successfully.")
+
+
+
+
     # 9) Import Budgets
     # ------------------------------------------------------------
     # @transaction.atomic
