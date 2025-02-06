@@ -155,8 +155,10 @@ class NetSuiteAuthService:
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         resp = requests.post(self.token_url, data=data, headers=headers, auth=auth)
+        print(resp.status_code, resp.text, "_refresh_token")
         if resp.status_code != 200:
             raise Exception(f"Failed to refresh NetSuite token: {resp.status_code} {resp.text}")
+
 
         tokens = resp.json()
         print(tokens, "_refresh_token")

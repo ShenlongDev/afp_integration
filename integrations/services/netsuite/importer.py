@@ -67,10 +67,6 @@ class NetSuiteImporter:
 
         query = "SELECT * FROM Vendor"
         rows = list(self.client.execute_suiteql(query))
-        print(f"Importing {len(rows)} vendors...")
-        for r in rows:
-            print(r)
-            break
 
         for r in rows:
             try:
