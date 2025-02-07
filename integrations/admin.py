@@ -163,7 +163,7 @@ class XeroBudgetPeriodBalancesAdmin(admin.ModelAdmin):
 
 class XeroGeneralLedgerAdmin(admin.ModelAdmin):
     list_display = ('tenant_id', 'account_id')
-    search_fields = ('tenant_id', 'account_id')
+    search_fields = ('tenant_id', 'account_id', 'account_name')
 
 
 class XeroAccountsRawAdmin(admin.ModelAdmin):
