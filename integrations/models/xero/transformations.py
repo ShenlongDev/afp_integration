@@ -98,13 +98,11 @@ class XeroJournalLines(models.Model):
 
 
 class XeroJournalLineTrackingCategories(models.Model):
-    # Potential composite key: (tenant_id, journal_line_id, tracking_category_id, tracking_option_id)
-    # For simplicity, we'll add an auto id, or you can define a composite primary key approach.
-    id = models.AutoField(primary_key=True)
-
-    journal_line_id = models.CharField(max_length=50)
-    tenant_id = models.CharField(max_length=50, null=True)
+    tenant_id = models.CharField(max_length=50, null=True, blank=True)
+    line_item_id = models.CharField(max_length=50, null=True, blank=True)
+    journal_line_id = models.CharField(max_length=50, null=True, blank=True)
     tracking_category_id = models.CharField(max_length=50, blank=True, null=True)
+
     tracking_option_id = models.CharField(max_length=50, blank=True, null=True)
     name = models.CharField(max_length=255, blank=True, null=True)
     option = models.CharField(max_length=255, blank=True, null=True)
@@ -119,12 +117,16 @@ class XeroJournalLineTrackingCategories(models.Model):
 
 
 class XeroInvoiceLineItems(models.Model):
-    invoice_id = models.CharField(max_length=50)
+    invoice_id = models.CharField(max_length=50, null=True, blank=True)
     invoice_number = models.CharField(max_length=50, blank=True, null=True)
-    line_item_id = models.CharField(max_length=50)  # Potential composite with invoice_id
+    unit_amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
+    quantity = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
+    account_code = models.CharField(max_length=50, blank=True, null=True)
+    line_item_id = models.CharField(max_length=50)
     tenant_id = models.CharField(max_length=50)
     account_id = models.CharField(max_length=50, blank=True, null=True)
-    type = models.CharField(max_length=50, blank=True, null=True)
+    line_amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
+    tax_type = models.CharField(max_length=50, blank=True, null=True)
     reference = models.CharField(max_length=255, blank=True, null=True)
     url = models.TextField(blank=True, null=True)
     amount_due = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
@@ -139,7 +141,7 @@ class XeroInvoiceLineItems(models.Model):
     status = models.CharField(max_length=50, blank=True, null=True)
     line_amount_types = models.CharField(max_length=50, blank=True, null=True)
     sub_total = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
-    total_tax = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
+    tax_amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
     total = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
     currency_code = models.CharField(max_length=10, blank=True, null=True)
     description = models.TextField(blank=True, null=True)

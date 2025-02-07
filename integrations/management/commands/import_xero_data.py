@@ -2,7 +2,7 @@ import logging
 import os
 from django.core.management.base import BaseCommand
 from integrations.models.models import Integration
-from integrations.services.xero.xero_client import import_xero_data
+from integrations.services.xero.xero_client import XeroDataImporter
 from datetime import datetime, date
 
 class Command(BaseCommand):
@@ -58,7 +58,10 @@ class Command(BaseCommand):
         for integration in integrations:
             self.stdout.write(f"Importing data for Integration ID: {integration.id}")
             try:
-                import_xero_data(integration, since_date)
+                xero = XeroDataImporter(integration, since_date)
+                xero.import_xero_data()
                 self.stdout.write(self.style.SUCCESS(f"Xero data imported successfully for Integration ID: {integration.id}."))
             except Exception as e:
+
+
                 self.stdout.write(self.style.ERROR(f"Error importing Xero data for Integration ID {integration.id}: {str(e)}"))

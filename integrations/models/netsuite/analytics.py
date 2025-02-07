@@ -364,8 +364,3 @@ class NetSuiteTransactionAccountingLine(models.Model):
 
     class Meta:
         db_table = "Transaction Accounting Line"  
-
-    def __str__(self):
-        return f"Txn {self.transaction_number} - Line {self.transaction_line}"
-    
-    

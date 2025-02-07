@@ -1,9 +1,9 @@
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from integrations.services.xero.xero_client import XeroDataImporter
 from datetime import datetime
 from integrations.models.models import Integration
-from integrations.services.xero.xero_client import import_xero_data
 from rest_framework.views import APIView
 from rest_framework import generics
 from integrations.models.xero.transformations import XeroAccounts, XeroBankTransactionLineItems, XeroJournalLines
@@ -32,7 +32,8 @@ class XeroDataImportView(APIView):
                 return Response({"error": f"Invalid date: {since_param}"}, status=400)
 
         try:
-            import_xero_data(integration, since_date)
+            xero_client = XeroDataImporter(integration, since_date)
+            xero_client.import_xero_data()
             return Response({
                 "detail": "Xero data imported successfully",
                 "components": [

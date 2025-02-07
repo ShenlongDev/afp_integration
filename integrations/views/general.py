@@ -1,7 +1,6 @@
 from rest_framework import viewsets
 from integrations.models.models import Integration, IntegrationAccessToken
 from integrations.serializers.general import IntegrationSerializer
-from integrations.services.xero.xero_client import request_new_xero_token
 from integrations.services.netsuite.auth import NetSuiteAuthService
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -43,8 +42,8 @@ class IntegrationAuthView(APIView):
             authorization_url = service.get_authorization_url(state="my-netsuite-state")
             tokens["Netsuite Auth URL"] = authorization_url
 
-        if integration.xero_client_id and integration.xero_client_secret:
-            tokens["Xero Token"] = request_new_xero_token(integration)
+        # if integration.xero_client_id and integration.xero_client_secret:
+        #     tokens["Xero Token"] = request_new_xero_token(integration)
         
         return Response(tokens, status=status.HTTP_200_OK)
     
