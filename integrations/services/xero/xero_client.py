@@ -765,23 +765,23 @@ class XeroDataImporter:
         """
         logger.info("Starting full Xero data import...")
 
-        # # 1. Accounts
-        # self.sync_xero_chart_of_accounts()
+        # 1. Accounts
+        self.sync_xero_chart_of_accounts()
 
-        # # 2. Journal Lines
-        # self.import_xero_journal_lines()
+        # 2. Journal Lines
+        self.import_xero_journal_lines()
 
-        # # 3. Contacts
-        # self.import_xero_contacts()
+        # 3. Contacts
+        self.import_xero_contacts()
 
-        # # 4. Invoices
-        # self.import_xero_invoices()
+        # 4. Invoices
+        self.import_xero_invoices()
 
-        # # 5. Bank Transactions
-        # self.import_xero_bank_transactions()
+        # 5. Bank Transactions
+        self.import_xero_bank_transactions()
 
-        # # 6. Budgets
-        # self.import_xero_budgets()
+        # 6. Budgets
+        self.import_xero_budgets()
 
         # 7. General Ledger
         self.map_xero_general_ledger()
