@@ -162,7 +162,6 @@ class XeroDataImporter:
         accounts_data = response.json().get("Accounts", [])
 
         now_ts = timezone.now()
-        print(accounts_data[:100], "accounts_data")
 
         for acct in accounts_data:
             account_id = acct.get("AccountID")
@@ -202,7 +201,6 @@ class XeroDataImporter:
         journals_data = response.json().get("Journals", [])
 
         now_ts = timezone.now()
-        # print(journals_data[:100], "journals_data")
         for journal in journals_data:
             journal_id = journal.get("JournalID")
             if not journal_id:
@@ -225,7 +223,7 @@ class XeroDataImporter:
             )
 
             lines = journal.get("JournalLines", [])
-            print(lines[:100], "lines")
+
             for line in lines:
                 line_id = line.get("JournalLineID")
                 if not line_id:
@@ -265,7 +263,7 @@ class XeroDataImporter:
                     journal_line_id=line_id,
                     defaults=jline_defaults
                 )
-                print(jline_defaults, "jline_defaults")
+
 
         logger.info("Completed Xero Journal import & transform.")
 
@@ -417,7 +415,7 @@ class XeroDataImporter:
         now_ts = timezone.now()
 
         transactions = self.get_bank_transactions()
-        print(transactions)
+
         for bt in transactions:
             bt_id = bt.get("BankTransactionID")
             if not bt_id:
@@ -582,7 +580,7 @@ class XeroDataImporter:
         #    - keep first occurrence of (tenant_id, journal_line_id).
         all_lines = (
             XeroJournalLines.objects
-            .order_by('-ingestion_timestamp')  # newest first
+            .order_by('-journal_date')  
         )
         latest_by_line = {}
         for line in all_lines:

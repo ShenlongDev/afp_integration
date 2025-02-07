@@ -142,8 +142,9 @@ class XeroBankTransactionLineItemsAdmin(admin.ModelAdmin):
 
 
 class XeroJournalLinesAdmin(admin.ModelAdmin):
-    list_display = ('journal_line_id', 'journal_id', 'description', 'account_id', 'net_amount', 'tax_amount')
-    search_fields = ('journal_line_id', 'journal_id', 'description', 'account_id')
+    list_display = ('journal_line_id', 'journal_id', 'description', 'account_id', 'net_amount', 'journal_date', 'created_date_utc')
+    search_fields = ('journal_line_id', 'journal_id', 'description', 'account_id', 'journal_date', 'created_date_utc')
+
 
 
 class XeroJournalLineTrackingCategoriesAdmin(admin.ModelAdmin):
@@ -162,8 +163,9 @@ class XeroBudgetPeriodBalancesAdmin(admin.ModelAdmin):
 
 
 class XeroGeneralLedgerAdmin(admin.ModelAdmin):
-    list_display = ('tenant_id', 'account_id')
-    search_fields = ('tenant_id', 'account_id', 'account_name')
+    list_display = ('tenant_id', 'account_id', 'account_name', 'journal_date', 'created_date_utc', 'net_amount')
+    search_fields = ('tenant_id', 'account_id', 'account_name', 'journal_date', 'created_date_utc')
+
 
 
 class XeroAccountsRawAdmin(admin.ModelAdmin):
@@ -208,7 +210,7 @@ class XeroContactsRawAdmin(admin.ModelAdmin):
 
 class XeroInvoicesRawAdmin(admin.ModelAdmin):
     list_display = ('invoice_id', 'invoice_number', 'tenant_id', 'date')
-    search_fields = ('invoice_id', 'invoice_number', 'tenant_id', 'status')
+    search_fields = ('invoice_id', 'invoice_number', 'tenant_id')
 
 
 admin.site.register(Integration, IntegrationAdmin)
