@@ -142,8 +142,8 @@ class XeroBankTransactionLineItemsAdmin(admin.ModelAdmin):
 
 
 class XeroJournalLinesAdmin(admin.ModelAdmin):
-    list_display = ('journal_line_id', 'journal_id', 'description', 'account_id', 'net_amount', 'journal_date', 'created_date_utc')
-    search_fields = ('journal_line_id', 'journal_id', 'description', 'account_id', 'journal_date', 'created_date_utc')
+    list_display = ('journal_line_id', 'description', 'account_id', 'account_name', 'net_amount', 'journal_date', 'created_date_utc')
+    search_fields = ('journal_line_id', 'description', 'account_id', 'journal_date', 'created_date_utc', 'account_name')
 
 
 
@@ -163,9 +163,8 @@ class XeroBudgetPeriodBalancesAdmin(admin.ModelAdmin):
 
 
 class XeroGeneralLedgerAdmin(admin.ModelAdmin):
-    list_display = ('tenant_id', 'account_id', 'account_name', 'journal_date', 'created_date_utc', 'net_amount')
-    search_fields = ('tenant_id', 'account_id', 'account_name', 'journal_date', 'created_date_utc')
-
+    list_display = ('tenant_id', 'account_id', 'account_name', 'journal_date', 'created_date', 'net_amount')
+    search_fields = ('tenant_id', 'account_id', 'account_name', 'journal_date', 'created_date')
 
 
 class XeroAccountsRawAdmin(admin.ModelAdmin):
