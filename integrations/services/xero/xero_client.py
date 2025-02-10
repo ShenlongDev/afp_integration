@@ -26,7 +26,6 @@ from integrations.models.xero.transformations import (
 )
 from integrations.models.xero.analytics import XeroGeneralLedger
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +33,6 @@ class XeroDataImporter:
     """
     A refactored class-based approach to Xero data importing.
     Shared values (integration, since_date, etc.) are stored in __init__.
-    The existing business logic is preserved in the instance methods.
     """
 
     def __init__(self, integration: Integration, since_date=None):
@@ -50,7 +48,26 @@ class XeroDataImporter:
         self.client_secret = integration.xero_client_secret
         self.tenant_id = integration.xero_tenant_id
         
-    
+    def get_paginated_results(self, url: str, result_key: str, extra_params: dict = None) -> list:
+        results = []
+        page = 1
+        params = extra_params.copy() if extra_params else {}
+        while True:
+            params.update({"page": page})
+            headers = self.build_headers()
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            page_results = response.json().get(result_key, [])
+            print(f"Fetched {len(page_results)} {page}")
+            if not page_results:
+                break
+            results.extend(page_results)
+            if len(page_results) < 100:
+                break
+            page += 1
+        return results
+
+
     def request_new_xero_token(self):
         """
         Request a new Xero access token using client_credentials and store it.
@@ -110,7 +127,6 @@ class XeroDataImporter:
         # No valid token found; request a new one
         return self.request_new_xero_token()
 
-
     def parse_xero_datetime(self, xero_date_str: str):
         """
         Parse a Xero date string, e.g. '/Date(1672533421427+0000)/'
@@ -133,10 +149,10 @@ class XeroDataImporter:
             logger.warning(f"Unknown date format: {xero_date_str}")
             return None
 
-    def build_headers(self) -> dict:
+    def build_headers(self, offset=None) -> dict:
         """
-        Helper to build the Xero request headers with valid token,
-        plus optional If-Modified-Since if needed.
+        Build the Xero request headers with a valid token.
+        Accepts an optional 'offset' parameter (for logging or future use).
         """
         token = self.get_valid_xero_token()
         headers = {
@@ -144,8 +160,11 @@ class XeroDataImporter:
             "xero-tenant-id": self.tenant_id,
             "Accept": "application/json"
         }
-        if self.since_date:
-            headers["If-Modified-Since"] = self.since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        # if self.since_date:
+        #     headers["If-Modified-Since"] = self.since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        if offset is not None:
+            logger.debug(f"build_headers called with offset: {offset}")
+        # Debug print (or remove in production)
         return headers
 
     ### 2. Chart of Accounts ###
@@ -187,106 +206,114 @@ class XeroDataImporter:
                 logger.error(f"Error saving XeroAccountsRaw for AccountID {account_id}: {e}")
         logger.info(f"Imported/Updated {len(accounts_data)} Xero Accounts.")
 
-    ### 3. Journal Lines (and transform into General Ledger) ###
+    ### 3. Journal Lines (with Pagination) ###
+    def get_journals(self, offset=None):
+        """
+        Helper method to fetch journals from Xero with an optional offset.
+        According to Xero docs, this endpoint returns at most 100 records.
+        The 'offset' parameter (if provided) is passed as a query parameter.
+        """
+        url = "https://api.xero.com/api.xro/2.0/Journals"
+        headers = self.build_headers(offset=offset)
+        params = {}
+        if offset is not None:
+            params["offset"] = offset
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        journals = response.json().get("Journals", [])
+        return journals
+
     @transaction.atomic
     def import_xero_journal_lines(self):
         """
-        Import Xero Journals + lines into XeroJournalsRaw, XeroJournalLines.
+        Import Xero Journals and their lines into XeroJournalsRaw and XeroJournalLines.
+        This method uses pagination via the optional 'offset' query parameter.
         """
-        logger.info("Importing Xero Journals & Lines...")
-        headers = self.build_headers()
-        url = "https://api.xero.com/api.xro/2.0/Journals"
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        journals_data = response.json().get("Journals", [])
+        logger.info("Importing Xero Journals & Lines with pagination...")
+        offset = None  # Start without an offset
+        while True:
+            journals = self.get_journals(offset=offset)
+            print(f"Fetched {len(journals)} journals, {journals}")
+            if not journals:
+                break
 
-        now_ts = timezone.now()
-        for journal in journals_data:
-            journal_id = journal.get("JournalID")
-            if not journal_id:
-                logger.warning("Skipping journal with no JournalID.")
-                continue
+            now_ts = timezone.now() 
 
-            jr_defaults = {
-                "journal_number": journal.get("JournalNumber"),
-                "reference": journal.get("Reference"),
-                "journal_date": self.parse_xero_datetime(journal.get("JournalDate")),
-                "created_date_utc": self.parse_xero_datetime(journal.get("CreatedDateUTC")),
-                "raw_payload": journal,
-                "ingestion_timestamp": now_ts,
-                "source_system": "XERO"
-            }
-            XeroJournalsRaw.objects.update_or_create(
-                tenant_id=self.integration.org.id,
-                journal_id=journal_id,
-                defaults=jr_defaults
-            )
-
-            lines = journal.get("JournalLines", [])
-
-            for line in lines:
-                line_id = line.get("JournalLineID")
-                if not line_id:
-                    logger.warning(f"Skipping line in Journal {journal_id} with no JournalLineID.")
+            for journal in journals:
+                journal_id = journal.get("JournalID")
+                if not journal_id:
+                    logger.warning("Skipping journal with no JournalID.")
                     continue
 
-                tcat = line.get("TrackingCategories", [])
-                tracking_name = None
-                tracking_option = None
-                if tcat:
-                    tracking_name = tcat[0].get("Name")
-                    tracking_option = tcat[0].get("Option")
-
-                jline_defaults = {
-                    "tenant_id": self.integration.org.id,
-                    "journal_id": journal_id,
-                    "reference": journal.get("Reference"),
-                    "source_id": journal.get("SourceID"),
+                jr_defaults = {
                     "journal_number": journal.get("JournalNumber"),
-                    "source_type": journal.get("SourceType"),
-                    "account_id": line.get("AccountID"),
-                    "account_code": line.get("AccountCode"),
-                    "account_type": line.get("AccountType"),
-                    "account_name": line.get("AccountName"),
-                    "description": line.get("Description"),
-                    "net_amount": line.get("NetAmount"),
-                    "gross_amount": line.get("GrossAmount"),
-                    "tax_amount": line.get("TaxAmount"),
+                    "reference": journal.get("Reference"),
                     "journal_date": self.parse_xero_datetime(journal.get("JournalDate")),
                     "created_date_utc": self.parse_xero_datetime(journal.get("CreatedDateUTC")),
+                    "raw_payload": journal,
                     "ingestion_timestamp": now_ts,
-                    "source_system": "XERO",
-                    "tracking_category_name": tracking_name,
-                    "tracking_category_option": tracking_option,
+                    "source_system": "XERO"
                 }
-                XeroJournalLines.objects.update_or_create(
-                    journal_line_id=line_id,
-                    defaults=jline_defaults
+                XeroJournalsRaw.objects.update_or_create(
+                    tenant_id=self.integration.org.id,
+                    journal_id=journal_id,
+                    defaults=jr_defaults
                 )
 
+                lines = journal.get("JournalLines", [])
+                for line in lines:
+                    line_id = line.get("JournalLineID")
+                    if not line_id:
+                        logger.warning(f"Skipping line in Journal {journal_id} with no JournalLineID.")
+                        continue
 
-        logger.info("Completed Xero Journal import & transform.")
+                    tcat = line.get("TrackingCategories", [])
+                    tracking_name = None
+                    tracking_option = None
+                    if tcat:
+                        tracking_name = tcat[0].get("Name")
+                        tracking_option = tcat[0].get("Option")
+
+                    jline_defaults = {
+                        "tenant_id": self.integration.org.id,
+                        "journal_id": journal_id,
+                        "reference": journal.get("Reference"),
+                        "source_id": journal.get("SourceID"),
+                        "journal_number": journal.get("JournalNumber"),
+                        "source_type": journal.get("SourceType"),
+                        "account_id": line.get("AccountID"),
+                        "account_code": line.get("AccountCode"),
+                        "account_type": line.get("AccountType"),
+                        "account_name": line.get("AccountName"),
+                        "description": line.get("Description"),
+                        "net_amount": line.get("NetAmount"),
+                        "gross_amount": line.get("GrossAmount"),
+                        "tax_amount": line.get("TaxAmount"),
+                        "journal_date": self.parse_xero_datetime(journal.get("JournalDate")),
+                        "created_date_utc": self.parse_xero_datetime(journal.get("CreatedDateUTC")),
+                        "ingestion_timestamp": now_ts,
+                        "source_system": "XERO",
+                        "tracking_category_name": tracking_name,
+                        "tracking_category_option": tracking_option,
+                    }
+                    XeroJournalLines.objects.update_or_create(
+                        journal_line_id=line_id,
+                        defaults=jline_defaults
+                    )
+
+            # If fewer than 100 records were returned, we assume we've reached the end.
+            if len(journals) < 100:
+                break
+
+            # Otherwise, use the JournalNumber of the last journal as the next offset.
+            offset = journals[-1].get("JournalNumber")
+            logger.info(f"Pagination: Fetched {len(journals)} journals, next offset: {offset}")
+
+        logger.info("Completed Xero Journal import & transform with pagination.")
 
     ### 4. Contacts ###
     def get_contacts(self):
-        """
-        Generator that fetches Xero Contacts with optional If-Modified-Since.
-        Single fetch for simplicity.
-        """
-        url = "https://api.xero.com/api.xro/2.0/Contacts"
-        headers = {
-            "Authorization": f"Bearer {self.get_valid_xero_token()}",
-            "xero-tenant-id": self.tenant_id,
-            "Accept": "application/json"
-        }
-        if self.since_date:
-            headers["If-Modified-Since"] = self.since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
-
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json().get("Contacts", [])
-        for contact in data:
-            yield contact
+        return self.get_paginated_results("https://api.xero.com/api.xro/2.0/Contacts", "Contacts")
 
     @transaction.atomic
     def import_xero_contacts(self):
@@ -316,22 +343,7 @@ class XeroDataImporter:
 
     ### 5. Invoices ###
     def get_invoices(self):
-        """
-        Example: fetch Xero invoices. Single fetch for simplicity.
-        """
-        url = "https://api.xero.com/api.xro/2.0/Invoices"
-        headers = {
-            "Authorization": f"Bearer {self.get_valid_xero_token()}",
-            "xero-tenant-id": self.tenant_id,
-            "Accept": "application/json"
-        }
-        if self.since_date:
-            headers["If-Modified-Since"] = self.since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
-
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json().get("Invoices", [])
-        return data
+        return self.get_paginated_results("https://api.xero.com/api.xro/2.0/Invoices", "Invoices")
 
     @transaction.atomic
     def import_xero_invoices(self):
@@ -394,7 +406,7 @@ class XeroDataImporter:
 
         results = []
         page = 1
-        page_size = 1000000  # default page size
+        page_size = 1000000
 
         while True:
             params = {"page": page}
@@ -464,19 +476,7 @@ class XeroDataImporter:
 
     ### 7. Budgets + Budget Period Balances ###
     def get_budgets(self):
-        """
-        Example function: Xero has a 'GET /Budgets' endpoint?
-        This is partially hypothetical.
-        """
-        url = "https://api.xero.com/api.xro/2.0/Budgets"
-        headers = {
-            "Authorization": f"Bearer {self.get_valid_xero_token()}",
-            "xero-tenant-id": self.tenant_id,
-            "Accept": "application/json"
-        }
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json().get("Budgets", [])
+        return self.get_paginated_results("https://api.xero.com/api.xro/2.0/Budgets", "Budgets")
 
     def get_budget_period_balances(self, budget_id: str):
         """
@@ -552,49 +552,26 @@ class XeroDataImporter:
     @transaction.atomic
     def map_xero_general_ledger(self):
         """
-        Recreate Xero General Ledger from the staging tables, 
-        mimicking the SQL logic that deletes old rows and inserts 
-        fresh data, keeping only the newest ingestion_timestamp per line.
-
-        1) DELETE existing XeroGeneralLedger entries.
-        2) Identify the "latest" XeroJournalLines row per (tenant_id, journal_line_id).
-        3) For each such line, left-join to:
-        - XeroConnectionsRaw for tenant_name
-        - XeroJournalLineTrackingCategories for tracking_category
-        - XeroAccountsRaw for account details
-        - XeroInvoicesRaw or XeroBankTransactionsRaw for contact_name
-        4) Build final fields (journal_reference, invoice_description, etc.) 
-        using logic that merges reference + contact_name + description.
-        5) Insert into XeroGeneralLedger, applying the unique constraint 
-        (tenant_id, journal_id, journal_line_id).
-
-        After running, XeroGeneralLedger is fully rebuilt 
-        with only the newest lines per ID.
+        Recreate Xero General Ledger from the staging tables.
         """
         # 1) Delete existing GL rows
         XeroGeneralLedger.objects.all().delete()
 
         # 2) Identify the newest row per (tenant_id, journal_line_id).
-        #    One approach in Python is:
-        #    - gather all lines ordered by ingestion_timestamp desc
-        #    - keep first occurrence of (tenant_id, journal_line_id).
         all_lines = (
             XeroJournalLines.objects
-            .order_by('-journal_date')  
+            .order_by('-journal_date')
         )
         latest_by_line = {}
         for line in all_lines:
             key = (line.tenant_id, line.journal_line_id)
             if key not in latest_by_line:
                 latest_by_line[key] = line
-        
 
         # 3) Build final GL rows
-        gl_objects = []  # We'll collect XeroGeneralLedger objects for insertion.
+        gl_objects = []
 
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
-
-            # b) Lookup tracking category if it exists
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
                     tenant_id=tenant_id,
@@ -603,71 +580,54 @@ class XeroDataImporter:
             except XeroJournalLineTrackingCategories.DoesNotExist:
                 jtc = None
 
-            # c) Lookup account
             try:
                 acct = XeroAccountsRaw.objects.get(
-                    tenant_id=tenant_id, 
+                    tenant_id=tenant_id,
                     account_id=jl.account_id
                 )
             except XeroAccountsRaw.DoesNotExist:
                 acct = None
 
-            # d) Look for invoice or bank to get contact_name & possible description
             contact_name = None
-            invoice_description_fallback = None  # We'll combine with line.description
+            invoice_description_fallback = None
+            # Retrieve invoice metadata for ACCPAY / ACCREC types.
+            invoice_number = None
+            invoice_url = None
             if jl.source_type in ["ACCPAY", "ACCREC"]:
-                # invoice
                 try:
                     inv = XeroInvoicesRaw.objects.get(
                         tenant_id=tenant_id,
                         invoice_id=jl.source_id
                     )
-                    # For example, maybe store contact name in raw_payload
-                    # or perhaps you have separate XeroContactsRaw
                     inv_payload = inv.raw_payload or {}
-                    contact_name = inv_payload.get("Contact", {}).get("Name")  # or however you store it
-                    invoice_description_fallback = inv_payload.get("Description")  # example
+                    contact_name = inv_payload.get("Contact", {}).get("Name")
+                    invoice_description_fallback = inv_payload.get("Description")
+                    invoice_number = inv_payload.get("Reference")
+                    invoice_url = inv_payload.get("Url")
                 except XeroInvoicesRaw.DoesNotExist:
                     pass
             else:
-                # bank or others
                 try:
                     bt = XeroBankTransactionsRaw.objects.get(
                         tenant_id=tenant_id,
                         bank_transaction_id=jl.source_id
                     )
                     bt_payload = bt.raw_payload or {}
-                    # Maybe contact is also stored in bt_payload
-                    # e.g. "Contact": {"Name": "..."}
                     contact_name = bt_payload.get("Contact", {}).get("Name")
                     invoice_description_fallback = bt_payload.get("Description")
                 except XeroBankTransactionsRaw.DoesNotExist:
                     pass
 
-            # e) Build desc_candidate = IFNULL(contact_name + ' - ', '') + jl.description 
-            #    or if jl.description is None => use invoice_description_fallback
-            #    This mimics your "CASE WHEN" logic in SQL.
             desc_candidate = None
             if contact_name or jl.description:
-                # "Base" = contact_name + " - " if contact_name else ""
                 base = (contact_name + " - ") if contact_name else ""
-                # If jl.description is not None, prefer that
                 if jl.description:
                     desc_candidate = base + jl.description
                 else:
-                    # fallback if line description is None
                     desc_candidate = invoice_description_fallback
             else:
-                # if everything is None, desc_candidate = invoice_description_fallback
                 desc_candidate = invoice_description_fallback
 
-            # Now replicate the final logic for journal_reference:
-            # CASE
-            #   WHEN jl.reference == desc_candidate => jl.reference
-            #   WHEN both not None => jl.reference + ' - ' + desc_candidate
-            #   WHEN jl.reference is None => desc_candidate
-            #   ELSE jl.reference
-            # END
             ref = jl.reference
             if ref == desc_candidate:
                 final_journal_reference = ref
@@ -678,11 +638,8 @@ class XeroDataImporter:
             else:
                 final_journal_reference = ref
 
-            # Similarly, "invoice_description" in your SQL is basically desc_candidate, 
-            # or if desc_candidate is None => i.description. We'll treat it similarly:
             invoice_description = desc_candidate if desc_candidate else invoice_description_fallback
 
-            # f) Merge account fields
             if acct:
                 account_code = acct.raw_payload.get("Code") if acct.raw_payload else None
                 account_type = acct.raw_payload.get("Type") if acct.raw_payload else None
@@ -690,12 +647,9 @@ class XeroDataImporter:
                 account_status = acct.status
                 account_tax_type = (acct.raw_payload or {}).get("TaxType")
                 account_class = (acct.raw_payload or {}).get("Class")
-                # etc. ...
-                # If the account's "Class" is 'REVENUE'/'EXPENSE' => statement='PL' else 'BS'
                 acct_class_value = (acct.raw_payload or {}).get("Class", "").upper()
                 statement_val = "PL" if acct_class_value in ["REVENUE", "EXPENSE"] else "BS"
             else:
-                # fallback to line fields or None
                 account_code = jl.account_code
                 account_type = jl.account_type
                 account_name = jl.account_name
@@ -704,13 +658,10 @@ class XeroDataImporter:
                 account_class = None
                 statement_val = None
 
-            # g) Build the XeroGeneralLedger record 
             gl_obj = XeroGeneralLedger(
-                org=self.integration.org,  # If you have an Organisation or link in your code
+                org=self.integration.org,
                 tenant_id=tenant_id,
                 tenant_name=self.integration.org.name,
-
-
                 journal_id=jl.journal_id,
                 journal_number=(int(jl.journal_number) if jl.journal_number else None),
                 journal_date=jl.journal_date,
@@ -728,45 +679,30 @@ class XeroDataImporter:
                 account_status=account_status,
                 account_tax_type=account_tax_type,
                 account_class=account_class,
-                # For clarity, you might define more fields from the account model
                 statement=statement_val,
-                bank_account_type=None,  # or from account, if stored
+                bank_account_type=None,
                 journal_line_description=jl.description,
                 net_amount=jl.net_amount,
                 gross_amount=jl.gross_amount,
                 tax_amount=jl.tax_amount,
-                invoice_number=None,     # set if you want to store an invoice number
-                invoice_url=None         # set if you want to store an invoice URL
+                invoice_number=invoice_number,
+                invoice_url=invoice_url
             )
-            # If you want that "invoice_description" etc. 
-            # (You haven't shown those fields in your XeroGeneralLedger model, 
-            #  so either add them or skip.)
             gl_objects.append(gl_obj)
 
-        # 4) Bulk insert all GL rows
         XeroGeneralLedger.objects.bulk_create(gl_objects)
-
         logger.info(f"map_xero_general_ledger: Inserted {len(gl_objects)} rows (latest lines only).")
 
     ### 8. Master function to import everything ###
     @transaction.atomic
     def import_xero_data(self):
         """
-        Master function to import all Xero data we care about:
-        1) Chart of Accounts
-        2) Journal lines
-        3) Contacts
-        4) Invoices
-        5) Bank Transactions
-        6) Budgets
-        7) General Ledger
+        Master function to import all Xero data we care about.
         """
-        logger.info("Starting full Xero data import...")
-
         # 1. Accounts
         self.sync_xero_chart_of_accounts()
 
-        # 2. Journal Lines
+        # 2. Journal Lines (with pagination)
         self.import_xero_journal_lines()
 
         # 3. Contacts
@@ -785,5 +721,3 @@ class XeroDataImporter:
         self.map_xero_general_ledger()
 
         logger.info("Finished full Xero data import successfully.")
-
-

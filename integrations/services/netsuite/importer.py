@@ -17,6 +17,10 @@ from integrations.models.netsuite.analytics import (
     NetSuiteTransactionLine,
     NetSuiteTransactionAccountingLine,
 )
+from decimal import Decimal, InvalidOperation
+from dateutil import tz
+from dateutil.parser import parse as dateutil_parse
+
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +33,10 @@ def bool_from_str(val: Optional[str]) -> bool:
     return val_upper in ('T', 'TRUE', 'YES')
 
 
-def decimal_or_none(val: Optional[str]) -> Optional[float]:
-    """Convert string to float, return None if invalid."""
-    if val is None or val == '':
-        return None
+def decimal_or_none(value):
     try:
-        return float(val)
-    except (ValueError, TypeError):
+        return Decimal(value) if value is not None else None
+    except (InvalidOperation, TypeError):
         return None
 
 
@@ -222,9 +223,9 @@ class NetSuiteImporter:
         query = "SELECT * FROM entity"
         rows = list(self.client.execute_suiteql(query))
 
-        # Filter rows based on today's last modified date
         today = timezone.now().date()
         filtered_rows = [r for r in rows if self.parse_datetime(r.get("lastmodifieddate")).date() == today]
+
 
         for r in filtered_rows:
             try:
@@ -447,7 +448,7 @@ class NetSuiteImporter:
             VOID,
             VOIDED,
             CUSTBODY_NEXUS_NOTC,
-            MEMO,
+            MEMO
         FROM Transaction
         WHERE ID > {min_id}
         ORDER BY ID ASC
@@ -456,12 +457,11 @@ class NetSuiteImporter:
         today = timezone.now().date()
         filtered_rows = [
             r for r in rows 
-            if self.parse_datetime(r.get("LASTMODIFIEDDATE")) and 
-            self.parse_datetime(r.get("LASTMODIFIEDDATE")).date() == today
+            # if self.parse_datetime(r.get("LASTMODIFIEDDATE")) and 
+            # self.parse_datetime(r.get("LASTMODIFIEDDATE")).date() == today
         ]
 
         logger.info(f"Fetched {len(rows)} transactions, importing {len(filtered_rows)} modified today.")
-
         for r in filtered_rows:
             try:
                 transaction_id = r.get("id")
@@ -469,65 +469,65 @@ class NetSuiteImporter:
                     logger.warning(f"Transaction row missing 'ID': {r}")
                     continue
 
-                last_modified = self.parse_datetime(r.get("LASTMODIFIEDDATE"))
+                last_modified = self.parse_datetime(r.get("lastmodifieddate"))
 
                 NetSuiteTransactions.objects.update_or_create(
                     transactionid=str(transaction_id),
+                    company_name=self.org,
                     defaults={
-                        "links": r.get("LINKS"),
-                        "abbrevtype": r.get("ABBREVTYPE"),
-                        "approvalstatus": r.get("APPROVALSTATUS"),
-                        "balsegstatus": r.get("BALSEGSTATUS"),
-                        "billingstatus": r.get("BILLINGSTATUS"),
-                        "closedate": self.parse_date(r.get("CLOSEDATE")),
-                        "createdby": r.get("CREATEDBY"),
-                        "createddate": self.parse_date(r.get("CREATEDDATE")),
-                        "currency": r.get("CURRENCY"),
-                        "custbody5": r.get("CUSTBODY5"),
-                        "custbody_cash_register": r.get("CUSTBODY_CASH_REGISTER"),
-                        "custbody_nondeductible_processed": r.get("CUSTBODY_NONDEDUCTIBLE_PROCESSED"),
-                        "custbody_report_timestamp": self.parse_datetime(r.get("CUSTBODY_REPORT_TIMESTAMP")),
-                        "custbody_wrong_subs": r.get("CUSTBODY_WRONG_SUBS"),
-                        "customtype": r.get("CUSTOMTYPE"),
-                        "daysopen": r.get("DAYSOPEN"),
-                        "daysoverduesearch": r.get("DAYSOVERDUESEARCH"),
-                        "duedate": self.parse_date(r.get("DUEDATE")),
-                        "entity": r.get("ENTITY"),
-                        "exchangerate": r.get("EXCHANGERATE"),
-                        "externalid": r.get("EXTERNALID"),
-                        "foreignamountpaid": r.get("FOREIGNAMOUNTPAID"),
-                        "foreignamountunpaid": r.get("FOREIGNAMOUNTUNPAID"),
-                        "foreigntotal": r.get("FOREIGNTOTAL"),
-                        "number": r.get("NUMBER"),
-                        "intercoadj": r.get("INTERCOADJ"),
-                        "isfinchrg": r.get("ISFINCHRG"),
-                        "isreversal": r.get("ISREVERSAL"),
-                        "lastmodifiedby": r.get("LASTMODIFIEDBY"),
+                        "links": r.get("links"),
+                        "abbrevtype": r.get("abbrevtype"),
+                        "approvalstatus": r.get("approvalstatus"),
+                        "balsegstatus": r.get("balsegstatus"),
+                        "billingstatus": r.get("billingstatus"),
+                        "closedate": self.parse_date(r.get("closedate")),
+                        "createdby": r.get("createdby"),
+                        "createddate": self.parse_date(r.get("createddate")),
+                        "currency": r.get("currency"),
+                        "custbody5": r.get("custbody5"),
+                        "custbody_cash_register": r.get("custbody_cash_register"),
+                        "custbody_nondeductible_processed": r.get("custbody_nondeductible_processed"),
+                        "custbody_report_timestamp": self.parse_datetime(r.get("custbody_report_timestamp")),
+                        "custbody_wrong_subs": r.get("custbody_wrong_subs"),
+                        "customtype": r.get("customtype"),
+                        "daysopen": r.get("daysopen"),
+                        "daysoverduesearch": r.get("daysoverduesearch"),
+                        "duedate": self.parse_date(r.get("duedate")),
+                        "entity": r.get("entity"),
+                        "exchangerate": decimal_or_none(r.get("exchangerate")),
+                        "externalid": r.get("externalid"),
+                        "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
+                        "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
+                        "foreigntotal": decimal_or_none(r.get("foreigntotal")),
+                        "number": decimal_or_none(r.get("number")),
+                        "intercoadj": r.get("intercoadj"),
+                        "isfinchrg": r.get("isfinchrg"),
+                        "isreversal": r.get("isreversal"),
+                        "lastmodifiedby": r.get("lastmodifiedby"),
                         "lastmodifieddate": last_modified,
-                        "nexus": r.get("NEXUS"),
-                        "ordpicked": r.get("ORDPICKED"),
-                        "paymenthold": r.get("PAYMENTHOLD"),
-                        "posting": r.get("POSTING"),
-                        "postingperiod": r.get("POSTINGPERIOD"),
-                        "printedpickingticket": r.get("PRINTEDPICKINGTICKET"),
-                        "recordtype": r.get("RECORDTYPE"),
-                        "source": r.get("SOURCE"),
-                        "status": r.get("STATUS"),
-                        "subsidiary": r.get("SUBSIDIARY"),
-                        "terms": r.get("TERMS"),
-                        "tobeprinted": r.get("TOBEPRINTED"),
-                        "trandate": self.parse_date(r.get("TRANDATE")),
-                        "trandisplayname": r.get("TRANDISPLAYNAME"),
-                        "tranid": r.get("TRANID"),
-                        "transactionnumber": r.get("TRANSACTIONNUMBER"),
-                        "type": r.get("TYPE"),
-                        "userevenuearrangement": r.get("USEREVENUEARRANGEMENT"),
-                        "visibletocustomer": r.get("VISIBLETOCUSTOMER"),
-                        "void_field": r.get("VOID"),
-                        "voided": r.get("VOIDED"),
-                        "custbody_nexus_notc": r.get("CUSTBODY_NEXUS_NOTC"),
-                        "memo": r.get("MEMO"),
-                        "consolidation_key": r.get("CONSOLIDATION_KEY"),
+                        "nexus": r.get("nexus"),
+                        "ordpicked": r.get("ordpicked"),
+                        "paymenthold": r.get("paymenthold"),
+                        "posting": r.get("posting"),
+                        "postingperiod": r.get("postingperiod"),
+                        "printedpickingticket": r.get("printedpickingticket"),
+                        "recordtype": r.get("recordtype"),
+                        "source": r.get("source"),
+                        "status": r.get("status"),
+                        "subsidiary": r.get("subsidiary"),
+                        "terms": r.get("terms"),
+                        "tobeprinted": r.get("tobeprinted"),
+                        "trandate": self.parse_date(r.get("trandate")),
+                        "trandisplayname": r.get("trandisplayname"),
+                        "tranid": r.get("tranid"),
+                        "transactionnumber": r.get("transactionnumber"),
+                        "type": r.get("type"),
+                        "userevenuearrangement": r.get("userevenuearrangement"),
+                        "visibletocustomer": r.get("visibletocustomer"),
+                        "void_field": r.get("void"),
+                        "voided": r.get("voided"),
+                        "custbody_nexus_notc": r.get("custbody_nexus_notc"),
+                        "memo": r.get("memo"),
                         "record_date": last_modified,
                     }
                 )
@@ -987,13 +987,35 @@ class NetSuiteImporter:
             return None
 
     def parse_datetime(self, datetime_str: Optional[str]) -> Optional[timezone.datetime]:
-        """Parses a datetime string into a datetime object."""
+        """Parses a datetime string into a datetime object.
+        
+        Attempts several formats in order to capture timestamps with/without time information.
+        If no format matches, it falls back to dateutil's parser.
+        """
         if not datetime_str:
             return None
+
+        # Define possible datetime formats.
+        formats = [
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M:%S.%f",  # With microseconds if present.
+            "%d/%m/%Y"
+        ]
+        
+        # Try each format
+        for fmt in formats:
+            try:
+                dt = timezone.datetime.strptime(datetime_str, fmt)
+                return dt.replace(tzinfo=tz.tzutc())
+            except ValueError:
+                continue
+
+        # Fallback: try using dateutil parser if none of the above formats matched.
         try:
-            return timezone.datetime.strptime(datetime_str, "%d/%m/%Y").replace(tzinfo=tz.utc)
-        except ValueError:
-            logger.warning(f"Failed to parse datetime: {datetime_str}")
+            dt = dateutil_parse(datetime_str)
+            return dt.astimezone(tz.tzutc())
+        except Exception as e:
+            logger.warning(f"Failed to parse datetime with fallback: {datetime_str} - {e}")
             return None
 
     def get_quarter(self, month: Optional[int]) -> Optional[int]:

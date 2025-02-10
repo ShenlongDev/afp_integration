@@ -111,7 +111,7 @@ class NetSuiteTransactions(models.Model):
     exchangerate = models.FloatField(null=True, blank=True)
     foreignamountpaid = models.FloatField(null=True, blank=True)
     foreignamountunpaid = models.FloatField(null=True, blank=True)
-    number = models.BigIntegerField(null=True, blank=True)
+    number = models.DecimalField(max_digits=50, decimal_places=20, null=True, blank=True)
     nexus = models.BigIntegerField(null=True, blank=True)
     
     # This field is defined as VARCHAR(255) NOT NULL in the table.
