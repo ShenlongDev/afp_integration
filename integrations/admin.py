@@ -55,8 +55,9 @@ class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
     search_fields = ('company_name', 'transaction_id', 'line_id', 'account', 'amount', 'debit', 'credit', 'net_amount', 'last_modified_date', 'record_date')
     
 class NetSuiteTransactionLinesAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'transaction_id')
-    search_fields = ('company_name', 'transaction_id')
+    list_display = ('company_name', 'transaction_id', 'subsidiary')
+    search_fields = ('company_name', 'transaction_id', 'subsidiary')
+
 
 
 class NetSuiteAccountingPeriodsAdmin(admin.ModelAdmin):
@@ -89,8 +90,8 @@ class NetSuiteJournalsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteTransactionsAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'abbrevtype', 'createdby', 'transactionid')
-    search_fields = ('company_name', 'abbrevtype', 'createdby', 'transactionid')
+    list_display = ('company_name', 'abbrevtype', 'createdby', 'transactionid', 'subsidiary')
+    search_fields = ('company_name', 'abbrevtype', 'createdby', 'transactionid', 'subsidiary')
 
 
 class NetSuiteVendorsAdmin(admin.ModelAdmin):

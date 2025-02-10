@@ -20,6 +20,7 @@ from integrations.models.netsuite.analytics import (
 from decimal import Decimal, InvalidOperation
 from dateutil import tz
 from dateutil.parser import parse as dateutil_parse
+from datetime import datetime, date
 
 
 logger = logging.getLogger(__name__)
@@ -241,8 +242,9 @@ class NetSuiteImporter:
         query = "SELECT * FROM entity"
         rows = list(self.client.execute_suiteql(query))
 
-        today = timezone.now().date()
-        filtered_rows = [r for r in rows if self.parse_datetime(r.get("lastmodifieddate")).date() == today]
+        # today = timezone.now().date()
+        filtered_rows = [r for r in rows]
+        print(f"Importing {len(filtered_rows)} entities, {filtered_rows[:20]}.")
 
 
         for r in filtered_rows:
@@ -358,7 +360,6 @@ class NetSuiteImporter:
             OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
             """
             rows = list(self.client.execute_suiteql(query))
-            print(f"Importing {len(rows)} accounts at offset {offset} and {rows[:20]}.")
 
             if not rows:
                 break
@@ -374,26 +375,26 @@ class NetSuiteImporter:
                         account_id=account_id,
                         defaults={
                             "company_name": self.org_name,
-                            "acctnumber": r.get("ACCTNUMBER"),
-                            "accountsearchdisplaynamecopy": r.get("ACCOUNTSEARCHDISPLAYNAMECOPY"),
-                            "fullname": r.get("FULLNAME"),
-                            "accountsearchdisplayname": r.get("ACCOUNTSEARCHDISPLAYNAME"),
-                            "displaynamewithhierarchy": r.get("DISPLAYNAMEWITHHIERARCHY"),
-                            "parent": r.get("PARENT"),
-                            "accttype": r.get("ACCTTYPE"),
-                            "sspecacct": r.get("SSPECACCT"),
-                            "description": r.get("DESCRIPTION"),
-                            "eliminate": bool_from_str(r.get("ELIMINATE")),
-                            "externalid": r.get("EXTERNALID"),
-                            "include_children": bool_from_str(r.get("INCLUDECHILDREN")),
-                            "inventory": bool_from_str(r.get("INVENTORY")),
-                            "is_inactive": bool_from_str(r.get("ISINACTIVE")),
-                            "is_summary": bool_from_str(r.get("ISSUMMARY")),
-                            "last_modified_date": self.parse_datetime(r.get("LASTMODIFIEDDATE")),
-                            "reconcile_with_matching": bool_from_str(r.get("RECONCILEWITHMATCHING")),
-                            "revalue": bool_from_str(r.get("REVALUE")),
-                            "subsidiary": r.get("SUBSIDIARY"),
-                            "balance": decimal_or_none(r.get("BALANCE")),
+                            "acctnumber": r.get("acctnumber"),
+                            "accountsearchdisplaynamecopy": r.get("accountsearchdisplaynamecopy"),
+                            "fullname": r.get("fullname"),
+                            "accountsearchdisplayname": r.get("accountsearchdisplayname"),
+                            "displaynamewithhierarchy": r.get("displaynamewithhierarchy"),
+                            "parent": r.get("parent"),
+                            "accttype": r.get("accttype"),
+                            "sspecacct": r.get("sspecacct"),
+                            "description": r.get("description"),
+                            "eliminate": bool_from_str(r.get("eliminate")),
+                            "externalid": r.get("externalid"),
+                            "include_children": bool_from_str(r.get("includechildren")),
+                            "inventory": bool_from_str(r.get("inventory")),
+                            "is_inactive": bool_from_str(r.get("isinactive")),
+                            "is_summary": bool_from_str(r.get("issummary")),
+                            "last_modified_date": self.parse_datetime(r.get("lastmodifieddate")),
+                            "reconcile_with_matching": bool_from_str(r.get("reconcilewithmatching")),
+                            "revalue": bool_from_str(r.get("revalue")),
+                            "subsidiary": r.get("subsidiary"),
+                            "balance": decimal_or_none(r.get("balance")),
                             "record_date": self.now_ts,
                         }
                     )
@@ -482,14 +483,14 @@ class NetSuiteImporter:
         ORDER BY ID ASC
         """
         rows = list(self.client.execute_suiteql(query))
-        today = timezone.now().date()
+        # today = timezone.now().date()
         filtered_rows = [
             r for r in rows 
-            if self.parse_datetime(r.get("LASTMODIFIEDDATE")) and 
-            self.parse_datetime(r.get("LASTMODIFIEDDATE")).date() == today
+            # if self.parse_datetime(r.get("LASTMODIFIEDDATE")) and 
+            # self.parse_datetime(r.get("LASTMODIFIEDDATE")).date() == today
         ]
 
-        logger.info(f"Fetched {len(rows)} transactions, importing {len(filtered_rows)} modified today.")
+        logger.info(f"importing {len(filtered_rows)} modified today, with {filtered_rows[:20]}.")
         for r in filtered_rows:
             try:
                 transaction_id = r.get("id")
@@ -571,76 +572,86 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     def make_aware_datetime(self, dt):
         """
-        Converts a naive datetime to an aware datetime using the current timezone.
-        If dt is already aware or is None, returns it unchanged.
+        Ensures that the provided date/time object is timezone-aware.
+        If a plain date is provided, it is combined with midnight to create a datetime.
         """
-        if dt is None:
+        from django.utils.timezone import make_aware
+
+        if not dt:
             return None
+
+        # If dt is a date (and not a datetime), combine it with a default time (midnight)
+        if isinstance(dt, date) and not isinstance(dt, datetime):
+            dt = datetime.combine(dt, datetime.min.time())
+
+        # Now if dt is naive (tzinfo is None), make it aware using Django's make_aware.
         if dt.tzinfo is None:
-            return timezone.make_aware(dt, timezone.get_current_timezone())
+            dt = make_aware(dt)
+        
         return dt
+
 
     @transaction.atomic
     def map_net_suite_general_ledger(self):
         """
-        Map data from NetSuiteTransactions (header records) plus 
-        NetSuiteTransactionAccountingLine (detail lines) into NetSuiteGeneralLedger.
-
-        Because the NetSuiteTransactions model doesn't have an 'account' or 
-        'acctnumber', we rely on line-level data from NetSuiteTransactionAccountingLine
-        for debits, credits, accounts, etc.
-
-        Steps:
-        1) For each transaction:
-            a) Retrieve all accounting lines from NetSuiteTransactionAccountingLine 
-               where transaction=transactionid.
-            b) For each line:
-                - Convert line.account (BigInteger) to a string
-                - If that exists in NetSuiteAccounts.account_id, fetch the account record 
-                  for additional details (like .acctnumber or .fullname).
-                - Insert/Update a GL entry with line's monetary values.
-            c) If no lines, optionally create a fallback GL entry with empty monetary fields.
+        Rebuild NetSuite General Ledger (GL) records by mapping header transaction data 
+        (from NetSuiteTransactions) together with detail accounting line data (from 
+        NetSuiteTransactionAccountingLine) and additional account details (from NetSuiteAccounts).
+        
+        For each transaction header:
+        1. Retrieve its accounting lines (detail lines) where the accounting line's 
+            'transaction' field equals the header's transactionid.
+        2. For each accounting line:
+            - Convert the numeric account value to a string (account_str).
+            - Look up a matching account in NetSuiteAccounts using account_str.
+            - Determine the GL account (and acctnumber) from the matching record if found.
+            - Use the accounting line's transaction_line value as the sequence number
+            (defaulting to 0 if not present).
+            - Compute a unique key as "{transactionid}-{line_sequence}".
+            - Compute a "yearperiod" from the transaction header's trandate.
+            - Map header fields (abbrevtype, approvalstatus, postingperiod, trandate, subsidiary, currency,
+            exchangerate, record_date) and the accounting line's monetary fields (amount, debit, credit, netamount).
+        3. If no accounting lines exist, create a fallback GL entry using header data.
+        
+        The update_or_create call uses (company_name, transactionid, linesequencenumber) as the unique constraint.
         """
         logger.info("Mapping NetSuite General Ledger from Transactions + Accounting Lines...")
         total_mapped = 0
 
-        # Retrieve all transactions
         transactions = NetSuiteTransactions.objects.all()
 
         for txn in transactions:
-            # All lines that belong to this transaction
+            print(f"mapping {txn.transactionid} with {txn.subsidiary}.")
+            # Retrieve all accounting lines (detail records) for this transaction
             lines = NetSuiteTransactionAccountingLine.objects.filter(transaction=txn.transactionid)
-
             if lines.exists():
-                # -- Create/Update a GL record for each line
                 for line in lines:
-                    logger.info(f"Processing line: {line.account}")
                     try:
-                        # Convert numeric 'account' to string to match NetSuiteAccounts.account_id
+                        # Convert numeric account to string so it can be matched against NetSuiteAccounts.account_id
                         account_str = str(line.account) if line.account is not None else None
-
-                        # If we can find a matching account record, fetch it
                         account_obj = None
                         if account_str:
                             try:
                                 account_obj = NetSuiteAccounts.objects.get(account_id=account_str)
                             except NetSuiteAccounts.DoesNotExist:
-                                pass
-
-                        # Decide what to store in the GL's "account" field
+                                account_obj = None
+                        # Use account_str as the GL account; if available, get acctnumber from the account record.
                         gl_account = account_str
-
-                        # For the GL 'acctnumber' field,
-                        # use account_obj.acctnumber if available; otherwise, use account_str.
                         acct_number = account_obj.acctnumber if (account_obj and account_obj.acctnumber) else account_str
 
-                        # Monetary fields come directly from line-level data
+                        # Use the accounting line's transaction_line as the sequence number (default to 0)
+                        line_seq = line.transaction_line if getattr(line, "transaction_line", None) else 0
+
+                        # Compute a unique key from the header and the line sequence
+                        unique_key = f"{txn.transactionid}-{line_seq}"
+                        # Compute the year period (e.g. using the year from txn.trandate)
+                        year_period = txn.trandate.year if txn.trandate else None
+
                         defaults = {
                             'abbrevtype':     txn.abbrevtype,
                             'approvalstatus': txn.approvalstatus,
                             'postingperiod':  txn.postingperiod,
-                            # Convert txn.trandate to an aware datetime
-                            'trandate':       self.make_aware_datetime(txn.trandate),  
+                            'trandate':       self.make_aware_datetime(txn.trandate),
                             'subsidiary':     txn.subsidiary,
                             'account':        gl_account,
                             'acctnumber':     acct_number,
@@ -650,17 +661,12 @@ class NetSuiteImporter:
                             'netamount':      line.netamount,
                             'currency':       txn.currency,
                             'exchangerate':   txn.exchangerate,
-                            # Use line.lastmodifieddate if present; otherwise use txn.record_date.
-                            # Make sure the resulting datetime is aware.
-                            'record_date':    self.make_aware_datetime(
-                                line.lastmodifieddate if line.lastmodifieddate else txn.record_date
-                            ),
+                            'record_date':    self.make_aware_datetime(line.lastmodifieddate if line.lastmodifieddate else txn.record_date),
+                            'uniquekey':      unique_key,
+                            'lineid':         str(line.id),
+                            'yearperiod':     year_period,
                         }
 
-                        # Use the line's transaction_line as the 'linesequencenumber'
-                        line_seq = line.transaction_line if line.transaction_line else 0
-
-                        # Insert/update the GL record
                         gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
                             company_name=txn.company_name,
                             transactionid=txn.transactionid,
@@ -668,20 +674,20 @@ class NetSuiteImporter:
                             defaults=defaults
                         )
                         total_mapped += 1
-
                         if created:
                             logger.info(f"Created GL entry: Txn={txn.transactionid}, line_seq={line_seq}")
                         else:
                             logger.info(f"Updated GL entry: Txn={txn.transactionid}, line_seq={line_seq}")
                     except Exception as e:
                         logger.error(
-                            f"Error mapping Txn={txn.transactionid}, line={line.transaction_line}: {e}",
+                            f"Error mapping Txn={txn.transactionid}, line={getattr(line, 'transaction_line', 'N/A')}: {e}",
                             exc_info=True
                         )
-
             else:
-                # -- If no lines exist, create one fallback GL entry (optional)
+                # Fallback GL entry when no accounting lines exist.
                 try:
+                    unique_key = f"{txn.transactionid}-0"
+                    year_period = txn.trandate.year if txn.trandate else None
                     defaults = {
                         'abbrevtype':     txn.abbrevtype,
                         'approvalstatus': txn.approvalstatus,
@@ -697,8 +703,10 @@ class NetSuiteImporter:
                         'currency':       txn.currency,
                         'exchangerate':   txn.exchangerate,
                         'record_date':    self.make_aware_datetime(txn.record_date),
+                        'uniquekey':      unique_key,
+                        'lineid':         '0',
+                        'yearperiod':     year_period,
                     }
-
                     gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
                         company_name=txn.company_name,
                         transactionid=txn.transactionid,
@@ -706,7 +714,6 @@ class NetSuiteImporter:
                         defaults=defaults
                     )
                     total_mapped += 1
-
                     if created:
                         logger.info(f"Created fallback GL entry: Txn={txn.transactionid} (no lines)")
                     else:
@@ -920,8 +927,6 @@ class NetSuiteImporter:
 
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported {total_imported} Transaction Accounting Lines successfully.")
-
-
 
 
 

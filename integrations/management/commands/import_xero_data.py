@@ -20,10 +20,18 @@ class Command(BaseCommand):
             type=str,
             help='Optional date to filter data since (format: YYYY-MM-DD)'
         )
+        parser.add_argument(
+            '--components',
+            nargs='+',
+            type=str,
+            help='Specific components to import (e.g., accounts journal_lines contacts invoices bank_transactions budgets general_ledger)',
+            required=False
+        )
 
     def handle(self, *args, **options):
         integration_id = options.get('integration_id')
         since_date_str = options.get('since')
+        components = options.get('components')
 
         # Set default since_date to today's date if not provided
         if since_date_str:
@@ -54,14 +62,32 @@ class Command(BaseCommand):
             )
             if not integrations.exists():
                 self.stdout.write(self.style.WARNING("No integrations found with Xero credentials."))
+                return
 
         for integration in integrations:
             self.stdout.write(f"Importing data for Integration ID: {integration.id}")
             try:
                 xero = XeroDataImporter(integration, since_date)
-                xero.import_xero_data()
-                self.stdout.write(self.style.SUCCESS(f"Xero data imported successfully for Integration ID: {integration.id}."))
+                # If components are specified, run only those, else run full import
+                if components:
+                    import_methods = {
+                        'accounts': xero.sync_xero_chart_of_accounts,
+                        'journal_lines': xero.import_xero_journal_lines,
+                        'contacts': xero.import_xero_contacts,
+                        'invoices': xero.import_xero_invoices,
+                        'bank_transactions': xero.import_xero_bank_transactions,
+                        'budgets': xero.import_xero_budgets,
+                        'general_ledger': xero.map_xero_general_ledger,
+                    }
+                    for component in components:
+                        if component in import_methods:
+                            self.stdout.write(f"Importing {component}...")
+                            import_methods[component]()
+                            self.stdout.write(self.style.SUCCESS(f"Successfully imported {component}."))
+                        else:
+                            self.stdout.write(self.style.WARNING(f"Unknown component: {component}. Skipping."))
+                else:
+                    xero.import_xero_data()
+                    self.stdout.write(self.style.SUCCESS(f"Xero data imported successfully for Integration ID: {integration.id}."))
             except Exception as e:
-
-
                 self.stdout.write(self.style.ERROR(f"Error importing Xero data for Integration ID {integration.id}: {str(e)}"))
