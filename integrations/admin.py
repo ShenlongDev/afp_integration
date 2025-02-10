@@ -47,7 +47,7 @@ from integrations.models.netsuite.analytics import (
 
 class SyncTableLogsAdmin(admin.ModelAdmin):
     list_display = ('module_name', 'integration', 'organization', 'fetched_records', 'last_updated_time', 'last_updated_date')
-    search_fields = ('module_name', 'integration__org__name', 'organization__name')
+    search_fields = ('module_name', 'integration__org__name', 'organization__name', 'organization')
 
 class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
     list_display = ('company_name', 'transaction_id', 'line_id', 'account', 'amount', 'debit', 'credit', 'net_amount', 'last_modified_date', 'record_date')
