@@ -160,7 +160,7 @@ JAZZMIN_SETTINGS = {
     "sidebar_hideable": True,
     "show_ui_builder": True,
     "hide_apps": [],
-    "hide_models": ["auth.google", "auth.group", "auth.permission", "authtoken.tokenproxy"],
+    "hide_models": ["auth.google", "auth.group", "auth.permission", "authtoken.tokenproxy", "google"],
     # "order_with_respect_to": ["auth", "restapp", "payment"],
     "custom_links": {
         "auth": [{
