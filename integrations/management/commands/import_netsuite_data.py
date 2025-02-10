@@ -94,7 +94,7 @@ class Command(BaseCommand):
                         'departments': importer.import_departments,
                         'entities': importer.import_entities,
                         'accounting_periods': importer.import_accounting_periods,
-                        'general_ledger': importer.map_net_suite_general_ledger,
+                        # 'general_ledger': importer.map_net_suite_general_ledger,
                     }
 
                     if not components:

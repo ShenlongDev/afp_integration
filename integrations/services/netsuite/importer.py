@@ -565,6 +565,17 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 8) Import General Ledger
     # ------------------------------------------------------------
+    def make_aware_datetime(self, dt):
+        """
+        Converts a naive datetime to an aware datetime using the current timezone.
+        If dt is already aware or is None, returns it unchanged.
+        """
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return timezone.make_aware(dt, timezone.get_current_timezone())
+        return dt
+
     @transaction.atomic
     def map_net_suite_general_ledger(self):
         """
@@ -578,11 +589,11 @@ class NetSuiteImporter:
         Steps:
         1) For each transaction:
             a) Retrieve all accounting lines from NetSuiteTransactionAccountingLine 
-                where transaction=transactionid.
+               where transaction=transactionid.
             b) For each line:
                 - Convert line.account (BigInteger) to a string
                 - If that exists in NetSuiteAccounts.account_id, fetch the account record 
-                for additional details (like .acctnumber or .fullname).
+                  for additional details (like .acctnumber or .fullname).
                 - Insert/Update a GL entry with line's monetary values.
             c) If no lines, optionally create a fallback GL entry with empty monetary fields.
         """
@@ -599,7 +610,7 @@ class NetSuiteImporter:
             if lines.exists():
                 # -- Create/Update a GL record for each line
                 for line in lines:
-                    print(f"Processing line: {line.account}")
+                    logger.info(f"Processing line: {line.account}")
                     try:
                         # Convert numeric 'account' to string to match NetSuiteAccounts.account_id
                         account_str = str(line.account) if line.account is not None else None
@@ -613,40 +624,33 @@ class NetSuiteImporter:
                                 pass
 
                         # Decide what to store in the GL's "account" field
-                        # - If you want to store the actual numeric ID, use account_str
-                        # - If you prefer the 'account_id' from account_obj, also account_str (same thing)
-                        # - If you want a more descriptive field, e.g. 'acctnumber' from the account record, see below
                         gl_account = account_str
 
-                        # For the GL 'acctnumber' field, you could store the
-                        # NetSuiteAccounts.acctnumber or the account_id. Choose whichever is meaningful.
+                        # For the GL 'acctnumber' field,
+                        # use account_obj.acctnumber if available; otherwise, use account_str.
                         acct_number = account_obj.acctnumber if (account_obj and account_obj.acctnumber) else account_str
 
                         # Monetary fields come directly from line-level data
                         defaults = {
-                            'abbrevtype':        txn.abbrevtype,
-                            'approvalstatus':    txn.approvalstatus,
-                            'postingperiod':     txn.postingperiod,
-                            # net date => if your transaction date is a DateField, 
-                            # Django will convert automatically to DateTime for the GL.
-                            'trandate':          txn.trandate,  
-                            'subsidiary':        txn.subsidiary,
-
-                            # The 'account' field in NetSuiteGeneralLedger is a CharField
-                            'account':           gl_account,
-                            'acctnumber':        acct_number,
-
-                            'amount':            line.amount,
-                            'debit':             line.debit,
-                            'credit':            line.credit,
-                            'netamount':         line.netamount,
-
-                            # Pull currency and exchange rate from the transaction header
-                            'currency':          txn.currency,
-                            'exchangerate':      txn.exchangerate,
-
-                            # record_date => prefer line.lastmodifieddate if present
-                            'record_date':       line.lastmodifieddate if line.lastmodifieddate else txn.record_date,
+                            'abbrevtype':     txn.abbrevtype,
+                            'approvalstatus': txn.approvalstatus,
+                            'postingperiod':  txn.postingperiod,
+                            # Convert txn.trandate to an aware datetime
+                            'trandate':       self.make_aware_datetime(txn.trandate),  
+                            'subsidiary':     txn.subsidiary,
+                            'account':        gl_account,
+                            'acctnumber':     acct_number,
+                            'amount':         line.amount,
+                            'debit':          line.debit,
+                            'credit':         line.credit,
+                            'netamount':      line.netamount,
+                            'currency':       txn.currency,
+                            'exchangerate':   txn.exchangerate,
+                            # Use line.lastmodifieddate if present; otherwise use txn.record_date.
+                            # Make sure the resulting datetime is aware.
+                            'record_date':    self.make_aware_datetime(
+                                line.lastmodifieddate if line.lastmodifieddate else txn.record_date
+                            ),
                         }
 
                         # Use the line's transaction_line as the 'linesequencenumber'
@@ -662,13 +666,9 @@ class NetSuiteImporter:
                         total_mapped += 1
 
                         if created:
-                            logger.info(
-                                f"Created GL entry: Txn={txn.transactionid}, line_seq={line_seq}"
-                            )
+                            logger.info(f"Created GL entry: Txn={txn.transactionid}, line_seq={line_seq}")
                         else:
-                            logger.info(
-                                f"Updated GL entry: Txn={txn.transactionid}, line_seq={line_seq}"
-                            )
+                            logger.info(f"Updated GL entry: Txn={txn.transactionid}, line_seq={line_seq}")
                     except Exception as e:
                         logger.error(
                             f"Error mapping Txn={txn.transactionid}, line={line.transaction_line}: {e}",
@@ -678,26 +678,21 @@ class NetSuiteImporter:
             else:
                 # -- If no lines exist, create one fallback GL entry (optional)
                 try:
-                    # Because there's no line-level info, we can't get account from the transaction
-                    # => store them as None or your chosen default
                     defaults = {
                         'abbrevtype':     txn.abbrevtype,
                         'approvalstatus': txn.approvalstatus,
                         'postingperiod':  txn.postingperiod,
-                        'trandate':       txn.trandate,
+                        'trandate':       self.make_aware_datetime(txn.trandate),
                         'subsidiary':     txn.subsidiary,
-
                         'account':        None,
                         'acctnumber':     None,
-
                         'amount':         None,
                         'debit':          None,
                         'credit':         None,
                         'netamount':      None,
-
                         'currency':       txn.currency,
                         'exchangerate':   txn.exchangerate,
-                        'record_date':    txn.record_date,
+                        'record_date':    self.make_aware_datetime(txn.record_date),
                     }
 
                     gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
@@ -709,13 +704,9 @@ class NetSuiteImporter:
                     total_mapped += 1
 
                     if created:
-                        logger.info(
-                            f"Created fallback GL entry: Txn={txn.transactionid} (no lines)"
-                        )
+                        logger.info(f"Created fallback GL entry: Txn={txn.transactionid} (no lines)")
                     else:
-                        logger.info(
-                            f"Updated fallback GL entry: Txn={txn.transactionid} (no lines)"
-                        )
+                        logger.info(f"Updated fallback GL entry: Txn={txn.transactionid} (no lines)")
                 except Exception as e:
                     logger.error(
                         f"Error mapping fallback GL for Txn={txn.transactionid}: {e}",
