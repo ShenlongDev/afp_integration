@@ -20,8 +20,7 @@ from integrations.models.netsuite.analytics import (
 from decimal import Decimal, InvalidOperation
 from dateutil import tz
 from dateutil.parser import parse as dateutil_parse
-from datetime import datetime, date
-
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -570,87 +569,112 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 8) Import General Ledger
     # ------------------------------------------------------------
-    def make_aware_datetime(self, dt):
+    def make_aware_datetime(self, d):
         """
-        Ensures that the provided date/time object is timezone-aware.
-        If a plain date is provided, it is combined with midnight to create a datetime.
+        Convert a date (or date-like) value 'd' into an aware datetime.
+        Modify this helper to suit your date conversion.
         """
-        from django.utils.timezone import make_aware
-
-        if not dt:
+        if not d:
+            return None
+        # If d is already a datetime, assume it is naive and localize it:
+        if hasattr(d, 'tzinfo'):
+            if d.tzinfo is None:
+                return timezone.make_aware(d)
+            return d
+        # Otherwise, assume it's a string and parse it:
+        try:
+            # Customize the format as needed:
+            dt = timezone.datetime.strptime(d, "%Y-%m-%d")
+            return timezone.make_aware(dt)
+        except Exception:
             return None
 
-        # If dt is a date (and not a datetime), combine it with a default time (midnight)
-        if isinstance(dt, date) and not isinstance(dt, datetime):
-            dt = datetime.combine(dt, datetime.min.time())
-
-        # Now if dt is naive (tzinfo is None), make it aware using Django's make_aware.
-        if dt.tzinfo is None:
-            dt = make_aware(dt)
-        
-        return dt
-
+    def extract_yearperiod(self, postingperiod):
+        """
+        Attempt to extract a fiscal year from a posting period string,
+        e.g. "P5 - FY24" returns 24.
+        Returns None if no match is found.
+        """
+        if postingperiod:
+            m = re.search(r'FY(\d+)', postingperiod)
+            if m:
+                try:
+                    return int(m.group(1))
+                except ValueError:
+                    pass
+        return None
 
     @transaction.atomic
     def map_net_suite_general_ledger(self):
         """
-        Rebuild NetSuite General Ledger (GL) records by mapping header transaction data 
-        (from NetSuiteTransactions) together with detail accounting line data (from 
-        NetSuiteTransactionAccountingLine) and additional account details (from NetSuiteAccounts).
+        Map data from NetSuiteTransactions (header records) plus
+        NetSuiteTransactionAccountingLine (detail lines) into NetSuiteGeneralLedger.
         
-        For each transaction header:
-        1. Retrieve its accounting lines (detail lines) where the accounting line's 
-            'transaction' field equals the header's transactionid.
-        2. For each accounting line:
-            - Convert the numeric account value to a string (account_str).
-            - Look up a matching account in NetSuiteAccounts using account_str.
-            - Determine the GL account (and acctnumber) from the matching record if found.
-            - Use the accounting line's transaction_line value as the sequence number
-            (defaulting to 0 if not present).
-            - Compute a unique key as "{transactionid}-{line_sequence}".
-            - Compute a "yearperiod" from the transaction header's trandate.
-            - Map header fields (abbrevtype, approvalstatus, postingperiod, trandate, subsidiary, currency,
-            exchangerate, record_date) and the accounting line's monetary fields (amount, debit, credit, netamount).
-        3. If no accounting lines exist, create a fallback GL entry using header data.
-        
-        The update_or_create call uses (company_name, transactionid, linesequencenumber) as the unique constraint.
+        For each transaction record:
+          - All associated accounting lines are retrieved (joined on transactionid).
+          - For each accounting line, we:
+              * Convert the numeric 'account' to a string.
+              * Look up the account in NetSuiteAccounts (if found, we use its acctnumber).
+              * Derive a unique key and a lineid.
+              * Map monetary fields and dates.
+          - If a transaction has no associated accounting lines, a fallback GL entry is created.
+          
+        The unique constraint on (company_name, transactionid, linesequencenumber) is used for update_or_create.
         """
+
         logger.info("Mapping NetSuite General Ledger from Transactions + Accounting Lines...")
         total_mapped = 0
 
+        # Retrieve all transactions (adjust your filter as needed)
         transactions = NetSuiteTransactions.objects.all()
 
         for txn in transactions:
-            print(f"mapping {txn.transactionid} with {txn.subsidiary}.")
-            # Retrieve all accounting lines (detail records) for this transaction
+            # For each transaction, find all corresponding accounting lines.
             lines = NetSuiteTransactionAccountingLine.objects.filter(transaction=txn.transactionid)
+            
             if lines.exists():
                 for line in lines:
                     try:
-                        # Convert numeric account to string so it can be matched against NetSuiteAccounts.account_id
+                        # Use the accounting line's numeric account field as a string
                         account_str = str(line.account) if line.account is not None else None
                         account_obj = None
                         if account_str:
                             try:
                                 account_obj = NetSuiteAccounts.objects.get(account_id=account_str)
                             except NetSuiteAccounts.DoesNotExist:
-                                account_obj = None
-                        # Use account_str as the GL account; if available, get acctnumber from the account record.
+                                pass
+
+                        # Decide the GL account value (here we store the string representation)
                         gl_account = account_str
+
+                        # For acctnumber, try to use the account object's acctnumber if found
                         acct_number = account_obj.acctnumber if (account_obj and account_obj.acctnumber) else account_str
 
-                        # Use the accounting line's transaction_line as the sequence number (default to 0)
-                        line_seq = line.transaction_line if getattr(line, "transaction_line", None) else 0
+                        # Derive a unique key for the GL entry.
+                        # If the accounting line provides a consolidation_key, use it; otherwise, build one.
+                        unique_key = (line.consolidation_key.strip() 
+                                      if line.consolidation_key else 
+                                      f"{txn.transactionid}-{line.transaction_line}")
 
-                        # Compute a unique key from the header and the line sequence
-                        unique_key = f"{txn.transactionid}-{line_seq}"
-                        # Compute the year period (e.g. using the year from txn.trandate)
-                        year_period = txn.trandate.year if txn.trandate else None
+                        # Compute the GL line id; here we concatenate transaction id and the line's sequence.
+                        line_id = f"{txn.transactionid}-{line.transaction_line}" if line.transaction_line is not None else f"{txn.transactionid}-0"
 
+                        # Use the transaction line field for the GL's line sequence number.
+                        line_seq = int(line.transaction_line) if line.transaction_line is not None else 0
+
+                        # Derive yearperiod from txn.postingperiod if possible.
+                        yearperiod = self.extract_yearperiod(txn.postingperiod)
+
+                        # For the record_date, choose the accounting line's lastmodifieddate if present,
+                        # otherwise fall back to the transaction's record_date.
+                        rec_date = self.make_aware_datetime(line.lastmodifieddate) or self.make_aware_datetime(txn.record_date)
+
+                        # Build the defaults dictionary for the GL entry.
                         defaults = {
                             'abbrevtype':     txn.abbrevtype,
                             'approvalstatus': txn.approvalstatus,
                             'postingperiod':  txn.postingperiod,
+                            'yearperiod':     yearperiod,
                             'trandate':       self.make_aware_datetime(txn.trandate),
                             'subsidiary':     txn.subsidiary,
                             'account':        gl_account,
@@ -661,37 +685,34 @@ class NetSuiteImporter:
                             'netamount':      line.netamount,
                             'currency':       txn.currency,
                             'exchangerate':   txn.exchangerate,
-                            'record_date':    self.make_aware_datetime(line.lastmodifieddate if line.lastmodifieddate else txn.record_date),
-                            'uniquekey':      unique_key,
-                            'lineid':         str(line.id),
-                            'yearperiod':     year_period,
+                            'record_date':    rec_date,
                         }
 
+                        # Use update_or_create with unique constraint fields.
                         gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
                             company_name=txn.company_name,
                             transactionid=txn.transactionid,
                             linesequencenumber=line_seq,
-                            defaults=defaults
+                            defaults={ **defaults,
+                                       'uniquekey': unique_key,
+                                       'lineid': line_id }
                         )
                         total_mapped += 1
                         if created:
-                            logger.info(f"Created GL entry: Txn={txn.transactionid}, line_seq={line_seq}")
+                            logger.info(f"Created GL entry for Txn={txn.transactionid}, line_seq={line_seq}")
                         else:
-                            logger.info(f"Updated GL entry: Txn={txn.transactionid}, line_seq={line_seq}")
+                            logger.info(f"Updated GL entry for Txn={txn.transactionid}, line_seq={line_seq}")
                     except Exception as e:
-                        logger.error(
-                            f"Error mapping Txn={txn.transactionid}, line={getattr(line, 'transaction_line', 'N/A')}: {e}",
-                            exc_info=True
-                        )
+                        logger.error(f"Error mapping Txn={txn.transactionid}, line={line.transaction_line}: {e}", exc_info=True)
             else:
-                # Fallback GL entry when no accounting lines exist.
+                # Create a fallback GL entry if no accounting lines exist.
                 try:
-                    unique_key = f"{txn.transactionid}-0"
-                    year_period = txn.trandate.year if txn.trandate else None
+                    yearperiod = self.extract_yearperiod(txn.postingperiod)
                     defaults = {
                         'abbrevtype':     txn.abbrevtype,
                         'approvalstatus': txn.approvalstatus,
                         'postingperiod':  txn.postingperiod,
+                        'yearperiod':     yearperiod,
                         'trandate':       self.make_aware_datetime(txn.trandate),
                         'subsidiary':     txn.subsidiary,
                         'account':        None,
@@ -703,30 +724,25 @@ class NetSuiteImporter:
                         'currency':       txn.currency,
                         'exchangerate':   txn.exchangerate,
                         'record_date':    self.make_aware_datetime(txn.record_date),
-                        'uniquekey':      unique_key,
-                        'lineid':         '0',
-                        'yearperiod':     year_period,
                     }
                     gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
                         company_name=txn.company_name,
                         transactionid=txn.transactionid,
-                        linesequencenumber=0,  # fallback line number
-                        defaults=defaults
+                        linesequencenumber=0,  # fallback line sequence number
+                        defaults={ **defaults,
+                                   'uniquekey': f"{txn.transactionid}-0",
+                                   'lineid': f"{txn.transactionid}-0" }
                     )
                     total_mapped += 1
                     if created:
-                        logger.info(f"Created fallback GL entry: Txn={txn.transactionid} (no lines)")
+                        logger.info(f"Created fallback GL entry for Txn={txn.transactionid} (no lines)")
                     else:
-                        logger.info(f"Updated fallback GL entry: Txn={txn.transactionid} (no lines)")
+                        logger.info(f"Updated fallback GL entry for Txn={txn.transactionid} (no lines)")
                 except Exception as e:
-                    logger.error(
-                        f"Error mapping fallback GL for Txn={txn.transactionid}: {e}",
-                        exc_info=True
-                    )
+                    logger.error(f"Error mapping fallback GL for Txn={txn.transactionid}: {e}", exc_info=True)
 
         self.log_import_event(module_name="netsuite_general_ledger", fetched_records=total_mapped)
         logger.info(f"Completed mapping general ledger: {total_mapped} entries processed.")
-
 
     # ------------------------------------------------------------
     # 9) Import Transaction Lines
