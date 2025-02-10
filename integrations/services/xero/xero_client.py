@@ -233,11 +233,12 @@ class XeroDataImporter:
         """
         SyncTableLogs.objects.create(
             module_name=module_name,
-            integration=self.integration,
+            integration='XERO',
             organization=self.integration.org,
             fetched_records=fetched_records,
             last_updated_time=timezone.now(),
             last_updated_date=timezone.now().date()
+
         )
 
     @transaction.atomic

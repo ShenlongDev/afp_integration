@@ -59,7 +59,7 @@ class NetSuiteImporter:
         """
         SyncTableLogs.objects.create(
             module_name=module_name,
-            integration=self.integration,
+            integration='NETSUITE',
             organization=self.integration.org,
             fetched_records=fetched_records,
             last_updated_time=timezone.now(),

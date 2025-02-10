@@ -94,7 +94,11 @@ class OrphanBankTransaction(models.Model):
 
 class SyncTableLogs(models.Model):
     module_name = models.CharField(max_length=255)
-    integration = models.ForeignKey(Integration, on_delete=models.CASCADE)
+    integration = models.CharField(
+        max_length=50,
+        choices=INTEGRATION_TYPE_CHOICES,
+        default="XERO"
+    )
     organization = models.ForeignKey(Organisation, on_delete=models.CASCADE)
     fetched_records = models.IntegerField()
     last_updated_time = models.DateTimeField()
