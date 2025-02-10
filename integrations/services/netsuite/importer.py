@@ -241,8 +241,8 @@ class NetSuiteImporter:
         query = "SELECT * FROM entity"
         rows = list(self.client.execute_suiteql(query))
 
-        # today = timezone.now().date()
-        filtered_rows = [r for r in rows]
+        today = timezone.now().date()
+        filtered_rows = [r for r in rows if self.parse_datetime(r.get("lastmodifieddate")).date() == today]
 
 
         for r in filtered_rows:
