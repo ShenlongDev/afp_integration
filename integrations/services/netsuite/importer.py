@@ -350,7 +350,7 @@ class NetSuiteImporter:
         limit = 1000
         total_imported = 0
 
-        while offset < 10000:
+        while True:
             query = f"""
             SELECT *
             FROM Account
@@ -358,6 +358,7 @@ class NetSuiteImporter:
             OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
             """
             rows = list(self.client.execute_suiteql(query))
+            print(f"Importing {len(rows)} accounts at offset {offset} and {rows[:20]}.")
 
             if not rows:
                 break
@@ -401,7 +402,10 @@ class NetSuiteImporter:
 
             total_imported += len(rows)
             offset += limit
+            if len(rows) < limit:
+                break
             logger.debug(f"Imported {len(rows)} accounts at offset {offset}.")
+
 
         self.log_import_event(module_name="netsuite_accounts", fetched_records=total_imported)
         logger.info(f"Imported {total_imported} NetSuite Accounts (load_type={load_type}).")
@@ -723,94 +727,114 @@ class NetSuiteImporter:
     @transaction.atomic
     def import_transaction_lines(self, min_id: Optional[str] = None):
         """
-        Imports NetSuite Transaction Lines into the NetSuiteTransactionLine model.
+        Imports NetSuite Transaction Lines into the NetSuiteTransactionLine model
+        by dynamically paging through the results in batches.
         """
         logger.info("Importing NetSuite Transaction Lines...")
+        batch_size = 500
         if not min_id:
             min_id = "0"
+        total_fetched = 0
 
-        query = f"""
-        SELECT
-            id,
-            ISBILLABLE,
-            ISCLOSED,
-            ISCOGS,
-            ISCUSTOMGLLINE,
-            ISFULLYSHIPPED,
-            ISFXVARIANCE,
-            ISINVENTORYAFFECTING,
-            ISREVRECTRANSACTION,
-            LINELASTMODIFIEDDATE,
-            LINESEQUENCENUMBER,
-            LOCATION,
-            MAINLINE,
-            MEMO,
-            NETAMOUNT,
-            OLDCOMMITMENTFIRM,
-            QUANTITYBILLED,
-            QUANTITYREJECTED,
-            QUANTITYSHIPRECV,
-            SUBSIDIARY,
-            TAXLINE,
-            TRANSACTIONDISCOUNT
-        FROM TransactionLine
-        WHERE id > {min_id}
-        ORDER BY id ASC
-        OFFSET 500 ROWS FETCH NEXT 500 ROWS ONLY
-        """
-        try:
-            rows = list(self.client.execute_suiteql(query))
-            logger.info(f"Fetched {len(rows)} transaction line records.")
-        except Exception as e:
-            logger.error(f"Error importing transaction_lines: {e}", exc_info=True)
-            return
-
-        for r in rows:
+        while True:
+            # Build a SuiteQL query using the current min_id marker.
+            # Note: The OFFSET is set to 0 because the WHERE clause already limits results.
+            query = f"""
+            SELECT
+                id,
+                ISBILLABLE,
+                ISCLOSED,
+                ISCOGS,
+                ISCUSTOMGLLINE,
+                ISFULLYSHIPPED,
+                ISFXVARIANCE,
+                ISINVENTORYAFFECTING,
+                ISREVRECTRANSACTION,
+                LINELASTMODIFIEDDATE,
+                LINESEQUENCENUMBER,
+                LOCATION,
+                MAINLINE,
+                MEMO,
+                NETAMOUNT,
+                OLDCOMMITMENTFIRM,
+                QUANTITYBILLED,
+                QUANTITYREJECTED,
+                QUANTITYSHIPRECV,
+                SUBSIDIARY,
+                TAXLINE,
+                TRANSACTIONDISCOUNT
+            FROM TransactionLine
+            WHERE id > {min_id}
+            ORDER BY id ASC
+            OFFSET 0 ROWS FETCH NEXT {batch_size} ROWS ONLY
+            """
             try:
-                netsuite_id = r.get("id")
-                if not netsuite_id:
-                    logger.warning(f"Transaction Line row missing 'id': {r}")
-                    continue
-
-                # Parse the LINELASTMODIFIEDDATE; assuming parse_datetime returns a datetime.
-                last_modified = self.parse_datetime(r.get("LINELASTMODIFIEDDATE"))
-
-                NetSuiteTransactionLine.objects.update_or_create(
-                    netsuite_id=netsuite_id,
-                    defaults={
-                        "company_name": self.org_name,
-                        "is_billable": r.get("isbillable"),
-                        "is_closed": r.get("isclosed"),
-                        "is_cogs": r.get("iscogs"),
-                        "is_custom_gl_line": r.get("iscustomglline"),
-                        "is_fully_shipped": r.get("isfullyshipped"),
-                        "is_fx_variance": r.get("isfxvariance"),
-                        "is_inventory_affecting": r.get("isinventoryaffecting"),
-                        "is_rev_rec_transaction": r.get("isrevrectransaction"),
-                        "line_last_modified_date": last_modified.date() if last_modified else None,
-                        "line_sequence_number": r.get("linesequencenumber"),
-                        "links": r.get("links"),
-                        "location": r.get("location"),
-                        "main_line": r.get("mainline"),
-                        "match_bill_to_receipt": r.get("matchbilltoreceipt"),
-                        "memo": r.get("memo"),
-                        "net_amount": decimal_or_none(r.get("netamount")),
-                        "old_commitment_firm": r.get("oldcommitmentfirm"),
-                        "quantity_billed": r.get("quantitybilled"),
-                        "quantity_rejected": r.get("quantityrejected"),
-                        "quantity_ship_recv": r.get("quantityshiprecv"),
-                        "source_uri": r.get("source_uri"),
-                        "subsidiary": r.get("subsidiary"),
-                        "subsidiary_id": r.get("subsidiaryid"),
-                        "tax_line": r.get("taxline"),
-                        "transaction_discount": r.get("transactiondiscount"),
-                        "transaction_id": r.get("transactionid"),
-                    }
-                )
+                rows = list(self.client.execute_suiteql(query))
+                print(f"fetched {len(rows)} transaction lines with data: {rows[:100]}.")
+                logger.info(f"Fetched {len(rows)} transaction line records.")
             except Exception as e:
-                logger.error(f"Error importing transaction line row={r}: {e}", exc_info=True)
+                logger.error(f"Error importing transaction_lines: {e}", exc_info=True)
+                return
 
-        self.log_import_event(module_name="netsuite_transaction_lines", fetched_records=len(rows))
+            if not rows:
+                # No more rows returned – exit the loop.
+                break
+
+            # Process each row from the current batch.
+            for r in rows:
+                try:
+                    netsuite_id = r.get("id")
+                    if not netsuite_id:
+                        logger.warning(f"Transaction Line row missing 'id': {r}")
+                        continue
+
+                    # Parse LINELASTMODIFIEDDATE using your helper (assuming it returns a datetime)
+                    last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
+
+                    NetSuiteTransactionLine.objects.update_or_create(
+                        netsuite_id=netsuite_id,
+                        defaults={
+                            "company_name": self.org_name,
+                            "is_billable": r.get("isbillable"),
+                            "is_closed": r.get("isclosed"),
+                            "is_cogs": r.get("iscogs"),
+                            "is_custom_gl_line": r.get("iscustomglline"),
+                            "is_fully_shipped": r.get("isfullyshipped"),
+                            "is_fx_variance": r.get("isfxvariance"),
+                            "is_inventory_affecting": r.get("isinventoryaffecting"),
+                            "is_rev_rec_transaction": r.get("isrevrectransaction"),
+                            "line_last_modified_date": last_modified.date() if last_modified else None,
+                            "line_sequence_number": r.get("linesequencenumbeR"),
+                            "links": r.get("links"),  # if available in response
+                            "location": r.get("location"),
+                            "main_line": r.get("mainline"),
+                            "match_bill_to_receipt": r.get("matchbilltoreceipt"),  # if available
+                            "memo": r.get("memo"),
+                            "net_amount": decimal_or_none(r.get("netamount")),
+                            "old_commitment_firm": r.get("oldcommitmentfirm"),
+                            "quantity_billed": r.get("quantitybilled"),
+                            "quantity_rejected": r.get("quantityrejected"),
+                            "quantity_ship_recv": r.get("quantityshiprecv"),
+                            "source_uri": r.get("source_uri"),  # if available
+                            "subsidiary": r.get("subsidiary"),
+                            "subsidiary_id": r.get("subsidiaryid"),  # if available
+                            "tax_line": r.get("taxline"),
+                            "transaction_discount": r.get("transactiondiscount"),
+                            "transaction_id": r.get("transactionid"),  # if available
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Error importing transaction line row={r}: {e}", exc_info=True)
+
+            total_fetched += len(rows)
+            # Update min_id to the id of the last row in the batch so that the next iteration only retrieves newer rows.
+            min_id = rows[-1].get("id")
+            logger.info(f"Processed batch. New min_id set to {min_id}")
+            if len(rows) < batch_size:
+                break
+
+
+        self.log_import_event(module_name="netsuite_transaction_lines", fetched_records=total_fetched)
         logger.info("Transaction Line import complete.")
 
 
@@ -831,7 +855,7 @@ class NetSuiteImporter:
         offset = 500
         total_imported = 0
 
-        while offset < 2000:
+        while True:
             query = f"""
             SELECT
                 TRANSACTION,              
@@ -890,7 +914,10 @@ class NetSuiteImporter:
                     logger.error(f"Error importing transaction accounting line row: {r} - {e}", exc_info=True)
             total_imported += len(rows)
             offset += limit
+            if len(rows) < limit:
+                break
         
+
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported {total_imported} Transaction Accounting Lines successfully.")
 
