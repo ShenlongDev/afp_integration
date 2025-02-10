@@ -4,7 +4,7 @@ from django.utils import timezone
 from typing import Optional
 from datetime import timezone as tz
 from .client import NetSuiteClient
-from integrations.models.models import Integration, Organisation
+from integrations.models.models import Integration, Organisation, SyncTableLogs
 from integrations.models.netsuite.analytics import (
     NetSuiteVendors,
     NetSuiteSubsidiaries,
@@ -52,6 +52,19 @@ class NetSuiteImporter:
         self.org_name = integration.org
         self.now_ts = timezone.now()
         self.org = Organisation.objects.get(name=self.org_name)
+        
+    def log_import_event(self, module_name: str, fetched_records: int):
+        """
+        Save an import event log for a particular module.
+        """
+        SyncTableLogs.objects.create(
+            module_name=module_name,
+            integration=self.integration,
+            organization=self.integration.org,
+            fetched_records=fetched_records,
+            last_updated_time=timezone.now(),
+            last_updated_date=timezone.now().date()
+        )
 
     # ------------------------------------------------------------
     # 1) Import Vendors
@@ -101,6 +114,7 @@ class NetSuiteImporter:
             except Exception as e:
                 logger.error(f"Error importing vendor row={r}: {e}", exc_info=True)
 
+        self.log_import_event(module_name="netsuite_vendors", fetched_records=len(rows))
         logger.info(f"Imported {len(rows)} NetSuite Vendors (load_type={load_type}).")
 
     # ------------------------------------------------------------
@@ -156,7 +170,9 @@ class NetSuiteImporter:
             except Exception as e:
                 logger.error(f"Error importing subsidiary row={r}: {e}", exc_info=True)
 
+        self.log_import_event(module_name="netsuite_subsidiaries", fetched_records=len(rows))
         logger.info(f"Imported {len(rows)} NetSuite Subsidiaries (load_type={load_type}).")
+
 
     # ------------------------------------------------------------
     # 3) Import Departments
@@ -205,7 +221,9 @@ class NetSuiteImporter:
             except Exception as e:
                 logger.error(f"Error importing department row={r}: {e}", exc_info=True)
 
+        self.log_import_event(module_name="netsuite_departments", fetched_records=len(rows))
         logger.info(f"Imported {len(rows)} NetSuite Departments (load_type={load_type}).")
+
 
     # ------------------------------------------------------------
     # 4) Import Entities
@@ -261,7 +279,9 @@ class NetSuiteImporter:
             except Exception as e:
                 logger.error(f"Error importing entity row={r}: {e}", exc_info=True)
 
+        self.log_import_event(module_name="netsuite_entities", fetched_records=len(filtered_rows))
         logger.info(f"Imported {len(filtered_rows)} NetSuite Entities (load_type={load_type}).")
+
 
     # ------------------------------------------------------------
     # 5) Import Accounting Periods
@@ -312,7 +332,9 @@ class NetSuiteImporter:
             except Exception as e:
                 logger.error(f"Error importing accounting period row={r}: {e}", exc_info=True)
 
+        self.log_import_event(module_name="netsuite_accounting_periods", fetched_records=len(rows))
         logger.info(f"Imported {len(rows)} NetSuite Accounting Periods (load_type={load_type}).")
+
 
     # ------------------------------------------------------------
     # 6) Import Accounts
@@ -336,7 +358,7 @@ class NetSuiteImporter:
             OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
             """
             rows = list(self.client.execute_suiteql(query))
-            print(f"Importing {len(rows)} accounts at offset {offset}.")
+
             if not rows:
                 break
 
@@ -381,7 +403,9 @@ class NetSuiteImporter:
             offset += limit
             logger.debug(f"Imported {len(rows)} accounts at offset {offset}.")
 
+        self.log_import_event(module_name="netsuite_accounts", fetched_records=total_imported)
         logger.info(f"Imported {total_imported} NetSuite Accounts (load_type={load_type}).")
+
 
     # ------------------------------------------------------------
     # 7) Import Transactions
@@ -457,8 +481,8 @@ class NetSuiteImporter:
         today = timezone.now().date()
         filtered_rows = [
             r for r in rows 
-            # if self.parse_datetime(r.get("LASTMODIFIEDDATE")) and 
-            # self.parse_datetime(r.get("LASTMODIFIEDDATE")).date() == today
+            if self.parse_datetime(r.get("LASTMODIFIEDDATE")) and 
+            self.parse_datetime(r.get("LASTMODIFIEDDATE")).date() == today
         ]
 
         logger.info(f"Fetched {len(rows)} transactions, importing {len(filtered_rows)} modified today.")
@@ -534,7 +558,9 @@ class NetSuiteImporter:
             except Exception as e:
                 logger.error(f"Error importing transaction row={r}: {e}", exc_info=True)
 
+        self.log_import_event(module_name="netsuite_transactions", fetched_records=len(filtered_rows))
         logger.info(f"Imported {len(filtered_rows)} NetSuite Transactions (min_id={min_id}).")
+
 
     # ------------------------------------------------------------
     # 8) Import General Ledger
@@ -696,6 +722,7 @@ class NetSuiteImporter:
                         exc_info=True
                     )
 
+        self.log_import_event(module_name="netsuite_general_ledger", fetched_records=total_mapped)
         logger.info(f"Completed mapping general ledger: {total_mapped} entries processed.")
 
 
@@ -792,6 +819,7 @@ class NetSuiteImporter:
             except Exception as e:
                 logger.error(f"Error importing transaction line row={r}: {e}", exc_info=True)
 
+        self.log_import_event(module_name="netsuite_transaction_lines", fetched_records=len(rows))
         logger.info("Transaction Line import complete.")
 
 
@@ -872,7 +900,9 @@ class NetSuiteImporter:
             total_imported += len(rows)
             offset += limit
         
+        self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported {total_imported} Transaction Accounting Lines successfully.")
+
 
 
 

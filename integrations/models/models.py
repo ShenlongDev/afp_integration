@@ -90,3 +90,15 @@ class OrphanBankTransaction(models.Model):
 
     def __str__(self):
         return f"Orphan Transaction for {self.integration.org.name} at {self.created_at}"
+
+
+class SyncTableLogs(models.Model):
+    module_name = models.CharField(max_length=255)
+    integration = models.ForeignKey(Integration, on_delete=models.CASCADE)
+    organization = models.ForeignKey(Organisation, on_delete=models.CASCADE)
+    fetched_records = models.IntegerField()
+    last_updated_time = models.DateTimeField()
+    last_updated_date = models.DateField()
+
+    def __str__(self):
+        return f"{self.module_name} import on {self.last_updated_date} ({self.fetched_records} records)" 

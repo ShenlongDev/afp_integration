@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.db import transaction
 from rest_framework.response import Response
 
-from integrations.models.models import Integration, IntegrationAccessToken
+from integrations.models.models import Integration, IntegrationAccessToken, SyncTableLogs
 from integrations.models.xero.raw import (
     XeroAccountsRaw,
     XeroJournalsRaw,
@@ -25,6 +25,7 @@ from integrations.models.xero.transformations import (
     XeroJournalLineTrackingCategories
 )
 from integrations.models.xero.analytics import XeroGeneralLedger
+
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +161,8 @@ class XeroDataImporter:
             "xero-tenant-id": self.tenant_id,
             "Accept": "application/json"
         }
-        # if self.since_date:
-        #     headers["If-Modified-Since"] = self.since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        if self.since_date:
+            headers["If-Modified-Since"] = self.since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
         if offset is not None:
             logger.debug(f"build_headers called with offset: {offset}")
         # Debug print (or remove in production)
@@ -202,8 +203,11 @@ class XeroDataImporter:
                     }
                 )
                 obj.save()
+
             except Exception as e:
                 logger.error(f"Error saving XeroAccountsRaw for AccountID {account_id}: {e}")
+                
+        self.log_import_event(module_name="xero_accounts", fetched_records=len(accounts_data))
         logger.info(f"Imported/Updated {len(accounts_data)} Xero Accounts.")
 
     ### 3. Journal Lines (with Pagination) ###
@@ -223,6 +227,19 @@ class XeroDataImporter:
         journals = response.json().get("Journals", [])
         return journals
 
+    def log_import_event(self, module_name: str, fetched_records: int):
+        """
+        Save an import event log for a particular module.
+        """
+        SyncTableLogs.objects.create(
+            module_name=module_name,
+            integration=self.integration,
+            organization=self.integration.org,
+            fetched_records=fetched_records,
+            last_updated_time=timezone.now(),
+            last_updated_date=timezone.now().date()
+        )
+
     @transaction.atomic
     def import_xero_journal_lines(self):
         """
@@ -231,8 +248,11 @@ class XeroDataImporter:
         """
         logger.info("Importing Xero Journals & Lines with pagination...")
         offset = None  # Start without an offset
+        total_fetched = 0  # you can calculate the total records imported
+
         while True:
             journals = self.get_journals(offset=offset)
+            total_fetched += len(journals)
             print(f"Fetched {len(journals)} journals, {journals}")
             if not journals:
                 break
@@ -309,6 +329,7 @@ class XeroDataImporter:
             offset = journals[-1].get("JournalNumber")
             logger.info(f"Pagination: Fetched {len(journals)} journals, next offset: {offset}")
 
+        self.log_import_event(module_name="xero_journal_lines", fetched_records=total_fetched)
         logger.info("Completed Xero Journal import & transform with pagination.")
 
     ### 4. Contacts ###
@@ -322,10 +343,11 @@ class XeroDataImporter:
         """
         logger.info("Importing Xero Contacts...")
         now_ts = timezone.now()
-
-        for contact in self.get_contacts():
+        contacts = self.get_contacts()
+        for contact in contacts:
             contact_id = contact.get("ContactID")
             if not contact_id:
+
                 logger.warning("Skipping contact with no ContactID.")
                 continue
             XeroContactsRaw.objects.update_or_create(
@@ -339,6 +361,9 @@ class XeroDataImporter:
                     "source_system": "XERO"
                 }
             )
+            
+        self.log_import_event(module_name="xero_contacts", fetched_records=len(contacts))
+
         logger.info("Completed Xero Contacts import.")
 
     ### 5. Invoices ###
@@ -387,6 +412,7 @@ class XeroDataImporter:
                         'account_code': line.get('AccountCode'),
                     }
                 )
+        self.log_import_event(module_name="xero_invoices", fetched_records=len(invoices))
         logger.info("Completed Xero Invoices import.")
 
     ### 6. Bank Transactions ###
@@ -425,6 +451,7 @@ class XeroDataImporter:
     def import_xero_bank_transactions(self):
         logger.info("Importing Xero Bank Transactions...")
         now_ts = timezone.now()
+        fetched_count = 0
 
         transactions = self.get_bank_transactions()
 
@@ -471,7 +498,9 @@ class XeroDataImporter:
                             'option': tracking.get('Option'),
                         }
                     )
+            fetched_count += 1  # or use len(transactions) if each corresponds to one record
 
+        self.log_import_event(module_name="xero_bank_transactions", fetched_records=fetched_count)
         logger.info("Completed Xero Bank Transactions import.")
 
     ### 7. Budgets + Budget Period Balances ###
@@ -546,7 +575,7 @@ class XeroDataImporter:
                         "source_system": "XERO"
                     }
                 )
-
+        self.log_import_event(module_name="xero_budgets", fetched_records=len(budgets))
         logger.info("Completed Xero Budgets & Period Balances import.")
 
     @transaction.atomic
@@ -691,6 +720,7 @@ class XeroDataImporter:
             gl_objects.append(gl_obj)
 
         XeroGeneralLedger.objects.bulk_create(gl_objects)
+        self.log_import_event(module_name="xero_general_ledger", fetched_records=len(gl_objects))
         logger.info(f"map_xero_general_ledger: Inserted {len(gl_objects)} rows (latest lines only).")
 
     ### 8. Master function to import everything ###
@@ -717,7 +747,7 @@ class XeroDataImporter:
         # 6. Budgets
         self.import_xero_budgets()
 
-        # 7. General Ledger
-        self.map_xero_general_ledger()
+        # # 7. General Ledger
+        # self.map_xero_general_ledger()
 
         logger.info("Finished full Xero data import successfully.")

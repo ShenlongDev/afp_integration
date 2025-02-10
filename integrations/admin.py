@@ -3,7 +3,8 @@ from .models.models import (
     Integration,
     IntegrationAccessToken,
     ChartOfAccounts,
-    OrphanBankTransaction
+    OrphanBankTransaction,
+    SyncTableLogs
 )
 
 from integrations.models.xero.transformations import (
@@ -44,8 +45,13 @@ from integrations.models.netsuite.analytics import (
 )
 
 
+class SyncTableLogsAdmin(admin.ModelAdmin):
+    list_display = ('module_name', 'integration', 'organization', 'fetched_records', 'last_updated_time', 'last_updated_date')
+    search_fields = ('module_name', 'integration__org__name', 'organization__name')
+
 class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
     list_display = ('company_name', 'transaction_id', 'line_id', 'account', 'amount', 'debit', 'credit', 'net_amount', 'last_modified_date', 'record_date')
+
     search_fields = ('company_name', 'transaction_id', 'line_id', 'account', 'amount', 'debit', 'credit', 'net_amount', 'last_modified_date', 'record_date')
     
 class NetSuiteTransactionLinesAdmin(admin.ModelAdmin):
@@ -215,6 +221,8 @@ class XeroInvoicesRawAdmin(admin.ModelAdmin):
 admin.site.register(Integration, IntegrationAdmin)
 admin.site.register(IntegrationAccessToken, IntegrationAccessTokenAdmin)
 admin.site.register(ChartOfAccounts, ChartOfAccountsAdmin)
+admin.site.register(SyncTableLogs, SyncTableLogsAdmin)
+
 admin.site.register(XeroAccounts, XeroAccountsAdmin)
 admin.site.register(XeroBankTransactionLineItems, XeroBankTransactionLineItemsAdmin)
 admin.site.register(XeroJournalLines, XeroJournalLinesAdmin)
