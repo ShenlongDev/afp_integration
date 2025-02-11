@@ -84,6 +84,7 @@ class Command(BaseCommand):
                     transformer = NetSuiteTransformer()
 
                     # Import data based on specified components or all if none specified
+                    print("here before import methods")
                     import_methods = {
                         'vendors': lambda: importer.import_vendors(load_type="drop_and_reload"),
                         'accounts': importer.import_accounts,

@@ -944,6 +944,7 @@ class NetSuiteImporter:
         Instead of using a fixed OFFSET, this function selects rows where TRANSACTION > min_id,
         ordered ascending by TRANSACTION, and then updates min_id to the maximum value in the current batch.
         """
+        print("within import_transaction_accounting_lines")
         logger.info("Importing Transaction Accounting Lines...")
         if not min_id:
             min_id = "0"
@@ -952,6 +953,7 @@ class NetSuiteImporter:
         total_imported = 0
 
         while True:
+            print("within while loop")
             query = f"""
                 SELECT
                     TRANSACTION,
