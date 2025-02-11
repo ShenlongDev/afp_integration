@@ -415,155 +415,205 @@ class NetSuiteImporter:
     # 7) Import Transactions
     # ------------------------------------------------------------
     @transaction.atomic
-    def import_transactions(self, min_id: Optional[str] = None):
+    def import_transactions(self, last_import_date: Optional[str] = None):
         """
-        Imports NetSuite Transactions into the NetSuiteTransactions model incrementally.
-        Uses the table structure (with columns such as LINKS, ABBREVTYPE, etc.) as found
-        in NetSuite.
+        Imports NetSuite Transactions into the NetSuiteTransactions model incrementally or fully.
+        
+        If last_import_date is provided (in the format "YYYY-MM-DD HH:MM:SS"), then only records whose
+        LASTMODIFIEDDATE is greater than that value will be imported. This is the incremental mode.
+        If last_import_date is not provided, all transactions are imported.
+        
+        Keyset pagination is used by ordering on LASTMODIFIEDDATE ASC, then ID ASC. The marker is updated
+        after each batch using the LASTMODIFIEDDATE and ID of the last row.
         """
-        logger.info("Importing NetSuite Transactions incrementally...")
+        logger.info("Importing NetSuite Transactions" +
+                    (" incrementally..." if last_import_date else " (full import)..."))
+        
+        # Build a filter clause if incremental import is desired.
+        # (Assumes the LASTMODIFIEDDATE in SuiteQL is comparable using TO_DATE.)
+        date_filter_clause = ""
+        if last_import_date:
+            date_filter_clause = f"AND LASTMODIFIEDDATE > TO_DATE('{last_import_date}', 'YYYY-MM-DD HH24:MI:SS')"
 
-        if not min_id:
-            min_id = "0"
+        limit = 500
+        total_imported = 0
+        # marker is a tuple (marker_date_str, marker_id) used for keyset pagination.
+        marker = None
 
-        query = f"""
-        SELECT 
-            ID,
-            ABBREVTYPE,
-            APPROVALSTATUS,
-            BALSEGSTATUS,
-            BILLINGSTATUS,
-            CLOSEDATE,
-            CREATEDBY,
-            CREATEDDATE,
-            CURRENCY,
-            CUSTBODY_CASH_REGISTER,
-            CUSTBODY_NONDEDUCTIBLE_PROCESSED,
-            CUSTBODY_REPORT_TIMESTAMP,
-            CUSTOMTYPE,
-            DAYSOPEN,
-            DAYSOVERDUESEARCH,
-            DUEDATE,
-            ENTITY,
-            EXCHANGERATE,
-            EXTERNALID,
-            FOREIGNAMOUNTPAID,
-            FOREIGNAMOUNTUNPAID,
-            FOREIGNTOTAL,
-            NUMBER,
-            ISFINCHRG,
-            ISREVERSAL,
-            LASTMODIFIEDBY,
-            LASTMODIFIEDDATE,
-            NEXUS,
-            ORDPICKED,
-            PAYMENTHOLD,
-            POSTING,
-            POSTINGPERIOD,
-            PRINTEDPICKINGTICKET,
-            RECORDTYPE,
-            SOURCE,
-            STATUS,
-            TERMS,
-            TOBEPRINTED,
-            TRANDATE,
-            TRANDISPLAYNAME,
-            TRANID,
-            TRANSACTIONNUMBER,
-            TYPE,
-            USEREVENUEARRANGEMENT,
-            VISIBLETOCUSTOMER,
-            VOID,
-            VOIDED,
-            CUSTBODY_NEXUS_NOTC,
-            MEMO
-        FROM Transaction
-        WHERE ID > {min_id}
-        ORDER BY ID ASC
-        """
-        rows = list(self.client.execute_suiteql(query))
-        # today = timezone.now().date()
-        filtered_rows = [
-            r for r in rows 
-            # if self.parse_datetime(r.get("LASTMODIFIEDDATE")) and 
-            # self.parse_datetime(r.get("LASTMODIFIEDDATE")).date() == today
-        ]
-
-        logger.info(f"importing {len(filtered_rows)} modified today, with {filtered_rows[:20]}.")
-        for r in filtered_rows:
-            try:
-                transaction_id = r.get("id")
-                if not transaction_id:
-                    logger.warning(f"Transaction row missing 'ID': {r}")
-                    continue
-
-                last_modified = self.parse_datetime(r.get("lastmodifieddate"))
-
-                NetSuiteTransactions.objects.update_or_create(
-                    transactionid=str(transaction_id),
-                    company_name=self.org,
-                    defaults={
-                        "links": r.get("links"),
-                        "abbrevtype": r.get("abbrevtype"),
-                        "approvalstatus": r.get("approvalstatus"),
-                        "balsegstatus": r.get("balsegstatus"),
-                        "billingstatus": r.get("billingstatus"),
-                        "closedate": self.parse_date(r.get("closedate")),
-                        "createdby": r.get("createdby"),
-                        "createddate": self.parse_date(r.get("createddate")),
-                        "currency": r.get("currency"),
-                        "custbody5": r.get("custbody5"),
-                        "custbody_cash_register": r.get("custbody_cash_register"),
-                        "custbody_nondeductible_processed": r.get("custbody_nondeductible_processed"),
-                        "custbody_report_timestamp": self.parse_datetime(r.get("custbody_report_timestamp")),
-                        "custbody_wrong_subs": r.get("custbody_wrong_subs"),
-                        "customtype": r.get("customtype"),
-                        "daysopen": r.get("daysopen"),
-                        "daysoverduesearch": r.get("daysoverduesearch"),
-                        "duedate": self.parse_date(r.get("duedate")),
-                        "entity": r.get("entity"),
-                        "exchangerate": decimal_or_none(r.get("exchangerate")),
-                        "externalid": r.get("externalid"),
-                        "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
-                        "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
-                        "foreigntotal": decimal_or_none(r.get("foreigntotal")),
-                        "number": decimal_or_none(r.get("number")),
-                        "intercoadj": r.get("intercoadj"),
-                        "isfinchrg": r.get("isfinchrg"),
-                        "isreversal": r.get("isreversal"),
-                        "lastmodifiedby": r.get("lastmodifiedby"),
-                        "lastmodifieddate": last_modified,
-                        "nexus": r.get("nexus"),
-                        "ordpicked": r.get("ordpicked"),
-                        "paymenthold": r.get("paymenthold"),
-                        "posting": r.get("posting"),
-                        "postingperiod": r.get("postingperiod"),
-                        "printedpickingticket": r.get("printedpickingticket"),
-                        "recordtype": r.get("recordtype"),
-                        "source": r.get("source"),
-                        "status": r.get("status"),
-                        "subsidiary": r.get("subsidiary"),
-                        "terms": r.get("terms"),
-                        "tobeprinted": r.get("tobeprinted"),
-                        "trandate": self.parse_date(r.get("trandate")),
-                        "trandisplayname": r.get("trandisplayname"),
-                        "tranid": r.get("tranid"),
-                        "transactionnumber": r.get("transactionnumber"),
-                        "type": r.get("type"),
-                        "userevenuearrangement": r.get("userevenuearrangement"),
-                        "visibletocustomer": r.get("visibletocustomer"),
-                        "void_field": r.get("void"),
-                        "voided": r.get("voided"),
-                        "custbody_nexus_notc": r.get("custbody_nexus_notc"),
-                        "memo": r.get("memo"),
-                        "record_date": last_modified,
-                    }
+        while True:
+            marker_clause = ""
+            if marker:
+                # marker is a tuple (last_mod, last_id); we use a composite condition.
+                marker_clause = (
+                    f"AND (LASTMODIFIEDDATE, ID) > (TO_DATE('{marker[0]}', 'YYYY-MM-DD HH24:MI:SS'), {marker[1]})"
                 )
+            query = f"""
+                SELECT 
+                    ID,
+                    ABBREVTYPE,
+                    APPROVALSTATUS,
+                    BALSEGSTATUS,
+                    BILLINGSTATUS,
+                    CLOSEDATE,
+                    CREATEDBY,
+                    CREATEDDATE,
+                    CURRENCY,
+                    CUSTBODY_CASH_REGISTER,
+                    CUSTBODY_NONDEDUCTIBLE_PROCESSED,
+                    CUSTBODY_REPORT_TIMESTAMP,
+                    CUSTOMTYPE,
+                    DAYSOPEN,
+                    DAYSOVERDUESEARCH,
+                    DUEDATE,
+                    ENTITY,
+                    EXCHANGERATE,
+                    EXTERNALID,
+                    FOREIGNAMOUNTPAID,
+                    FOREIGNAMOUNTUNPAID,
+                    FOREIGNTOTAL,
+                    NUMBER,
+                    ISFINCHRG,
+                    ISREVERSAL,
+                    LASTMODIFIEDBY,
+                    LASTMODIFIEDDATE,
+                    NEXUS,
+                    ORDPICKED,
+                    PAYMENTHOLD,
+                    POSTING,
+                    POSTINGPERIOD,
+                    PRINTEDPICKINGTICKET,
+                    RECORDTYPE,
+                    SOURCE,
+                    STATUS,
+                    TERMS,
+                    TOBEPRINTED,
+                    TRANDATE,
+                    TRANDISPLAYNAME,
+                    TRANID,
+                    TRANSACTIONNUMBER,
+                    TYPE,
+                    USEREVENUEARRANGEMENT,
+                    VISIBLETOCUSTOMER,
+                    VOID,
+                    VOIDED,
+                    CUSTBODY_NEXUS_NOTC,
+                    MEMO
+                FROM Transaction
+                WHERE 1=1
+                    {date_filter_clause}
+                    {marker_clause}
+                ORDER BY LASTMODIFIEDDATE ASC, ID ASC
+                FETCH NEXT {limit} ROWS ONLY
+            """
+            try:
+                rows = list(self.client.execute_suiteql(query))
+                logger.info(f"Fetched {len(rows)} transaction records.")
             except Exception as e:
-                logger.error(f"Error importing transaction row={r}: {e}", exc_info=True)
+                logger.error(f"Error importing transactions: {e}", exc_info=True)
+                return
 
-        self.log_import_event(module_name="netsuite_transactions", fetched_records=len(filtered_rows))
-        logger.info(f"Imported {len(filtered_rows)} NetSuite Transactions (min_id={min_id}).")
+            if not rows:
+                break
+
+            # Process each row
+            for r in rows:
+                try:
+                    txn_id = r.get("id")
+                    if not txn_id:
+                        logger.warning(f"Transaction row missing 'ID': {r}")
+                        continue
+
+                    last_mod = self.parse_datetime(r.get("lastmodifieddate"))
+                    if not last_mod:
+                        logger.warning(f"Could not parse LASTMODIFIEDDATE for txn {txn_id}")
+                        continue
+
+                    # Update or create the transaction record
+                    NetSuiteTransactions.objects.update_or_create(
+                        transactionid=str(txn_id),
+                        company_name=self.org,
+                        defaults={
+                            "links": r.get("links"),
+                            "abbrevtype": r.get("abbrevtype"),
+                            "approvalstatus": r.get("approvalstatus"),
+                            "balsegstatus": r.get("balsegstatus"),
+                            "billingstatus": r.get("billingstatus"),
+                            "closedate": self.parse_date(r.get("closedate")),
+                            "createdby": r.get("createdby"),
+                            "createddate": self.parse_date(r.get("createddate")),
+                            "currency": r.get("currency"),
+                            "custbody5": r.get("custbody5"),
+                            "custbody_cash_register": r.get("custbody_cash_register"),
+                            "custbody_nondeductible_processed": r.get("custbody_nondeductible_processed"),
+                            "custbody_report_timestamp": self.parse_datetime(r.get("custbody_report_timestamp")),
+                            "custbody_wrong_subs": r.get("custbody_wrong_subs"),
+                            "customtype": r.get("customtype"),
+                            "daysopen": r.get("daysopen"),
+                            "daysoverduesearch": r.get("daysoverduesearch"),
+                            "duedate": self.parse_date(r.get("duedate")),
+                            "entity": r.get("entity"),
+                            "exchangerate": decimal_or_none(r.get("exchangerate")),
+                            "externalid": r.get("externalid"),
+                            "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
+                            "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
+                            "foreigntotal": decimal_or_none(r.get("foreigntotal")),
+                            "number": decimal_or_none(r.get("number")),
+                            "intercoadj": r.get("intercoadj"),
+                            "isfinchrg": r.get("isfinchrg"),
+                            "isreversal": r.get("isreversal"),
+                            "lastmodifiedby": r.get("lastmodifiedby"),
+                            "lastmodifieddate": last_mod,
+                            "nexus": r.get("nexus"),
+                            "ordpicked": r.get("ordpicked"),
+                            "paymenthold": r.get("paymenthold"),
+                            "posting": r.get("posting"),
+                            "postingperiod": r.get("postingperiod"),
+                            "printedpickingticket": r.get("printedpickingticket"),
+                            "recordtype": r.get("recordtype"),
+                            "source": r.get("source"),
+                            "status": r.get("status"),
+                            "subsidiary": r.get("subsidiary"),
+                            "terms": r.get("terms"),
+                            "tobeprinted": r.get("tobeprinted"),
+                            "trandate": self.parse_date(r.get("trandate")),
+                            "trandisplayname": r.get("trandisplayname"),
+                            "tranid": r.get("tranid"),
+                            "transactionnumber": r.get("transactionnumber"),
+                            "type": r.get("type"),
+                            "userevenuearrangement": r.get("userevenuearrangement"),
+                            "visibletocustomer": r.get("visibletocustomer"),
+                            "void_field": r.get("void"),
+                            "voided": r.get("voided"),
+                            "custbody_nexus_notc": r.get("custbody_nexus_notc"),
+                            "memo": r.get("memo"),
+                            "record_date": last_mod,
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Error importing transaction row={r}: {e}", exc_info=True)
+
+            total_imported += len(rows)
+
+            # Update marker using the LASTMODIFIEDDATE and ID of the last row.
+            last_row = rows[-1]
+            new_marker_date_raw = last_row.get("lastmodifieddate")
+            new_marker_id = last_row.get("ID")
+            if new_marker_date_raw:
+                new_marker_date = self.parse_datetime(new_marker_date_raw)
+                if new_marker_date:
+                    new_marker_date_str = new_marker_date.strftime("%Y-%m-%d %H:%M:%S")
+                else:
+                    new_marker_date_str = "1970-01-01 00:00:00"
+            else:
+                new_marker_date_str = "1970-01-01 00:00:00"
+            marker = (new_marker_date_str, new_marker_id)
+            logger.info(f"Batch processed. New marker: LASTMODIFIEDDATE={new_marker_date_str}, ID={new_marker_id}. Total imported: {total_imported}.")
+
+            if len(rows) < limit:
+                break
+
+        self.log_import_event(module_name="netsuite_transactions", fetched_records=total_imported)
+        logger.info(f"Imported {total_imported} Transaction records successfully.")
 
 
     # ------------------------------------------------------------
