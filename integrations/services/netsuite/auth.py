@@ -161,7 +161,6 @@ class NetSuiteAuthService:
 
 
         tokens = resp.json()
-        print(tokens, "_refresh_token")
         new_access_token = tokens.get("access_token")
         new_refresh_token = tokens.get("refresh_token", token_obj.refresh_token)
         expires_in = tokens.get("expires_in", 3600)
