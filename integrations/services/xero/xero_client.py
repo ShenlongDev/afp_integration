@@ -513,16 +513,19 @@ class XeroDataImporter:
         Hypothetical function: e.g. GET /Budgets/{budget_id}/periodBalances
         Not an actual standard Xero endpoint in many cases.
         """
-        url = f"https://api.xero.com/api.xro/2.0/Budgets/{budget_id}/periodBalances"
+        url = f"https://api.xero.com/api.xro/2.0/Budgets/{budget_id}"
         headers = {
             "Authorization": f"Bearer {self.get_valid_xero_token()}",
-            "xero-tenant-id": self.tenant_id,
             "Accept": "application/json"
         }
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, params={
+                "DateFrom": "2024-01-01",
+                "DateTo": "2025-02-11"
+            })
+            print(response.json(), "for budget period balances")
             response.raise_for_status()
-            return response.json().get("PeriodBalances", [])
+            return response.json().get("Budgets", [])
         except requests.exceptions.HTTPError as e:
             if response.status_code == 404:
                 return []
@@ -544,6 +547,7 @@ class XeroDataImporter:
                 logger.warning("Skipping budget with no BudgetID.")
                 continue
 
+            # Update or create the raw budget record.
             XeroBudgetsRaw.objects.update_or_create(
                 budget_id=budget_id,
                 tenant_id=self.integration.org.id,
@@ -558,24 +562,45 @@ class XeroDataImporter:
                 }
             )
 
-            period_balances = self.get_budget_period_balances(budget_id)
-            for pb in period_balances:
-                account_id = pb.get("AccountID")
-                period = pb.get("Period")
-                XeroBudgetPeriodBalancesRaw.objects.update_or_create(
-                    budget_id=budget_id,
-                    tenant_id=self.integration.org.id,
-                    account_id=account_id,
-                    period=period,
-                    defaults={
-                        "account_code": pb.get("AccountCode"),
-                        "amount": pb.get("Amount"),
-                        "notes": pb.get("Notes"),
-                        "updated_date_utc": self.parse_xero_datetime(pb.get("UpdatedDateUTC")),
-                        "ingestion_timestamp": now_ts,
-                        "source_system": "XERO"
-                    }
-                )
+            # Get the budget period balances response.
+            bp_response = self.get_budget_period_balances(budget_id)
+            if not bp_response:
+                logger.warning(f"No period balances found for budget_id: {budget_id}")
+                continue
+
+            # Iterate over each budget object in the response.
+            # (Usually this list contains one item, but we handle multiple in case it occurs.)
+            for b_item in bp_response:
+                # Extract the BudgetLines from the budget object.
+                budget_lines = b_item.get("BudgetLines", [])
+                for line in budget_lines:
+                    account_id = line.get("AccountID")
+                    account_code = line.get("AccountCode")
+                    # Each line has a list of BudgetBalances.
+                    raw_balances = line.get("BudgetBalances", [])
+                    # Sort the balances by the Period field (e.g., "2024-12", "2024-11", etc.)
+                    sorted_balances = sorted(raw_balances, key=lambda x: x.get("Period"))
+                    for pb in sorted_balances:
+                        period = pb.get("Period")
+                        amount = pb.get("Amount")
+                        notes = pb.get("Notes")
+                        # Use the UpdatedDateUTC from the budget response for the line.
+                        updated_date_utc = self.parse_xero_datetime(b_item.get("UpdatedDateUTC"))
+                        XeroBudgetPeriodBalancesRaw.objects.update_or_create(
+                            budget_id=budget_id,
+                            tenant_id=self.integration.org.id,
+                            account_id=account_id,
+                            period=period,
+                            defaults={
+                                "account_code": account_code,
+                                "amount": amount,
+                                "notes": notes,
+                                "updated_date_utc": updated_date_utc,
+                                "ingestion_timestamp": now_ts,
+                                "source_system": "XERO"
+                            }
+                        )
+
         self.log_import_event(module_name="xero_budgets", fetched_records=len(budgets))
         logger.info("Completed Xero Budgets & Period Balances import.")
 

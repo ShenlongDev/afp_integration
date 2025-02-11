@@ -798,70 +798,90 @@ class NetSuiteImporter:
     # 9) Import Transaction Lines
     # ------------------------------------------------------------
     @transaction.atomic
-    def import_transaction_lines(self, min_id: Optional[str] = None):
+    def import_transaction_lines(self, min_id: Optional[str] = None, last_modified_after: Optional[str] = None,
+                                start_date: Optional[str] = None, end_date: Optional[str] = None):
         """
-        Imports NetSuite Transaction Lines into the NetSuiteTransactionLine model
-        by dynamically paging through the results in batches.
+        Imports NetSuite Transaction Lines into the NetSuiteTransactionLine model by dynamically
+        paging through the results in batches. You can optionally restrict the results to only those
+        lines modified after a certain timestamp (or within a specific date range).
+        
+        Parameters:
+        - min_id: A string marker for the minimum id to start with (keyset pagination).
+        - last_modified_after: If provided (format: 'YYYY-MM-DD HH24:MI:SS'), only rows with
+            LINELASTMODIFIEDDATE greater than this timestamp will be returned.
+        - start_date and end_date: Alternatively, you can supply a date range to filter by.
+        
+        If no date filters are provided, all transaction lines are processed.
         """
         logger.info("Importing NetSuite Transaction Lines...")
         batch_size = 500
         if not min_id:
             min_id = "0"
         total_fetched = 0
+        start_date = "2025-01-01"
+
+        # Build additional filtering clauses if date parameters are provided.
+        date_filter_clause = ""
+        if last_modified_after:
+            # Use the provided last_modified_after marker.
+            date_filter_clause += f" AND LINELASTMODIFIEDDATE > TO_DATE('{last_modified_after}', 'YYYY-MM-DD HH24:MI:SS')"
+        else:
+            if start_date:
+                date_filter_clause += f" AND LINELASTMODIFIEDDATE >= TO_DATE('{start_date}', 'YYYY-MM-DD HH24:MI:SS')"
+            if end_date:
+                date_filter_clause += f" AND LINELASTMODIFIEDDATE <= TO_DATE('{end_date}', 'YYYY-MM-DD HH24:MI:SS')"
 
         while True:
-            # Build a SuiteQL query using the current min_id marker.
-            # Note: The OFFSET is set to 0 because the WHERE clause already limits results.
+            # Note: We are using keyset pagination by only retrieving rows where id > min_id.
             query = f"""
-            SELECT
-                id,
-                ISBILLABLE,
-                ISCLOSED,
-                ISCOGS,
-                ISCUSTOMGLLINE,
-                ISFULLYSHIPPED,
-                ISFXVARIANCE,
-                ISINVENTORYAFFECTING,
-                ISREVRECTRANSACTION,
-                LINELASTMODIFIEDDATE,
-                LINESEQUENCENUMBER,
-                LOCATION,
-                MAINLINE,
-                MEMO,
-                NETAMOUNT,
-                OLDCOMMITMENTFIRM,
-                QUANTITYBILLED,
-                QUANTITYREJECTED,
-                QUANTITYSHIPRECV,
-                SUBSIDIARY,
-                TAXLINE,
-                TRANSACTIONDISCOUNT
-            FROM TransactionLine
-            WHERE id > {min_id}
-            ORDER BY id ASC
-            OFFSET 0 ROWS FETCH NEXT {batch_size} ROWS ONLY
+                SELECT
+                    id,
+                    ISBILLABLE,
+                    ISCLOSED,
+                    ISCOGS,
+                    ISCUSTOMGLLINE,
+                    ISFULLYSHIPPED,
+                    ISFXVARIANCE,
+                    ISINVENTORYAFFECTING,
+                    ISREVRECTRANSACTION,
+                    LINELASTMODIFIEDDATE,
+                    LINESEQUENCENUMBER,
+                    LOCATION,
+                    MAINLINE,
+                    MEMO,
+                    NETAMOUNT,
+                    OLDCOMMITMENTFIRM,
+                    QUANTITYBILLED,
+                    QUANTITYREJECTED,
+                    QUANTITYSHIPRECV,
+                    SUBSIDIARY,
+                    TAXLINE,
+                    TRANSACTIONDISCOUNT
+                FROM TransactionLine
+                WHERE id > {min_id}
+                    {date_filter_clause}
+                ORDER BY id ASC
+                FETCH NEXT {batch_size} ROWS ONLY
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
-                print(f"fetched {len(rows)} transaction lines with data: {rows[:100]}.")
-                logger.info(f"Fetched {len(rows)} transaction line records.")
+                logger.info(f"Fetched {len(rows)} transaction line records with id > {min_id} {date_filter_clause}.")
             except Exception as e:
-                logger.error(f"Error importing transaction_lines: {e}", exc_info=True)
+                logger.error(f"Error importing transaction lines: {e}", exc_info=True)
                 return
 
             if not rows:
                 # No more rows returned – exit the loop.
                 break
 
-            # Process each row from the current batch.
             for r in rows:
+                print(r)
                 try:
                     netsuite_id = r.get("id")
                     if not netsuite_id:
                         logger.warning(f"Transaction Line row missing 'id': {r}")
                         continue
 
-                    # Parse LINELASTMODIFIEDDATE using your helper (assuming it returns a datetime)
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
 
                     NetSuiteTransactionLine.objects.update_or_create(
@@ -877,38 +897,38 @@ class NetSuiteImporter:
                             "is_inventory_affecting": r.get("isinventoryaffecting"),
                             "is_rev_rec_transaction": r.get("isrevrectransaction"),
                             "line_last_modified_date": last_modified.date() if last_modified else None,
-                            "line_sequence_number": r.get("linesequencenumbeR"),
-                            "links": r.get("links"),  # if available in response
+                            "line_sequence_number": r.get("linesequencenumber"),
+                            "links": r.get("links"),
                             "location": r.get("location"),
                             "main_line": r.get("mainline"),
-                            "match_bill_to_receipt": r.get("matchbilltoreceipt"),  # if available
+                            "match_bill_to_receipt": r.get("matchbilltoreceipt"),
                             "memo": r.get("memo"),
                             "net_amount": decimal_or_none(r.get("netamount")),
                             "old_commitment_firm": r.get("oldcommitmentfirm"),
                             "quantity_billed": r.get("quantitybilled"),
                             "quantity_rejected": r.get("quantityrejected"),
                             "quantity_ship_recv": r.get("quantityshiprecv"),
-                            "source_uri": r.get("source_uri"),  # if available
+                            "source_uri": r.get("source_uri"),
                             "subsidiary": r.get("subsidiary"),
-                            "subsidiary_id": r.get("subsidiaryid"),  # if available
+                            "subsidiary_id": r.get("subsidiaryid"),
                             "tax_line": r.get("taxline"),
                             "transaction_discount": r.get("transactiondiscount"),
-                            "transaction_id": r.get("transactionid"),  # if available
+                            "transaction_id": r.get("transactionid"),
                         }
                     )
                 except Exception as e:
                     logger.error(f"Error importing transaction line row={r}: {e}", exc_info=True)
 
             total_fetched += len(rows)
-            # Update min_id to the id of the last row in the batch so that the next iteration only retrieves newer rows.
+            # Update min_id to the id of the last row in the batch
             min_id = rows[-1].get("id")
-            logger.info(f"Processed batch. New min_id set to {min_id}")
+            logger.info(f"Processed batch. New min_id set to {min_id}. Total imported so far: {total_fetched}.")
             if len(rows) < batch_size:
                 break
 
-
         self.log_import_event(module_name="netsuite_transaction_lines", fetched_records=total_fetched)
         logger.info("Transaction Line import complete.")
+
 
 
     # ------------------------------------------------------------

@@ -365,4 +365,3 @@ class NetSuiteTransactionAccountingLine(models.Model):
     class Meta:
         db_table = "Transaction Accounting Line"  
         
-        

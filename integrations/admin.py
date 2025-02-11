@@ -179,8 +179,8 @@ class XeroAccountsRawAdmin(admin.ModelAdmin):
 
 
 class XeroBudgetPeriodBalancesRawAdmin(admin.ModelAdmin):
-    list_display = ('tenant_id', 'amount', 'ingestion_timestamp')
-    search_fields = ('tenant_id',)
+    list_display = ('tenant_id', 'budget_id', 'account_id', 'amount', 'period')
+    search_fields = ('tenant_id', 'budget_id', 'account_id', 'period')
 
 
 class XeroBudgetsRawAdmin(admin.ModelAdmin):
