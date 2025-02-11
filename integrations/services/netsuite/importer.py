@@ -679,9 +679,10 @@ class NetSuiteImporter:
         transactions = NetSuiteTransactions.objects.all()
 
         for txn in transactions:
+            
             # For each transaction, find all corresponding accounting lines.
             lines = NetSuiteTransactionAccountingLine.objects.filter(transaction=txn.transactionid)
-            
+            print(f"lines: {lines}, txn: {txn}, txn.transactionid: {txn.transactionid}")
             if lines.exists():
                 for line in lines:
                     try:

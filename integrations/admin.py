@@ -51,7 +51,7 @@ class SyncTableLogsAdmin(admin.ModelAdmin):
 
 class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
     list_display = ('org', 'transaction', 'account', 'amount')
-    search_fields = ('org', 'transaction', 'account', 'amount')
+    search_fields = ('transaction', 'account', 'amount')
     
 class NetSuiteTransactionLinesAdmin(admin.ModelAdmin):
     list_display = ('company_name', 'transaction_id', 'subsidiary')
@@ -79,18 +79,18 @@ class NetSuiteDepartmentsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteGeneralLedgerAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'record_date')  # Removed invalid fields
+    list_display = ('company_name', 'record_date')  
     search_fields = ('company_name', 'is_inactive', 'record_date')
 
 
 class NetSuiteJournalsAdmin(admin.ModelAdmin):
-    list_display = ('journal_id', 'company_name', 'record_date')  # Removed invalid fields
+    list_display = ('journal_id', 'company_name', 'record_date')
     search_fields = ('journal_id', 'company_name', 'record_date')
 
 
 class NetSuiteTransactionsAdmin(admin.ModelAdmin):
     list_display = ('company_name', 'abbrevtype', 'createdby', 'transactionid', 'subsidiary')
-    search_fields = ('company_name', 'abbrevtype', 'createdby', 'transactionid', 'subsidiary')
+    search_fields = ('abbrevtype', 'createdby', 'transactionid', 'subsidiary')
 
 
 class NetSuiteVendorsAdmin(admin.ModelAdmin):
