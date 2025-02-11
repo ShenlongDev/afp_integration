@@ -868,55 +868,63 @@ class NetSuiteImporter:
     def import_transaction_accounting_lines(self, min_id: Optional[str] = None):
         """
         Imports NetSuite Transaction Accounting Lines (from the TransactionAccountingLine table)
-        into the NetSuiteTransactionAccountingLine model using keyset pagination to avoid offset issues.
+        into the NetSuiteTransactionAccountingLine model using keyset pagination.
+        
+        Instead of using a fixed OFFSET, this function selects rows where TRANSACTION > min_id,
+        ordered ascending by TRANSACTION, and then updates min_id to the maximum value in the current batch.
         """
         logger.info("Importing Transaction Accounting Lines...")
         if not min_id:
             min_id = "0"
         
         limit = 500
-        offset = 500
         total_imported = 0
 
         while True:
             query = f"""
-            SELECT
-                TRANSACTION,              
-                TRANSACTIONLINE,
-                ACCOUNT,
-                ACCOUNTINGBOOK,
-                AMOUNT,
-                AMOUNTLINKED,
-                DEBIT,
-                NETAMOUNT,
-                PAYMENTAMOUNTUNUSED,
-                PAYMENTAMOUNTUSED,
-                POSTING,
-                CREDIT,
-                AMOUNTPAID,
-                AMOUNTUNPAID,
-                LASTMODIFIEDDATE,
-                PROCESSEDBYREVCOMMIT
-            FROM TransactionAccountingLine L
-            WHERE L.Transaction > {min_id}
-            ORDER BY L.Transaction ASC
-            OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
+                SELECT
+                    TRANSACTION,
+                    TRANSACTIONLINE,
+                    ACCOUNT,
+                    ACCOUNTINGBOOK,
+                    AMOUNT,
+                    AMOUNTLINKED,
+                    DEBIT,
+                    NETAMOUNT,
+                    PAYMENTAMOUNTUNUSED,
+                    PAYMENTAMOUNTUSED,
+                    POSTING,
+                    CREDIT,
+                    AMOUNTPAID,
+                    AMOUNTUNPAID,
+                    LASTMODIFIEDDATE,
+                    PROCESSEDBYREVCOMMIT
+                FROM TransactionAccountingLine L
+                WHERE L.TRANSACTION > {min_id}
+                ORDER BY L.TRANSACTION ASC
+                FETCH NEXT {limit} ROWS ONLY
             """
-            rows = list(self.client.execute_suiteql(query))
-            logger.info(f"Fetched {len(rows)} transaction accounting line records with min_id > {min_id}.")
+            try:
+                rows = list(self.client.execute_suiteql(query))
+                logger.info(f"Fetched {len(rows)} transaction accounting line records with TRANSACTION > {min_id}.")
+            except Exception as e:
+                logger.error(f"Error importing transaction accounting lines: {e}", exc_info=True)
+                return
 
             if not rows:
                 break
 
+            # Process each row in the current batch.
             for r in rows:
                 try:
-                    last_modified = self.parse_datetime(r.get("LASTMODIFIEDDATE"))
+                    # Parse LASTMODIFIEDDATE using your helper (which returns a datetime)
+                    last_modified = self.parse_datetime(r.get("lastmodifieddate"))
                     NetSuiteTransactionAccountingLine.objects.update_or_create(
                         org=self.org,
                         transaction=r.get("transaction"),
                         transaction_line=r.get("transactionline"),
                         defaults={
-                            "links": r.get("links"),
+                            "links": r.get("links"),  # if your source returns this field
                             "account": r.get("account"),
                             "accountingbook": r.get("accountingbook"),
                             "amount": decimal_or_none(r.get("amount")),
@@ -935,11 +943,20 @@ class NetSuiteImporter:
                     )
                 except Exception as e:
                     logger.error(f"Error importing transaction accounting line row: {r} - {e}", exc_info=True)
+
             total_imported += len(rows)
-            offset += limit
+
+            # Update min_id using the maximum TRANSACTION value from the current batch.
+            # (Assumes that the TRANSACTION field is numeric and monotonically increasing.)
+            for r in rows:
+                print(f"Transaction Accounting Line: {r.get('transaction')}")
+            max_transaction = max(r.get("transaction") for r in rows)
+            min_id = str(max_transaction)
+            logger.info(f"Batch processed. New min_id set to {min_id}. Total imported so far: {total_imported}.")
+
+            # If fewer than limit rows were returned, then we have reached the end.
             if len(rows) < limit:
                 break
-        
 
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported {total_imported} Transaction Accounting Lines successfully.")
