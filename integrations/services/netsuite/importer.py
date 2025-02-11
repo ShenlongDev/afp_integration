@@ -985,6 +985,7 @@ class NetSuiteImporter:
             if not rows:
                 break
 
+            print(f"fetcting {len(rows)} transaction accounting lines on {min_id}")
             # Process each row in the current batch.
             for r in rows:
                 try:
