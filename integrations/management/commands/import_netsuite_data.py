@@ -81,7 +81,6 @@ class Command(BaseCommand):
                     
                     # Initialize importer and transformer for each integration
                     importer = NetSuiteImporter(integration)
-                    transformer = NetSuiteTransformer()
 
                     # Import data based on specified components or all if none specified
                     print("here before import methods")
@@ -119,22 +118,7 @@ class Command(BaseCommand):
                             self.stdout.write(
                                 self.style.WARNING(f'Unknown component: {component}')
                             )
-
-                # Transform data
-                # self.stdout.write('Starting data transformation...')
-                # try:
-                #     transformer.transform_general_ledger(integration)
-                #     self.stdout.write(
-                #         self.style.SUCCESS('Successfully transformed general ledger data')
-                #     )
-                # except Exception as e:
-                #     self.stdout.write(
-                #         self.style.ERROR(f'Error transforming general ledger: {str(e)}')
-                #     )
-                #     logger.error('Error transforming general ledger', exc_info=True)
-
-                # self.stdout.write(self.style.SUCCESS(f'NetSuite data import and transform completed for Integration ID: {integration.id}'))
-
             except Exception as e:
                 logger.error('Unexpected error during import/transform process', exc_info=True)
                 self.stdout.write(self.style.ERROR(f'Failed to import/transform NetSuite data for Integration ID {integration.id}: {str(e)}'))
+

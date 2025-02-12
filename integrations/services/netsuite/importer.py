@@ -20,6 +20,7 @@ from integrations.models.netsuite.analytics import (
 from decimal import Decimal, InvalidOperation
 from dateutil import tz
 from dateutil.parser import parse as dateutil_parse
+from datetime import datetime
 import re
 
 logger = logging.getLogger(__name__)
@@ -45,18 +46,18 @@ class NetSuiteImporter:
     A class to handle importing various NetSuite data into Django models.
     """
 
-    def __init__(self, integration: Integration):
+    def __init__(self, integration: Integration, since_date: Optional[str] = None, until_date: Optional[str] = None):
         self.integration = integration
         self.consolidation_key = integration.netsuite_account_id
         self.client = NetSuiteClient(self.consolidation_key, integration)
         self.org_name = integration.org
         self.now_ts = timezone.now()
         self.org = Organisation.objects.get(name=self.org_name)
-        
+        # since_date and until_date should be strings in the format "YYYY-MM-DD HH:MM:SS"
+        self.since_date = since_date
+        self.until_date = until_date
+
     def log_import_event(self, module_name: str, fetched_records: int):
-        """
-        Save an import event log for a particular module.
-        """
         SyncTableLogs.objects.create(
             module_name=module_name,
             integration='NETSUITE',
@@ -65,6 +66,22 @@ class NetSuiteImporter:
             last_updated_time=timezone.now(),
             last_updated_date=timezone.now().date()
         )
+
+    def build_date_clause(self, field: str, since: Optional[str] = None, until: Optional[str] = None) -> str:
+        """
+        Build a SuiteQL date filtering clause for a given field.
+        Both since and until should be strings in the format "YYYY-MM-DD HH24:MI:SS".
+        For example, if since is provided, returns:
+            "AND {field} >= TO_DATE('{since}', 'YYYY-MM-DD HH24:MI:SS')"
+        If until is provided, returns:
+            "AND {field} <= TO_DATE('{until}', 'YYYY-MM-DD HH24:MI:SS')"
+        """
+        clause = ""
+        if since:
+            clause += f" AND {field} >= TO_DATE('{since}', 'YYYY-MM-DD HH24:MI:SS')"
+        if until:
+            clause += f" AND {field} <= TO_DATE('{until}', 'YYYY-MM-DD HH24:MI:SS')"
+        return clause
 
     # ------------------------------------------------------------
     # 1) Import Vendors
@@ -417,33 +434,28 @@ class NetSuiteImporter:
     @transaction.atomic
     def import_transactions(self, last_import_date: Optional[str] = None):
         """
-        Imports NetSuite Transactions into the NetSuiteTransactions model incrementally or fully.
+        Imports NetSuite Transactions into the NetSuiteTransactions model.
         
-        If last_import_date is provided (in the format "YYYY-MM-DD HH:MM:SS"), then only records whose
-        LASTMODIFIEDDATE is greater than that value will be imported. This is the incremental mode.
-        If last_import_date is not provided, all transactions are imported.
+        If last_import_date is provided (format: "YYYY-MM-DD HH24:MI:SS"), only records with
+        LASTMODIFIEDDATE later than that value are returned. If not provided, then if self.since_date is set,
+        that is used. (Otherwise, all records are imported.)
         
-        Keyset pagination is used by ordering on LASTMODIFIEDDATE ASC, then ID ASC. The marker is updated
-        after each batch using the LASTMODIFIEDDATE and ID of the last row.
+        Uses keyset pagination on LASTMODIFIEDDATE and ID.
         """
-        logger.info("Importing NetSuite Transactions" +
-                    (" incrementally..." if last_import_date else " (full import)..."))
-        
-        # Build a filter clause if incremental import is desired.
-        # (Assumes the LASTMODIFIEDDATE in SuiteQL is comparable using TO_DATE.)
+        logger.info("Importing NetSuite Transactions " +
+                    ("incrementally..." if (last_import_date or self.since_date) else "(full import)..."))
+        # Use parameter precedence: explicitly provided last_import_date overrides self.since_date.
+        filter_since = last_import_date or self.since_date
         date_filter_clause = ""
-        if last_import_date:
-            date_filter_clause = f"AND LASTMODIFIEDDATE > TO_DATE('{last_import_date}', 'YYYY-MM-DD HH24:MI:SS')"
-
+        if filter_since:
+            date_filter_clause = f"AND LASTMODIFIEDDATE > TO_DATE('{filter_since}', 'YYYY-MM-DD HH24:MI:SS')"
         limit = 500
         total_imported = 0
-        # marker is a tuple (marker_date_str, marker_id) used for keyset pagination.
-        marker = None
+        marker = None  # marker is a tuple (marker_date_str, marker_id)
 
         while True:
             marker_clause = ""
             if marker:
-                # marker is a tuple (last_mod, last_id); we use a composite condition.
                 marker_clause = (
                     f"AND (LASTMODIFIEDDATE, ID) > (TO_DATE('{marker[0]}', 'YYYY-MM-DD HH24:MI:SS'), {marker[1]})"
                 )
@@ -515,7 +527,6 @@ class NetSuiteImporter:
             if not rows:
                 break
 
-            # Process each row
             for r in rows:
                 try:
                     txn_id = r.get("id")
@@ -525,10 +536,9 @@ class NetSuiteImporter:
 
                     last_mod = self.parse_datetime(r.get("lastmodifieddate"))
                     if not last_mod:
-                        logger.warning(f"Could not parse LASTMODIFIEDDATE for txn {txn_id}")
+                        logger.warning(f"Could not parse lastmodifieddate for txn {txn_id}")
                         continue
 
-                    # Update or create the transaction record
                     NetSuiteTransactions.objects.update_or_create(
                         transactionid=str(txn_id),
                         company_name=self.org,
@@ -592,29 +602,8 @@ class NetSuiteImporter:
                 except Exception as e:
                     logger.error(f"Error importing transaction row={r}: {e}", exc_info=True)
 
-            total_imported += len(rows)
-
-            # Update marker using the LASTMODIFIEDDATE and ID of the last row.
-            last_row = rows[-1]
-            new_marker_date_raw = last_row.get("lastmodifieddate")
-            new_marker_id = last_row.get("ID")
-            if new_marker_date_raw:
-                new_marker_date = self.parse_datetime(new_marker_date_raw)
-                if new_marker_date:
-                    new_marker_date_str = new_marker_date.strftime("%Y-%m-%d %H:%M:%S")
-                else:
-                    new_marker_date_str = "1970-01-01 00:00:00"
-            else:
-                new_marker_date_str = "1970-01-01 00:00:00"
-            marker = (new_marker_date_str, new_marker_id)
-            logger.info(f"Batch processed. New marker: LASTMODIFIEDDATE={new_marker_date_str}, ID={new_marker_id}. Total imported: {total_imported}.")
-
-            if len(rows) < limit:
-                break
-
         self.log_import_event(module_name="netsuite_transactions", fetched_records=total_imported)
         logger.info(f"Imported {total_imported} Transaction records successfully.")
-
 
     # ------------------------------------------------------------
     # 8) Import General Ledger
@@ -755,42 +744,42 @@ class NetSuiteImporter:
                             logger.info(f"Updated GL entry for Txn={txn.transactionid}, line_seq={line_seq}")
                     except Exception as e:
                         logger.error(f"Error mapping Txn={txn.transactionid}, line={line.transaction_line}: {e}", exc_info=True)
-            else:
-                # Create a fallback GL entry if no accounting lines exist.
-                try:
-                    yearperiod = self.extract_yearperiod(txn.postingperiod)
-                    defaults = {
-                        'abbrevtype':     txn.abbrevtype,
-                        'approvalstatus': txn.approvalstatus,
-                        'postingperiod':  txn.postingperiod,
-                        'yearperiod':     yearperiod,
-                        'trandate':       self.make_aware_datetime(txn.trandate),
-                        'subsidiary':     txn.subsidiary,
-                        'account':        None,
-                        'acctnumber':     None,
-                        'amount':         None,
-                        'debit':          None,
-                        'credit':         None,
-                        'netamount':      None,
-                        'currency':       txn.currency,
-                        'exchangerate':   txn.exchangerate,
-                        'record_date':    self.make_aware_datetime(txn.record_date),
-                    }
-                    gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
-                        company_name=txn.company_name,
-                        transactionid=txn.transactionid,
-                        linesequencenumber=0,  # fallback line sequence number
-                        defaults={ **defaults,
-                                   'uniquekey': f"{txn.transactionid}-0",
-                                   'lineid': f"{txn.transactionid}-0" }
-                    )
-                    total_mapped += 1
-                    if created:
-                        logger.info(f"Created fallback GL entry for Txn={txn.transactionid} (no lines)")
-                    else:
-                        logger.info(f"Updated fallback GL entry for Txn={txn.transactionid} (no lines)")
-                except Exception as e:
-                    logger.error(f"Error mapping fallback GL for Txn={txn.transactionid}: {e}", exc_info=True)
+            # else:
+            #     # Create a fallback GL entry if no accounting lines exist.
+            #     try:
+            #         yearperiod = self.extract_yearperiod(txn.postingperiod)
+            #         defaults = {
+            #             'abbrevtype':     txn.abbrevtype,
+            #             'approvalstatus': txn.approvalstatus,
+            #             'postingperiod':  txn.postingperiod,
+            #             'yearperiod':     yearperiod,
+            #             'trandate':       self.make_aware_datetime(txn.trandate),
+            #             'subsidiary':     txn.subsidiary,
+            #             'account':        None,
+            #             'acctnumber':     None,
+            #             'amount':         None,
+            #             'debit':          None,
+            #             'credit':         None,
+            #             'netamount':      None,
+            #             'currency':       txn.currency,
+            #             'exchangerate':   txn.exchangerate,
+            #             'record_date':    self.make_aware_datetime(txn.record_date),
+            #         }
+            #         gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
+            #             company_name=txn.company_name,
+            #             transactionid=txn.transactionid,
+            #             linesequencenumber=0,  # fallback line sequence number
+            #             defaults={ **defaults,
+            #                        'uniquekey': f"{txn.transactionid}-0",
+            #                        'lineid': f"{txn.transactionid}-0" }
+            #         )
+            #         total_mapped += 1
+            #         if created:
+            #             logger.info(f"Created fallback GL entry for Txn={txn.transactionid} (no lines)")
+            #         else:
+            #             logger.info(f"Updated fallback GL entry for Txn={txn.transactionid} (no lines)")
+            #     except Exception as e:
+            #         logger.error(f"Error mapping fallback GL for Txn={txn.transactionid}: {e}", exc_info=True)
 
         self.log_import_event(module_name="netsuite_general_ledger", fetched_records=total_mapped)
         logger.info(f"Completed mapping general ledger: {total_mapped} entries processed.")
@@ -800,40 +789,26 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     @transaction.atomic
     def import_transaction_lines(self, min_id: Optional[str] = None, last_modified_after: Optional[str] = None,
-                                start_date: Optional[str] = None, end_date: Optional[str] = None):
+                                 start_date: Optional[str] = None, end_date: Optional[str] = None):
         """
         Imports NetSuite Transaction Lines into the NetSuiteTransactionLine model by dynamically
-        paging through the results in batches. You can optionally restrict the results to only those
-        lines modified after a certain timestamp (or within a specific date range).
+        paging through the results in batches. Optional date filtering is applied directly in SuiteQL.
         
-        Parameters:
-        - min_id: A string marker for the minimum id to start with (keyset pagination).
-        - last_modified_after: If provided (format: 'YYYY-MM-DD HH24:MI:SS'), only rows with
-            LINELASTMODIFIEDDATE greater than this timestamp will be returned.
-        - start_date and end_date: Alternatively, you can supply a date range to filter by.
-        
-        If no date filters are provided, all transaction lines are processed.
+        If no date filters are provided, the import is run on all records.
         """
         logger.info("Importing NetSuite Transaction Lines...")
         batch_size = 500
         if not min_id:
             min_id = "0"
+        # If no explicit start_date is provided, use self.since_date if available.
+        if not start_date:
+            start_date = self.since_date
         total_fetched = 0
-        start_date = "2025-01-01"
 
-        # Build additional filtering clauses if date parameters are provided.
-        date_filter_clause = ""
-        if last_modified_after:
-            # Use the provided last_modified_after marker.
-            date_filter_clause += f" AND LINELASTMODIFIEDDATE > TO_DATE('{last_modified_after}', 'YYYY-MM-DD HH24:MI:SS')"
-        else:
-            if start_date:
-                date_filter_clause += f" AND LINELASTMODIFIEDDATE >= TO_DATE('{start_date}', 'YYYY-MM-DD HH24:MI:SS')"
-            if end_date:
-                date_filter_clause += f" AND LINELASTMODIFIEDDATE <= TO_DATE('{end_date}', 'YYYY-MM-DD HH24:MI:SS')"
+        # Build date filter clause based on provided parameters.
+        date_filter_clause = self.build_date_clause("LINELASTMODIFIEDDATE", since=last_modified_after or start_date, until=end_date)
 
         while True:
-            # Note: We are using keyset pagination by only retrieving rows where id > min_id.
             query = f"""
                 SELECT
                     id,
@@ -866,17 +841,15 @@ class NetSuiteImporter:
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
-                logger.info(f"Fetched {len(rows)} transaction line records with id > {min_id} {date_filter_clause}.")
+                logger.info(f"Fetched {len(rows)} transaction line records with id > {min_id}{date_filter_clause}.")
             except Exception as e:
                 logger.error(f"Error importing transaction lines: {e}", exc_info=True)
                 return
 
             if not rows:
-                # No more rows returned – exit the loop.
                 break
 
             for r in rows:
-                print(r)
                 try:
                     netsuite_id = r.get("id")
                     if not netsuite_id:
@@ -884,7 +857,6 @@ class NetSuiteImporter:
                         continue
 
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
-
                     NetSuiteTransactionLine.objects.update_or_create(
                         netsuite_id=netsuite_id,
                         defaults={
@@ -921,7 +893,6 @@ class NetSuiteImporter:
                     logger.error(f"Error importing transaction line row={r}: {e}", exc_info=True)
 
             total_fetched += len(rows)
-            # Update min_id to the id of the last row in the batch
             min_id = rows[-1].get("id")
             logger.info(f"Processed batch. New min_id set to {min_id}. Total imported so far: {total_fetched}.")
             if len(rows) < batch_size:
@@ -936,24 +907,41 @@ class NetSuiteImporter:
     # 10) Transaction Accounting Lines
     # ------------------------------------------------------------
     @transaction.atomic
-    def import_transaction_accounting_lines(self, min_id: Optional[str] = None):
+    def import_transaction_accounting_lines(self, min_id: Optional[str] = None,
+                                            last_modified_after: Optional[str] = None,
+                                            start_date: Optional[str] = None,
+                                            end_date: Optional[str] = None):
         """
-        Imports NetSuite Transaction Accounting Lines (from the TransactionAccountingLine table)
-        into the NetSuiteTransactionAccountingLine model using keyset pagination.
+        Imports NetSuite Transaction Accounting Lines into the NetSuiteTransactionAccountingLine model using keyset pagination.
         
-        Instead of using a fixed OFFSET, this function selects rows where TRANSACTION > min_id,
-        ordered ascending by TRANSACTION, and then updates min_id to the maximum value in the current batch.
+        You can optionally restrict the imported rows by a date filter on LASTMODIFIEDDATE.
+        
+        To import records modified since December, pass, for example:
+            last_modified_after="2024-12-01 00:00:00"
+        or pass a start_date (and optionally an end_date).
+        
+        Date strings must be in the format "YYYY-MM-DD HH24:MI:SS".
         """
-        print("within import_transaction_accounting_lines")
         logger.info("Importing Transaction Accounting Lines...")
         if not min_id:
             min_id = "0"
         
         limit = 500
         total_imported = 0
+        start_date = "2025-01-01"
+
+        # Build date filtering clause.
+        # Here we give precedence to last_modified_after if provided; otherwise, we use start_date/end_date.
+        date_filter_clause = ""
+        if last_modified_after:
+            date_filter_clause += f" AND LASTMODIFIEDDATE > TO_DATE('{last_modified_after}', 'YYYY-MM-DD HH24:MI:SS')"
+        else:
+            if start_date:
+                date_filter_clause += f" AND LASTMODIFIEDDATE >= TO_DATE('{start_date}', 'YYYY-MM-DD HH24:MI:SS')"
+            if end_date:
+                date_filter_clause += f" AND LASTMODIFIEDDATE <= TO_DATE('{end_date}', 'YYYY-MM-DD HH24:MI:SS')"
 
         while True:
-            print("within while loop")
             query = f"""
                 SELECT
                     TRANSACTION,
@@ -974,12 +962,14 @@ class NetSuiteImporter:
                     PROCESSEDBYREVCOMMIT
                 FROM TransactionAccountingLine L
                 WHERE L.TRANSACTION > {min_id}
+                    {date_filter_clause}
                 ORDER BY L.TRANSACTION ASC
                 FETCH NEXT {limit} ROWS ONLY
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
-                logger.info(f"Fetched {len(rows)} transaction accounting line records with TRANSACTION > {min_id}.")
+                print(f"fetched rows: {len(rows)} on page {min_id} {date_filter_clause}")
+                logger.info(f"Fetched {len(rows)} transaction accounting line records with TRANSACTION > {min_id}{date_filter_clause}.")
             except Exception as e:
                 logger.error(f"Error importing transaction accounting lines: {e}", exc_info=True)
                 return
@@ -987,18 +977,15 @@ class NetSuiteImporter:
             if not rows:
                 break
 
-            print(f"fetcting {len(rows)} transaction accounting lines on {min_id}")
-            # Process each row in the current batch.
             for r in rows:
                 try:
-                    # Parse LASTMODIFIEDDATE using your helper (which returns a datetime)
                     last_modified = self.parse_datetime(r.get("lastmodifieddate"))
                     NetSuiteTransactionAccountingLine.objects.update_or_create(
                         org=self.org,
                         transaction=r.get("transaction"),
                         transaction_line=r.get("transactionline"),
                         defaults={
-                            "links": r.get("links"),  # if your source returns this field
+                            "links": r.get("links"),
                             "account": r.get("account"),
                             "accountingbook": r.get("accountingbook"),
                             "amount": decimal_or_none(r.get("amount")),
@@ -1019,158 +1006,43 @@ class NetSuiteImporter:
                     logger.error(f"Error importing transaction accounting line row: {r} - {e}", exc_info=True)
 
             total_imported += len(rows)
-
             # Update min_id using the maximum TRANSACTION value from the current batch.
-            # (Assumes that the TRANSACTION field is numeric and monotonically increasing.)
-            for r in rows:
-                print(f"Transaction Accounting Line: {r.get('transaction')}")
             max_transaction = max(r.get("transaction") for r in rows)
             min_id = str(max_transaction)
             logger.info(f"Batch processed. New min_id set to {min_id}. Total imported so far: {total_imported}.")
-
-            # If fewer than limit rows were returned, then we have reached the end.
-            if len(rows) < limit:
+            if len(rows) < limit or total_imported > 5000:
                 break
 
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported {total_imported} Transaction Accounting Lines successfully.")
 
 
-
-    # 9) Import Budgets
-    # ------------------------------------------------------------
-    # @transaction.atomic
-    # def import_budgets(self, load_type="drop_and_reload"):
-    #     """Imports NetSuite Budgets into NetSuiteBudgetPeriodBalances model."""
-    #     logger.info("Importing NetSuite Budgets...")
-
-    #     if load_type == "drop_and_reload":
-    #         NetSuiteBudgetPeriodBalances.objects.filter(
-    #             company_name=self.org_name
-    #         ).delete()
-
-    #     # Import Budget
-    #     budget_query = "SELECT * FROM Budget"
-    #     budget_rows = list(self.client.execute_suiteql(budget_query))
-
-    #     for r in budget_rows:
-    #         try:
-    #             NetSuiteBudgetPeriodBalances.objects.create(
-    #                 company_name=self.org_name,
-    #                 budget_id=r.get("id", ""),
-    #                 budget_name=r.get("name", ""),
-    #                 budget_status=r.get("status", ""),
-    #                 budget_type=r.get("type", ""),
-    #                 account_id=r.get("accountid", ""),
-    #                 account_code=r.get("accountcode", ""),
-    #                 account_name=r.get("accountname", ""),
-    #                 account_class=r.get("accountclass", ""),
-    #                 department=r.get("department"),
-    #                 location=r.get("location"),
-    #                 period=r.get("period"),
-    #                 amount=decimal_or_none(r.get("amount")),
-    #                 notes=r.get("notes"),
-    #                 updated_date_utc=self.parse_datetime(r.get("updateddateutc")),
-    #                 ingestion_timestamp=self.now_ts,
-    #                 source_system='NETSUITE'
-    #             )
-    #         except Exception as e:
-    #             logger.error(f"Error importing budget row={r}: {e}", exc_info=True)
-
-    #     logger.info(f"Imported {len(budget_rows)} NetSuite Budgets.")
-
-    # ------------------------------------------------------------
-    # 10) Import Journals
-    # ------------------------------------------------------------
-    # @transaction.atomic
-    # def import_journals(self, min_id: Optional[str] = None):
-    #     """Imports NetSuite Journal Entries into NetSuiteJournals model incrementally."""
-    #     logger.info("Importing NetSuite Journal Entries incrementally...")
-
-    #     if not min_id:
-    #         min_id = "0"
-
-    #     query = f"""
-    #     SELECT
-    #         j.id,
-    #         j.date,
-    #         j.memo,
-    #         jl.account,
-    #         jl.debit,
-    #         jl.credit,
-    #         j.currency,
-    #         j.exchangerate
-    #     FROM journalentry j
-    #     JOIN journalline jl ON j.id = jl.journalentry
-    #     WHERE j.id > {min_id}
-    #     ORDER BY j.id ASC
-    #     """
-    #     rows = list(self.client.execute_suiteql(query))
-
-    #     for r in rows:
-    #         try:
-    #             j_id = r.get("id")
-    #             if not j_id:
-    #                 logger.warning(f"Journal row missing 'id': {r}")
-    #                 continue
-
-    #             journal_date = self.parse_date(r.get("date"))
-
-    #             NetSuiteJournals.objects.create(
-    #                 company_name=self.org_name,
-    #                 journal_id=str(j_id),
-    #                 date=journal_date,
-    #                 memo=r.get("memo"),
-    #                 account=r.get("account"),
-    #                 debit=decimal_or_none(r.get("debit")),
-    #                 credit=decimal_or_none(r.get("credit")),
-    #                 currency=r.get("currency"),
-    #                 exchangerate=decimal_or_none(r.get("exchangerate")),
-    #                 record_date=self.now_ts
-    #             )
-    #         except Exception as e:
-    #             logger.error(f"Error importing journal row={r}: {e}", exc_info=True)
-
-    #     logger.info(f"Imported {len(rows)} NetSuite Journals (min_id={min_id}).")
-
     # ------------------------------------------------------------
     # Helper Methods
     # ------------------------------------------------------------
-    def parse_date(self, date_str: Optional[str]) -> Optional[timezone.datetime]:
-        """Parses a date string into a date object."""
+    def parse_date(self, date_str: Optional[str]) -> Optional[datetime.date]:
         if not date_str:
             return None
         try:
-            return timezone.datetime.strptime(date_str, "%d/%m/%Y").date()
+            return datetime.strptime(date_str, "%d/%m/%Y").date()
         except ValueError:
             logger.warning(f"Failed to parse date: {date_str}")
             return None
 
-    def parse_datetime(self, datetime_str: Optional[str]) -> Optional[timezone.datetime]:
-        """Parses a datetime string into a datetime object.
-        
-        Attempts several formats in order to capture timestamps with/without time information.
-        If no format matches, it falls back to dateutil's parser.
-        """
+    def parse_datetime(self, datetime_str: Optional[str]) -> Optional[datetime]:
         if not datetime_str:
             return None
-
-        # Define possible datetime formats.
         formats = [
             "%d/%m/%Y %H:%M:%S",
-            "%d/%m/%Y %H:%M:%S.%f",  # With microseconds if present.
+            "%d/%m/%Y %H:%M:%S.%f",
             "%d/%m/%Y"
         ]
-        
-        # Try each format
         for fmt in formats:
             try:
-                dt = timezone.datetime.strptime(datetime_str, fmt)
+                dt = datetime.strptime(datetime_str, fmt)
                 return dt.replace(tzinfo=tz.tzutc())
             except ValueError:
                 continue
-
-        # Fallback: try using dateutil parser if none of the above formats matched.
         try:
             dt = dateutil_parse(datetime_str)
             return dt.astimezone(tz.tzutc())
@@ -1179,7 +1051,29 @@ class NetSuiteImporter:
             return None
 
     def get_quarter(self, month: Optional[int]) -> Optional[int]:
-        """Returns the quarter for a given month."""
         if month is None:
             return None
         return (month - 1) // 3 + 1
+
+    def make_aware_datetime(self, d) -> Optional[datetime]:
+        if not d:
+            return None
+        if hasattr(d, 'tzinfo'):
+            if d.tzinfo is None:
+                return timezone.make_aware(d)
+            return d
+        try:
+            dt = datetime.strptime(d, "%Y-%m-%d")
+            return timezone.make_aware(dt)
+        except Exception:
+            return None
+
+    def extract_yearperiod(self, postingperiod):
+        if postingperiod:
+            m = re.search(r'FY(\d+)', postingperiod)
+            if m:
+                try:
+                    return int(m.group(1))
+                except ValueError:
+                    pass
+        return None
