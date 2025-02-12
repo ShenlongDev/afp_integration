@@ -41,9 +41,14 @@ from integrations.models.netsuite.analytics import (
     NetSuiteEntity,
     NetSuiteAccountingPeriods,
     NetSuiteTransactionLine,
-    NetSuiteTransactionAccountingLine
+    NetSuiteTransactionAccountingLine,
+    NetSuiteTransformedTransaction
 )
 
+class NetSuiteTransformedTransactionAdmin(admin.ModelAdmin):
+    list_display = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate')
+    search_fields = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate')
+    
 
 class SyncTableLogsAdmin(admin.ModelAdmin):
     list_display = ('module_name', 'integration', 'organization', 'fetched_records', 'last_updated_time', 'last_updated_date')
@@ -54,8 +59,8 @@ class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
     search_fields = ('transaction', 'account', 'amount')
     
 class NetSuiteTransactionLinesAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'transaction_id', 'subsidiary')
-    search_fields = ('company_name', 'transaction_id', 'subsidiary')
+    list_display = ('company_name',  'subsidiary')
+    search_fields = ('company_name', 'subsidiary')
 
 
 
@@ -69,8 +74,8 @@ class NetSuiteEntityAdmin(admin.ModelAdmin):
     search_fields = ('company_name', 'entity_id', 'email', 'phone', 'currency', 'terms')  # Removed entity_number and subsidiary to avoid ForeignKey issues
 
 class NetSuiteSubsidiariesAdmin(admin.ModelAdmin):
-    list_display = ('subsidiary_id', 'company_name', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')
-    search_fields = ('subsidiary_id', 'company_name', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')
+    list_display = ('subsidiary_id', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')
+    search_fields = ('subsidiary_id', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')
 
 
 class NetSuiteDepartmentsAdmin(admin.ModelAdmin):
@@ -79,7 +84,7 @@ class NetSuiteDepartmentsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteGeneralLedgerAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'record_date')  
+    list_display = ('company_name', 'record_date', 'trandate', 'subsidiary')  
     search_fields = ('company_name', 'is_inactive', 'record_date')
 
 
@@ -89,7 +94,7 @@ class NetSuiteJournalsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteTransactionsAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'abbrevtype', 'createdby', 'transactionid', 'subsidiary')
+    list_display = ('company_name', 'abbrevtype', 'createdby', 'transactionid', 'createddate')
     search_fields = ('abbrevtype', 'createdby', 'transactionid', 'subsidiary')
 
 
@@ -99,8 +104,8 @@ class NetSuiteVendorsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteAccountsAdmin(admin.ModelAdmin):
-    list_display = ('account_id', 'company_name')  # Removed invalid fields
-    search_fields = ('account_id', 'company_name', 'is_inactive')
+    list_display = ('account_id', 'is_inactive')
+    search_fields = ('account_id', 'is_inactive')
 
 
 class IntegrationAdmin(admin.ModelAdmin):
@@ -252,3 +257,4 @@ admin.site.register(NetSuiteEntity, NetSuiteEntityAdmin)
 admin.site.register(NetSuiteAccountingPeriods, NetSuiteAccountingPeriodsAdmin)
 admin.site.register(NetSuiteTransactionLine, NetSuiteTransactionLinesAdmin)
 admin.site.register(NetSuiteTransactionAccountingLine, NetSuiteTransactionAccountingLineAdmin)
+admin.site.register(NetSuiteTransformedTransaction, NetSuiteTransformedTransactionAdmin)
