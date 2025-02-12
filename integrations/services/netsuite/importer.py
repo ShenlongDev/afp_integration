@@ -726,13 +726,15 @@ class NetSuiteImporter:
         batch_size = 500
         if not min_id:
             min_id = "0"
+            
+        start_date = "2024-12-01"
         # If no explicit start_date is provided, use self.since_date if available.
-        # if not start_date:
-        #     start_date = self.since_date
+        if not start_date:
+            start_date = self.since_date
         total_fetched = 0
 
-        # # Build date filter clause based on provided parameters.
-        # date_filter_clause = self.build_date_clause("LINELASTMODIFIEDDATE", since=last_modified_after or start_date, until=end_date)
+        # Build date filter clause based on provided parameters.
+        date_filter_clause = self.build_date_clause("LINELASTMODIFIEDDATE", since=last_modified_after or start_date)
 
         while True:
             query = f"""
@@ -761,11 +763,13 @@ class NetSuiteImporter:
                     TRANSACTIONDISCOUNT
                 FROM TransactionLine
                 WHERE id > {min_id}
+                {date_filter_clause}
                 ORDER BY id ASC
                 FETCH NEXT {batch_size} ROWS ONLY
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
+                print(f"fetched rows: {len(rows)} on page {min_id}")
                 logger.info(f"Fetched {len(rows)} transaction line records with id > {min_id}.")
             except Exception as e:
                 logger.error(f"Error importing transaction lines: {e}", exc_info=True)
