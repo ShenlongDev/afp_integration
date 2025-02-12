@@ -2,7 +2,6 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from integrations.models.models import Integration
 from integrations.services.netsuite.importer import NetSuiteImporter
-from integrations.services.netsuite_transformer import NetSuiteTransformer
 import logging
 from datetime import datetime, date
 
@@ -24,6 +23,12 @@ class Command(BaseCommand):
             help='Optional date to filter data since (format: YYYY-MM-DD)'
         )
         parser.add_argument(
+            '--until',
+            type=str,
+            help='Optional date to filter data until (format: YYYY-MM-DD)',
+            default=None
+        )
+        parser.add_argument(
             '--components',
             nargs='+',
             type=str,
@@ -39,18 +44,34 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         integration_id = options.get('integration_id')
         since_date_str = options.get('since')
+        until_date_str = options.get('until')
         components = options.get('components', [])
         transform_only = options.get('transform_only', False)
 
-        # Set default since_date to today's date if not provided
+        # If --since is provided, parse it; otherwise default to today's date at midnight.
         if since_date_str:
             try:
-                since_date = timezone.datetime.strptime(since_date_str, "%Y-%m-%d")
+                # Parse the provided since_date (expected format: YYYY-MM-DD)
+                since_date = datetime.strptime(since_date_str, "%Y-%m-%d")
             except ValueError:
-                self.stdout.write(self.style.ERROR(f"Invalid date format: {since_date_str}. Expected YYYY-MM-DD."))
+                self.stdout.write(self.style.ERROR(f"Invalid date format for --since: {since_date_str}. Expected YYYY-MM-DD."))
                 return
         else:
-            since_date = timezone.datetime.combine(date.today(), datetime.min.time())
+            since_date = datetime.combine(date.today(), datetime.min.time())
+
+        # If --until is provided, parse it; otherwise leave it as None.
+        if until_date_str:
+            try:
+                until_date = datetime.strptime(until_date_str, "%Y-%m-%d")
+            except ValueError:
+                self.stdout.write(self.style.ERROR(f"Invalid date format for --until: {until_date_str}. Expected YYYY-MM-DD."))
+                return
+        else:
+            until_date = None
+
+        # Convert these dates to strings with time (format "YYYY-MM-DD HH:MM:SS")
+        since_date_formatted = since_date.strftime("%Y-%m-%d %H:%M:%S")
+        until_date_formatted = until_date.strftime("%Y-%m-%d %H:%M:%S") if until_date else None
 
         integrations = []
 
@@ -71,18 +92,22 @@ class Command(BaseCommand):
             )
             if not integrations.exists():
                 self.stdout.write(self.style.WARNING("No integrations found with NetSuite credentials."))
+                return
 
         for integration in integrations:
             self.stdout.write(f"Processing Integration ID: {integration.id}")
 
             try:
                 if not transform_only:
-                    self.stdout.write('Starting NetSuite data import...')
-                    
-                    # Initialize importer and transformer for each integration
-                    importer = NetSuiteImporter(integration)
+                    self.stdout.write("Starting NetSuite data import...")
 
-                    # Import data based on specified components or all if none specified
+                    # Pass the since_date and until_date strings to the importer
+                    importer = NetSuiteImporter(
+                        integration,
+                        since_date=since_date_formatted,
+                        until_date=until_date_formatted
+                    )
+
                     import_methods = {
                         'vendors': lambda: importer.import_vendors(load_type="drop_and_reload"),
                         'accounts': importer.import_accounts,
@@ -98,7 +123,6 @@ class Command(BaseCommand):
                     }
 
                     if not components:
-                        # If no specific components specified, import all
                         components_to_import = import_methods.keys()
                     else:
                         components_to_import = components
@@ -106,19 +130,14 @@ class Command(BaseCommand):
                     for component in components_to_import:
                         if component in import_methods:
                             try:
-                                self.stdout.write(f'Importing {component}...')
+                                self.stdout.write(f"Importing {component}...")
                                 import_methods[component]()
-                                self.stdout.write(self.style.SUCCESS(f'Successfully imported {component}'))
+                                self.stdout.write(self.style.SUCCESS(f"Successfully imported {component}"))
                             except Exception as e:
-                                self.stdout.write(
-                                    self.style.ERROR(f'Error importing {component}: {str(e)}')
-                                )
-                                logger.error(f'Error importing {component}', exc_info=True)
+                                self.stdout.write(self.style.ERROR(f"Error importing {component}: {str(e)}"))
+                                logger.error(f"Error importing {component}", exc_info=True)
                         else:
-                            self.stdout.write(
-                                self.style.WARNING(f'Unknown component: {component}')
-                            )
+                            self.stdout.write(self.style.WARNING(f"Unknown component: {component}"))
             except Exception as e:
-                logger.error('Unexpected error during import/transform process', exc_info=True)
-                self.stdout.write(self.style.ERROR(f'Failed to import/transform NetSuite data for Integration ID {integration.id}: {str(e)}'))
-
+                logger.error("Unexpected error during import/transform process", exc_info=True)
+                self.stdout.write(self.style.ERROR(f"Failed to import/transform NetSuite data for Integration ID {integration.id}: {str(e)}"))
