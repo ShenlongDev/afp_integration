@@ -646,146 +646,69 @@ class NetSuiteImporter:
                     pass
         return None
 
+   
     @transaction.atomic
-    def map_net_suite_general_ledger(self):
+    def transform_general_ledger(self):
         """
-        Map data from NetSuiteTransactions (header records) plus
-        NetSuiteTransactionAccountingLine (detail lines) into NetSuiteGeneralLedger.
+        Transforms unified transformed transaction records (from NetSuiteTransformedTransaction)
+        into general ledger entries (in NetSuiteGeneralLedger).
         
-        For each transaction record:
-          - All associated accounting lines are retrieved (joined on transactionid).
-          - For each accounting line, we:
-              * Convert the numeric 'account' to a string.
-              * Look up the account in NetSuiteAccounts (if found, we use its acctnumber).
-              * Derive a unique key and a lineid.
-              * Map monetary fields and dates.
-          - If a transaction has no associated accounting lines, a fallback GL entry is created.
+        The mapping follows the reference SQL:
+          - COMPANY_NAME, ABBREVTYPE, TRANSACTIONID, UNIQUEKEY, LINESEQUENCENUMBER, LINEID,
+            APPROVALSTATUS, POSTINGPERIOD, YEARPERIOD, TRANDATE, SUBSIDIARY, ACCOUNT, ACCTNUMBER,
+            AMOUNT, DEBIT, CREDIT, NETAMOUNT, CURRENCY, EXCHANGERATE, and RECORD_DATE.
           
-        The unique constraint on (company_name, transactionid, linesequencenumber) is used for update_or_create.
+        The update_or_create key is (company_name, transactionid, linesequencenumber).
         """
-
-        logger.info("Mapping NetSuite General Ledger from Transactions + Accounting Lines...")
+        logger.info("Starting General Ledger transformation from transformed transactions...")
         total_mapped = 0
+        from integrations.models.netsuite.analytics import NetSuiteTransformedTransaction
+        # Retrieve all transformed transaction records in ascending order.
+        transformed_records = NetSuiteTransformedTransaction.objects.all().order_by("transactionid", "linesequencenumber")
+        for rec in transformed_records:
+            try:
+                trandate_dt = rec.trandate
 
-        # Retrieve all transactions (adjust your filter as needed)
-        transactions = NetSuiteTransactions.objects.all()
+                # Build defaults to populate the GL record.
+                gl_defaults = {
+                    "abbrevtype": rec.abbrevtype,
+                    # Use the unique key from the transformed record if available,
+                    # otherwise recompute using transactionid and line sequence.
+                    "uniquekey": f"{rec.transactionid}-{rec.linesequencenumber}",
+                    "linesequencenumber": rec.linesequencenumber,
+                    "lineid": rec.lineid,
+                    "approvalstatus": rec.approvalstatus,
+                    "postingperiod": rec.postingperiod,
+                    "yearperiod": rec.yearperiod,
+                    "trandate": trandate_dt,
+                    "subsidiary": rec.subsidiary,
+                    "account": rec.account,
+                    "acctnumber": rec.acctnumber,
+                    "amount": rec.amount,
+                    "debit": rec.debit,
+                    "credit": rec.credit,
+                    "netamount": rec.netamount,
+                    "currency": rec.currency,
+                    "exchangerate": rec.exchangerate,
+                    "record_date": rec.record_date,
+                }
 
-        for txn in transactions:
-            
-            # For each transaction, find all corresponding accounting lines.
-            lines = NetSuiteTransactionAccountingLine.objects.filter(transaction=txn.transactionid)
-            print(f"lines: {lines}, txn: {txn}, txn.transactionid: {txn.transactionid}")
-            if lines.exists():
-                for line in lines:
-                    try:
-                        # Use the accounting line's numeric account field as a string
-                        account_str = str(line.account) if line.account is not None else None
-                        account_obj = None
-                        if account_str:
-                            try:
-                                account_obj = NetSuiteAccounts.objects.get(account_id=account_str)
-                            except NetSuiteAccounts.DoesNotExist:
-                                pass
-
-                        # Decide the GL account value (here we store the string representation)
-                        gl_account = account_str
-
-                        # For acctnumber, try to use the account object's acctnumber if found
-                        acct_number = account_obj.acctnumber if (account_obj and account_obj.acctnumber) else account_str
-
-                        # Derive a unique key for the GL entry.
-                        # If the accounting line provides a consolidation_key, use it; otherwise, build one.
-                        unique_key = (line.consolidation_key.strip() 
-                                      if line.consolidation_key else 
-                                      f"{txn.transactionid}-{line.transaction_line}")
-
-                        # Compute the GL line id; here we concatenate transaction id and the line's sequence.
-                        line_id = f"{txn.transactionid}-{line.transaction_line}" if line.transaction_line is not None else f"{txn.transactionid}-0"
-
-                        # Use the transaction line field for the GL's line sequence number.
-                        line_seq = int(line.transaction_line) if line.transaction_line is not None else 0
-
-                        # Derive yearperiod from txn.postingperiod if possible.
-                        yearperiod = self.extract_yearperiod(txn.postingperiod)
-
-                        # For the record_date, choose the accounting line's lastmodifieddate if present,
-                        # otherwise fall back to the transaction's record_date.
-                        rec_date = self.make_aware_datetime(line.lastmodifieddate) or self.make_aware_datetime(txn.record_date)
-
-                        # Build the defaults dictionary for the GL entry.
-                        defaults = {
-                            'abbrevtype':     txn.abbrevtype,
-                            'approvalstatus': txn.approvalstatus,
-                            'postingperiod':  txn.postingperiod,
-                            'yearperiod':     yearperiod,
-                            'trandate':       self.make_aware_datetime(txn.trandate),
-                            'subsidiary':     txn.subsidiary,
-                            'account':        gl_account,
-                            'acctnumber':     acct_number,
-                            'amount':         line.amount,
-                            'debit':          line.debit,
-                            'credit':         line.credit,
-                            'netamount':      line.netamount,
-                            'currency':       txn.currency,
-                            'exchangerate':   txn.exchangerate,
-                            'record_date':    rec_date,
-                        }
-
-                        # Use update_or_create with unique constraint fields.
-                        gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
-                            company_name=txn.company_name,
-                            transactionid=txn.transactionid,
-                            linesequencenumber=line_seq,
-                            defaults={ **defaults,
-                                       'uniquekey': unique_key,
-                                       'lineid': line_id }
-                        )
-                        total_mapped += 1
-                        if created:
-                            logger.info(f"Created GL entry for Txn={txn.transactionid}, line_seq={line_seq}")
-                        else:
-                            logger.info(f"Updated GL entry for Txn={txn.transactionid}, line_seq={line_seq}")
-                    except Exception as e:
-                        logger.error(f"Error mapping Txn={txn.transactionid}, line={line.transaction_line}: {e}", exc_info=True)
-            # else:
-            #     # Create a fallback GL entry if no accounting lines exist.
-            #     try:
-            #         yearperiod = self.extract_yearperiod(txn.postingperiod)
-            #         defaults = {
-            #             'abbrevtype':     txn.abbrevtype,
-            #             'approvalstatus': txn.approvalstatus,
-            #             'postingperiod':  txn.postingperiod,
-            #             'yearperiod':     yearperiod,
-            #             'trandate':       self.make_aware_datetime(txn.trandate),
-            #             'subsidiary':     txn.subsidiary,
-            #             'account':        None,
-            #             'acctnumber':     None,
-            #             'amount':         None,
-            #             'debit':          None,
-            #             'credit':         None,
-            #             'netamount':      None,
-            #             'currency':       txn.currency,
-            #             'exchangerate':   txn.exchangerate,
-            #             'record_date':    self.make_aware_datetime(txn.record_date),
-            #         }
-            #         gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
-            #             company_name=txn.company_name,
-            #             transactionid=txn.transactionid,
-            #             linesequencenumber=0,  # fallback line sequence number
-            #             defaults={ **defaults,
-            #                        'uniquekey': f"{txn.transactionid}-0",
-            #                        'lineid': f"{txn.transactionid}-0" }
-            #         )
-            #         total_mapped += 1
-            #         if created:
-            #             logger.info(f"Created fallback GL entry for Txn={txn.transactionid} (no lines)")
-            #         else:
-            #             logger.info(f"Updated fallback GL entry for Txn={txn.transactionid} (no lines)")
-            #     except Exception as e:
-            #         logger.error(f"Error mapping fallback GL for Txn={txn.transactionid}: {e}", exc_info=True)
-
+                # Update or create the general ledger entry.
+                gl_obj, created = NetSuiteGeneralLedger.objects.update_or_create(
+                    company_name=rec.company_name,
+                    transactionid=rec.transactionid,
+                    linesequencenumber=rec.linesequencenumber,
+                    defaults=gl_defaults
+                )
+                total_mapped += 1
+                logger.info(f"{'Created' if created else 'Updated'} GL entry for transaction {rec.transactionid} line {rec.linesequencenumber}")
+            except Exception as e:
+                logger.error(f"Error mapping transformed transaction {rec.transactionid} line {rec.linesequencenumber}: {e}", exc_info=True)
+                continue
+        
+        logger.info(f"General Ledger transformation complete: {total_mapped} entries processed.")
         self.log_import_event(module_name="netsuite_general_ledger", fetched_records=total_mapped)
-        logger.info(f"Completed mapping general ledger: {total_mapped} entries processed.")
+
 
     # ------------------------------------------------------------
     # 9) Import Transaction Lines
@@ -806,7 +729,7 @@ class NetSuiteImporter:
         # If no explicit start_date is provided, use self.since_date if available.
         # if not start_date:
         #     start_date = self.since_date
-        # total_fetched = 0
+        total_fetched = 0
 
         # # Build date filter clause based on provided parameters.
         # date_filter_clause = self.build_date_clause("LINELASTMODIFIEDDATE", since=last_modified_after or start_date, until=end_date)
@@ -852,7 +775,6 @@ class NetSuiteImporter:
                 break
 
             for r in rows:
-                print(f"row: {r}")
                 try:
                     netsuite_id = r.get("id")
                     if not netsuite_id:

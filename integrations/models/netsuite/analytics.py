@@ -323,7 +323,7 @@ class NetSuiteTransactionLine(models.Model):
     line_last_modified_date = models.DateField(blank=True, null=True)             # LINELASTMODIFIEDDATE
 
     def __str__(self):
-        return f"Line {self.netsuite_id}"
+        return f"Line {self.id}"
     
     
 class NetSuiteTransactionAccountingLine(models.Model):

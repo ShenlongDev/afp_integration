@@ -95,7 +95,7 @@ class NetSuiteJournalsAdmin(admin.ModelAdmin):
 
 class NetSuiteTransactionsAdmin(admin.ModelAdmin):
     list_display = ('company_name', 'abbrevtype', 'createdby', 'transactionid', 'createddate')
-    search_fields = ('abbrevtype', 'createdby', 'transactionid', 'subsidiary')
+    search_fields = ('abbrevtype', 'createdby', 'transactionid')
 
 
 class NetSuiteVendorsAdmin(admin.ModelAdmin):
