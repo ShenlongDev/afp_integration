@@ -853,7 +853,7 @@ class NetSuiteImporter:
         
         limit = 500
         total_imported = 0
-        start_date = "2025-01-01"
+        start_date = "2024-12-01"
 
         # Build date filtering clause.
         # Here we give precedence to last_modified_after if provided; otherwise, we use start_date/end_date.
@@ -893,8 +893,6 @@ class NetSuiteImporter:
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
-                for i in range(3):
-                    print(f"row {i}: {rows[i]}")
                 print(f"fetched rows: {len(rows)} on page {min_id} {date_filter_clause}")
                 logger.info(f"Fetched {len(rows)} transaction accounting line records with TRANSACTION > {min_id}{date_filter_clause}.")
             except Exception as e:
