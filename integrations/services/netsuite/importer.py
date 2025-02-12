@@ -650,37 +650,37 @@ class NetSuiteImporter:
                 if not netsuite_id:
                     continue
                 try:
-                    last_modified = self.parse_datetime(r.get("LINELASTMODIFIEDDATE"))
+                    last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
                     NetSuiteTransactionLine.objects.update_or_create(
                         id=netsuite_id,
                         defaults={
                             "company_name": self.org_name,
-                            "is_billable": r.get("ISBILLABLE"),
-                            "is_closed": r.get("ISCLOSED"),
-                            "is_cogs": r.get("ISCOGS"),
-                            "is_custom_gl_line": r.get("ISCUSTOMGLLINE"),
-                            "is_fully_shipped": r.get("ISFULLYSHIPPED"),
-                            "is_fx_variance": r.get("ISFXVARIANCE"),
-                            "is_inventory_affecting": r.get("ISINVENTORYAFFECTING"),
-                            "is_rev_rec_transaction": r.get("ISREVRECTRANSACTION"),
+                            "is_billable": r.get("isbillable"),
+                            "is_closed": r.get("isclosed"),
+                            "is_cogs": r.get("iscogs"),
+                            "is_custom_gl_line": r.get("iscustomglline"),
+                            "is_fully_shipped": r.get("isfullyshipped"),
+                            "is_fx_variance": r.get("isfxvariance"),
+                            "is_inventory_affecting": r.get("isinventoryaffecting"),
+                            "is_rev_rec_transaction": r.get("isrevrectransaction"),
                             "line_last_modified_date": last_modified.date() if last_modified else None,
-                            "line_sequence_number": r.get("LINESEQUENCENUMBER"),
-                            "links": r.get("LINKS"),
-                            "location": r.get("LOCATION"),
-                            "main_line": r.get("MAINLINE"),
-                            "match_bill_to_receipt": r.get("MATCHBILLTORECEIPT"),
-                            "memo": r.get("MEMO"),
-                            "net_amount": decimal_or_none(r.get("NETAMOUNT")),
-                            "old_commitment_firm": r.get("OLDCOMMITMENTFIRM"),
-                            "quantity_billed": r.get("QUANTITYBILLED"),
-                            "quantity_rejected": r.get("QUANTITYREJECTED"),
-                            "quantity_ship_recv": r.get("QUANTITYSHIPRECV"),
-                            "source_uri": r.get("SOURCE_URI"),
-                            "subsidiary": r.get("SUBSIDIARY"),
-                            "subsidiary_id": r.get("SUBSIDIARYID"),
-                            "tax_line": r.get("TAXLINE"),
-                            "transaction_discount": r.get("TRANSACTIONDISCOUNT"),
-                            "transaction_id": r.get("TRANSACTIONID"),
+                            "line_sequence_number": r.get("linesequencenumber"),
+                            "links": r.get("links"),
+                            "location": r.get("location"),
+                            "main_line": r.get("mainline"),
+                            "match_bill_to_receipt": r.get("matchbilltoreceipt"),
+                            "memo": r.get("memo"),
+                            "net_amount": decimal_or_none(r.get("netamount")),
+                            "old_commitment_firm": r.get("oldcommitmentfirm"),
+                            "quantity_billed": r.get("quantitybilled"),
+                            "quantity_rejected": r.get("quantityrejected"),
+                            "quantity_ship_recv": r.get("quantityshiprecv"),
+                            "source_uri": r.get("source_uri"),
+                            "subsidiary": r.get("subsidiary"),
+                            "subsidiary_id": r.get("subsidiaryid"),
+                            "tax_line": r.get("taxline"),
+                            "transaction_discount": r.get("transactiondiscount"),
+                            "transaction_id": r.get("transactionid"),
                         }
                     )
                 except Exception as e:
@@ -752,29 +752,28 @@ class NetSuiteImporter:
                 break
 
             for r in rows:
-                print(f"row: {r}")
                 try:
-                    last_modified = self.parse_datetime(r.get("LASTMODIFIEDDATE"))
+                    last_modified = self.parse_datetime(r.get("lastmodifieddate"))
                     NetSuiteTransactionAccountingLine.objects.update_or_create(
                         org=self.org,
-                        transaction=r.get("TRANSACTION"),
-                        transaction_line=r.get("TRANSACTIONLINE"),
+                        transaction=r.get("transaction"),
+                        transaction_line=r.get("transactionline"),
                         defaults={
-                            "links": r.get("LINKS"),
-                            "account": r.get("ACCOUNT"),
-                            "accountingbook": r.get("ACCOUNTINGBOOK"),
-                            "amount": decimal_or_none(r.get("AMOUNT")),
-                            "amountlinked": decimal_or_none(r.get("AMOUNTLINKED")),
-                            "debit": decimal_or_none(r.get("DEBIT")),
-                            "netamount": decimal_or_none(r.get("NETAMOUNT")),
-                            "paymentamountunused": decimal_or_none(r.get("PAYMENTAMOUNTUNUSED")),
-                            "paymentamountused": decimal_or_none(r.get("PAYMENTAMOUNTUSED")),
-                            "posting": r.get("POSTING"),
-                            "credit": decimal_or_none(r.get("CREDIT")),
-                            "amountpaid": decimal_or_none(r.get("AMOUNTPAID")),
-                            "amountunpaid": decimal_or_none(r.get("AMOUNTUNPAID")),
+                            "links": r.get("links"),
+                            "account": r.get("account"),
+                            "accountingbook": r.get("accountingbook"),
+                            "amount": decimal_or_none(r.get("amount")),
+                            "amountlinked": decimal_or_none(r.get("amountlinked")),
+                            "debit": decimal_or_none(r.get("debit")),
+                            "netamount": decimal_or_none(r.get("netamount")),
+                            "paymentamountunused": decimal_or_none(r.get("paymentamountunused")),
+                            "paymentamountused": decimal_or_none(r.get("paymentamountused")),
+                            "posting": r.get("posting"),
+                            "credit": decimal_or_none(r.get("credit")),
+                            "amountpaid": decimal_or_none(r.get("amountpaid")),
+                            "amountunpaid": decimal_or_none(r.get("amountunpaid")),
                             "lastmodifieddate": last_modified,
-                            "processedbyrevcommit": r.get("PROCESSEDBYREVCOMMIT"),
+                            "processedbyrevcommit": r.get("processedbyrevcommit"),
                         }
                     )
                 except Exception as e:
