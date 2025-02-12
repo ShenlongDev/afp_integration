@@ -46,8 +46,8 @@ from integrations.models.netsuite.analytics import (
 )
 
 class NetSuiteTransformedTransactionAdmin(admin.ModelAdmin):
-    list_display = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate')
-    search_fields = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate')
+    list_display = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate', 'entity_id')
+    search_fields = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate', 'entity_id')
     
 
 class SyncTableLogsAdmin(admin.ModelAdmin):
@@ -70,8 +70,8 @@ class NetSuiteAccountingPeriodsAdmin(admin.ModelAdmin):
     search_fields = ('company_name', 'period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
 
 class NetSuiteEntityAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'entity_id', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'terms', 'last_modified_date', 'record_date')
-    search_fields = ('company_name', 'entity_id', 'email', 'phone', 'currency', 'terms')  # Removed entity_number and subsidiary to avoid ForeignKey issues
+    list_display = ('id','company_name', 'entity_id', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'terms', 'last_modified_date', 'record_date')
+    search_fields = ('id', 'entity_id', 'email', 'phone', 'currency', 'terms')  # Removed entity_number and subsidiary to avoid ForeignKey issues
 
 class NetSuiteSubsidiariesAdmin(admin.ModelAdmin):
     list_display = ('subsidiary_id', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')

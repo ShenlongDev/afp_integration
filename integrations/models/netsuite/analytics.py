@@ -239,6 +239,7 @@ class NetSuiteBudgetPeriodBalances(models.Model):
 
 class NetSuiteEntity(models.Model):
     company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    id = models.CharField(primary_key=True, max_length=255)
     company_display_name = models.CharField(max_length=255, null=True)
     entity_id = models.CharField(max_length=255, null=True)
     entity_title = models.CharField(max_length=255, null=True)
@@ -402,8 +403,12 @@ class NetSuiteTransformedTransaction(models.Model):
     # Common header/line fields
     memo = models.TextField(null=True)
     externalid = models.CharField(max_length=255, null=True)
-    entity = models.CharField(max_length=255, null=True)
-    entityid = models.CharField(max_length=255, null=True)
+    entity_id = models.CharField(max_length=255, null=True)
+    entity_title = models.CharField(max_length=255, null=True)
+    legal_name = models.CharField(max_length=255, null=True)
+    parent_entity = models.CharField(max_length=255, null=True)
+    entity_email = models.EmailField(null=True)
+    entity_phone = models.CharField(max_length=255, null=True)
     terms = models.CharField(max_length=255, null=True)
     daysopen = models.IntegerField(null=True)
     daysoverduesearch = models.IntegerField(null=True)

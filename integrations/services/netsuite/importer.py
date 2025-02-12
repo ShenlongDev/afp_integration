@@ -264,10 +264,12 @@ class NetSuiteImporter:
 
 
         for r in filtered_rows:
+            print(f"Importing entity: {r}")
             try:
                 ent_id = r.get("entityid")
-                if not ent_id:
-                    logger.warning(f"Entity row missing 'id': {r}")
+                id = r.get("id")
+                if not ent_id and not id: 
+                    logger.warning(f"Entity row missing 'id' or 'entityid': {r}")
                     continue
 
                 subsidiary = r.get("subsidiaryedition") or "Unknown" 
@@ -275,6 +277,7 @@ class NetSuiteImporter:
                 # Update or create only if the entity exists
                 NetSuiteEntity.objects.update_or_create(
                     entity_id=ent_id,
+                    id=id,
                     defaults={
                         "company_name": r.get("companyname") or self.org_name,
                         "entity_title": r.get("entitytitle"),
@@ -1025,33 +1028,36 @@ class NetSuiteImporter:
     @transaction.atomic
     def transform_transactions(self):
         """
-        Transforms imported NetSuite data into a unified transformed transaction record.
-        For each accounting line record (AL) from NetSuiteTransactionAccountingLine:
-          1. Look up the corresponding transaction header (T) from NetSuiteTransactions using AL.transaction.
-          2. Look up the corresponding transaction line (L) from NetSuiteTransactionLine using AL.transaction_line.
-             (If not found, skip this accounting line.)
-          3. Look up the account record from NetSuiteAccounts using AL.account.
+        Transforms imported NetSuite data into a unified transformed record.
+        
+        For each accounting line (AL) in NetSuiteTransactionAccountingLine:
+          1. Look up the corresponding header (T) from NetSuiteTransactions by matching
+             AL.transaction with T.transactionid.
+          2. Look up the corresponding transaction line (L) from NetSuiteTransactionLine using
+             AL.transaction_line as the primary key.
+          3. Look up account details from NetSuiteAccounts using AL.account.
           4. Look up subsidiary info from NetSuiteSubsidiaries using L.subsidiary.
-          5. Compute derived fields (such as YEARPERIOD from T.postingperiod).
-          6. Combine header, line, and accounting line fields into a single record and save it.
-        No fallback entry is created if a matching transaction line is missing.
+          5. Look up the entity record from NetSuiteEntity using T.entity (matching T.entity = entity.entity_id).
+          6. Compute derived fields (e.g. YEARPERIOD from T.postingperiod).
+          7. Combine header, line, and accounting line fields along with lookups into a single
+             transformed record in NetSuiteTransformedTransaction.
+        If any required join (especially the transaction line) is missing, that AL record is skipped.
         """
         logger.info("Starting transformation of NetSuite transactions...")
         total_transformed = 0
         from integrations.models.netsuite.analytics import NetSuiteTransformedTransaction
 
-        # Iterate over all accounting line records.
         accounting_lines = NetSuiteTransactionAccountingLine.objects.filter(org=self.org).order_by("transaction", "transaction_line")
         for al in accounting_lines:
             try:
-                # Retrieve the header record.
+                # Get the header record (T)
                 try:
                     txn = NetSuiteTransactions.objects.get(transactionid=al.transaction, company_name=self.org)
                 except NetSuiteTransactions.DoesNotExist:
                     logger.warning(f"Transaction {al.transaction} not found; skipping AL record {al.pk}.")
                     continue
 
-                # Retrieve the transaction line record by its primary key equal to al.transaction_line.
+                # Get the transaction line (L) by its primary key equal to al.transaction_line.
                 try:
                     tline = NetSuiteTransactionLine.objects.get(id=al.transaction_line, company_name=self.org)
                 except NetSuiteTransactionLine.DoesNotExist:
@@ -1067,7 +1073,7 @@ class NetSuiteImporter:
                     except NetSuiteAccounts.DoesNotExist:
                         logger.debug(f"Account {account_str} not found.")
 
-                # Lookup subsidiary info from the transaction line.
+                # Lookup subsidiary info from tline.
                 subsidiary_obj = None
                 if tline.subsidiary:
                     try:
@@ -1075,12 +1081,20 @@ class NetSuiteImporter:
                     except NetSuiteSubsidiaries.DoesNotExist:
                         logger.debug(f"Subsidiary {tline.subsidiary} not found.")
 
-                # Derive YEARPERIOD from the transaction postingperiod.
+                # Lookup the entity record using txn.entity.
+                entity_obj = None
+                if txn.entity:
+                    try:
+                        entity_obj = NetSuiteEntity.objects.get(id=txn.entity, company_name=self.org)
+                    except NetSuiteEntity.DoesNotExist:
+                        logger.debug(f"Entity {txn.entity} not found.")
+                
+                # Compute derived yearperiod.
                 yearperiod = self.extract_yearperiod(txn.postingperiod or "")
 
-                # Build the transformed data dictionary.
+                # Build the transformed record dictionary.
                 transformed_data = {
-                    # Header fields from transaction (T)
+                    # Header fields (T)
                     "company_name": txn.company_name,
                     "consolidation_key": self.consolidation_key,
                     "transactionid": txn.transactionid,
@@ -1102,34 +1116,42 @@ class NetSuiteImporter:
                     "yearperiod": yearperiod,
                     "trandate": txn.trandate,
                     
-                    # Subsidiary info
+                    # Subsidiary info from subsidiary lookup (if available)
                     "subsidiary": subsidiary_obj.name if subsidiary_obj else txn.subsidiary,
                     "subsidiaryfullname": subsidiary_obj.full_name if subsidiary_obj else None,
-                    "subsidiaryid": tline.subsidiary,  # from transaction line field
+                    "subsidiaryid": tline.subsidiary,
                     
-                    # Department fields (if available on transaction line; adjust attribute names if needed)
+                    # Department fields from transaction line (if available)
                     "department": getattr(tline, "department", None),
                     "departmentid": getattr(tline, "departmentid", None),
                     
-                    # From transaction line (L)
+                    # Transaction line fields (L)
                     "linesequencenumber": tline.line_sequence_number,
                     "lineid": str(tline.id),
                     "location": tline.location,
                     "clas": getattr(tline, "class_field", None),
                     "linenmemo": tline.memo,
                     
-                    # Common header/line fields
+                    # Header common fields
                     "memo": txn.memo,
                     "externalid": txn.externalid,
-                    "entity": getattr(tline, "entity", None),
-                    "entityid": getattr(tline, "entityid", None),
+                    
+                    # Entity fields (from NetSuiteEntity lookup)
+                    "entity_id": entity_obj.entity_id if entity_obj else txn.entity,
+                    "entity_title": entity_obj.entity_title if entity_obj else None,
+                    "legal_name": entity_obj.legal_name if entity_obj else None,
+                    "parent_entity": entity_obj.parent_entity if entity_obj else None,
+                    "entity_email": entity_obj.email if entity_obj else None,
+                    "entity_phone": entity_obj.phone if entity_obj else None,
+                    
+                    # Additional header fields
                     "terms": txn.terms,
                     "daysopen": txn.daysopen,
                     "daysoverduesearch": txn.daysoverduesearch,
                     "duedate": txn.duedate,
                     "closedate": txn.closedate,
                     
-                    # From accounting line (AL)
+                    # Accounting line fields (AL)
                     "accountingbook": al.accountingbook,
                     "amount": al.amount,
                     "amountlinked": al.amountlinked,
@@ -1142,10 +1164,10 @@ class NetSuiteImporter:
                     "amountpaid": al.amountpaid,
                     "amountunpaid": al.amountunpaid,
                     
-                    # From transaction line (if present, for line-level netamount)
+                    # Transaction line override (if available)
                     "linenetamount": tline.net_amount,
                     
-                    # From account lookup (A)
+                    # Account lookup fields (A)
                     "account": account_str,
                     "acctnumber": account_obj.acctnumber if account_obj else None,
                     "accountsearchdisplayname": account_obj.accountsearchdisplayname if account_obj else None,
@@ -1154,7 +1176,7 @@ class NetSuiteImporter:
                     "fullname": account_obj.fullname if account_obj else None,
                     "sspecacct": account_obj.sspecacct if account_obj else None,
                     
-                    # Additional fields from transaction header (if any)
+                    # Additional header monetary fields
                     "billingstatus": txn.billingstatus,
                     "custbody_report_timestamp": txn.custbody_report_timestamp,
                     "currency": txn.currency,
@@ -1162,18 +1184,13 @@ class NetSuiteImporter:
                     "foreignamountpaid": Decimal(txn.foreignamountpaid) if txn.foreignamountpaid else None,
                     "foreignamountunpaid": Decimal(txn.foreignamountunpaid) if txn.foreignamountunpaid else None,
                     "foreigntotal": Decimal(txn.foreigntotal) if txn.foreigntotal else None,
-                    # If transaction line has a field for foreignlineamount:
                     "foreignlineamount": getattr(tline, "foreignlineamount", None),
                     "record_date": txn.record_date,
                     
-                    # # Build a unique key based on transaction and line.
-                    # # (You may adjust this formula if needed.)
-                    # # Note: We assume tline.line_sequence_number is unique per transaction.
+                    # # Build a unique key based on transaction and line sequence.
                     # "uniquekey": f"{txn.transactionid}-{tline.line_sequence_number}",
                 }
-
-                # Create (or update) the transformed record. The unique key is based on
-                # (company_name, transactionid, linesequencenumber).
+                # Save the transformed record. The unique key is based on (company_name, transactionid, linesequencenumber).
                 NetSuiteTransformedTransaction.objects.update_or_create(
                     company_name=txn.company_name,
                     transactionid=txn.transactionid,
@@ -1181,7 +1198,6 @@ class NetSuiteImporter:
                     defaults=transformed_data
                 )
                 total_transformed += 1
-
             except Exception as e:
                 logger.error(f"Error transforming transaction {txn.transactionid} for accounting line {al.pk}: {e}", exc_info=True)
                 continue
