@@ -1,13 +1,14 @@
 import requests
 import re
 import logging
-import datetime
 from datetime import timedelta, datetime
 from zoneinfo import ZoneInfo
+
 from django.utils import timezone
-from django.db import transaction
+from django.db import transaction, close_old_connections
 from rest_framework.response import Response
 
+# Import your models as before
 from integrations.models.models import Integration, IntegrationAccessToken, SyncTableLogs
 from integrations.models.xero.raw import (
     XeroAccountsRaw,
@@ -26,8 +27,53 @@ from integrations.models.xero.transformations import (
 )
 from integrations.models.xero.analytics import XeroGeneralLedger
 
-
 logger = logging.getLogger(__name__)
+
+
+class BatchUtils:
+    @staticmethod
+    def bulk_create_batches(model, objects, batch_size=1000):
+        """
+        Accepts a model and an iterable of objects.
+        Creates the objects in batches (each in its own atomic block)
+        and calls close_old_connections() after each batch.
+        Returns the total number of objects created.
+        """
+        total_count = 0
+        batch = []
+        for obj in objects:
+            batch.append(obj)
+            if len(batch) >= batch_size:
+                with transaction.atomic():
+                    model.objects.bulk_create(batch, batch_size=batch_size)
+                total_count += len(batch)
+                batch.clear()
+                close_old_connections()
+        if batch:
+            with transaction.atomic():
+                model.objects.bulk_create(batch, batch_size=batch_size)
+            total_count += len(batch)
+            close_old_connections()
+        return total_count
+
+    @staticmethod
+    def process_in_batches(items, process_func, batch_size=1000):
+        """
+        Accepts an iterable of items and a processing function.
+        Processes each batch inside an atomic transaction.
+        """
+        batch = []
+        for item in items:
+            batch.append(item)
+            if len(batch) >= batch_size:
+                with transaction.atomic():
+                    for i in batch:
+                        process_func(i)
+                batch.clear()
+        if batch:
+            with transaction.atomic():
+                for i in batch:
+                    process_func(i)
 
 
 class XeroDataImporter:
@@ -37,18 +83,12 @@ class XeroDataImporter:
     """
 
     def __init__(self, integration: Integration, since_date=None):
-        """
-        Store commonly used attributes, such as:
-          - Integration object
-          - since_date for If-Modified-Since headers
-          - references to client_id, client_secret, and tenant_id
-        """
         self.integration = integration
         self.since_date = since_date
         self.client_id = integration.xero_client_id
         self.client_secret = integration.xero_client_secret
         self.tenant_id = integration.xero_tenant_id
-        
+
     def get_paginated_results(self, url: str, result_key: str, extra_params: dict = None) -> list:
         results = []
         page = 1
@@ -59,7 +99,7 @@ class XeroDataImporter:
             response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
             page_results = response.json().get(result_key, [])
-            print(f"Fetched {len(page_results)} {page}")
+            logger.info(f"Fetched {len(page_results)} records on page {page}")
             if not page_results:
                 break
             results.extend(page_results)
@@ -68,11 +108,7 @@ class XeroDataImporter:
             page += 1
         return results
 
-
     def request_new_xero_token(self):
-        """
-        Request a new Xero access token using client_credentials and store it.
-        """
         if not self.client_id or not self.client_secret:
             raise ValueError("Xero client credentials not set on this Integration.")
 
@@ -105,13 +141,7 @@ class XeroDataImporter:
         )
         return access_token
 
-    ### 1. Token & Utility Helpers ###
-
     def get_valid_xero_token(self) -> str:
-        """
-        Retrieve a valid Xero access token for self.integration.
-        If expired or not found, request a new one.
-        """
         now = timezone.now()
         token_obj = (
             IntegrationAccessToken.objects.filter(
@@ -125,14 +155,9 @@ class XeroDataImporter:
         if token_obj:
             return token_obj.token
 
-        # No valid token found; request a new one
         return self.request_new_xero_token()
 
     def parse_xero_datetime(self, xero_date_str: str):
-        """
-        Parse a Xero date string, e.g. '/Date(1672533421427+0000)/'
-        or an ISO8601 '2023-10-12T00:00:00' into a Python datetime.
-        """
         if not xero_date_str:
             return None
 
@@ -143,7 +168,6 @@ class XeroDataImporter:
             dt = datetime.fromtimestamp(timestamp, tz=ZoneInfo("UTC"))
             return dt
 
-        # else assume it's ISO format
         try:
             return datetime.fromisoformat(xero_date_str.replace("Z", "+00:00"))
         except ValueError:
@@ -151,10 +175,6 @@ class XeroDataImporter:
             return None
 
     def build_headers(self, offset=None) -> dict:
-        """
-        Build the Xero request headers with a valid token.
-        Accepts an optional 'offset' parameter (for logging or future use).
-        """
         token = self.get_valid_xero_token()
         headers = {
             "Authorization": f"Bearer {token}",
@@ -165,29 +185,32 @@ class XeroDataImporter:
             headers["If-Modified-Since"] = self.since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
         if offset is not None:
             logger.debug(f"build_headers called with offset: {offset}")
-        # Debug print (or remove in production)
         return headers
 
-    ### 2. Chart of Accounts ###
-    @transaction.atomic
+    def log_import_event(self, module_name: str, fetched_records: int):
+        SyncTableLogs.objects.create(
+            module_name=module_name,
+            integration='XERO',
+            organization=self.integration.org,
+            fetched_records=fetched_records,
+            last_updated_time=timezone.now(),
+            last_updated_date=timezone.now().date()
+        )
+
     def sync_xero_chart_of_accounts(self):
-        """
-        Fetch chart of accounts from Xero and store them in XeroAccountsRaw.
-        """
         logger.info("Syncing Xero Chart of Accounts...")
         headers = self.build_headers()
         url = "https://api.xero.com/api.xro/2.0/Accounts"
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         accounts_data = response.json().get("Accounts", [])
-
         now_ts = timezone.now()
 
-        for acct in accounts_data:
+        def process_account(acct):
             account_id = acct.get("AccountID")
             if not account_id:
                 logger.warning("Account entry missing 'AccountID'. Skipping record.")
-                continue
+                return
             try:
                 obj, created = XeroAccountsRaw.objects.update_or_create(
                     tenant_id=self.integration.org.id,
@@ -203,20 +226,14 @@ class XeroDataImporter:
                     }
                 )
                 obj.save()
-
             except Exception as e:
                 logger.error(f"Error saving XeroAccountsRaw for AccountID {account_id}: {e}")
-                
+
+        BatchUtils.process_in_batches(accounts_data, process_account, batch_size=1000)
         self.log_import_event(module_name="xero_accounts", fetched_records=len(accounts_data))
         logger.info(f"Imported/Updated {len(accounts_data)} Xero Accounts.")
 
-    ### 3. Journal Lines (with Pagination) ###
     def get_journals(self, offset=None):
-        """
-        Helper method to fetch journals from Xero with an optional offset.
-        According to Xero docs, this endpoint returns at most 100 records.
-        The 'offset' parameter (if provided) is passed as a query parameter.
-        """
         url = "https://api.xero.com/api.xro/2.0/Journals"
         headers = self.build_headers(offset=offset)
         params = {}
@@ -227,45 +244,25 @@ class XeroDataImporter:
         journals = response.json().get("Journals", [])
         return journals
 
-    def log_import_event(self, module_name: str, fetched_records: int):
-        """
-        Save an import event log for a particular module.
-        """
-        SyncTableLogs.objects.create(
-            module_name=module_name,
-            integration='XERO',
-            organization=self.integration.org,
-            fetched_records=fetched_records,
-            last_updated_time=timezone.now(),
-            last_updated_date=timezone.now().date()
-
-        )
-
-    @transaction.atomic
     def import_xero_journal_lines(self):
-        """
-        Import Xero Journals and their lines into XeroJournalsRaw and XeroJournalLines.
-        This method uses pagination via the optional 'offset' query parameter.
-        """
         logger.info("Importing Xero Journals & Lines with pagination...")
-        offset = None  # Start without an offset
-        total_fetched = 0  # you can calculate the total records imported
+        offset = None
+        total_fetched = 0
 
         while True:
             journals = self.get_journals(offset=offset)
             total_fetched += len(journals)
-            print(f"Fetched {len(journals)} journals, {journals}")
+            logger.info(f"Fetched {len(journals)} journals")
             if not journals:
                 break
 
-            now_ts = timezone.now() 
+            now_ts = timezone.now()
 
-            for journal in journals:
+            def process_journal(journal):
                 journal_id = journal.get("JournalID")
                 if not journal_id:
                     logger.warning("Skipping journal with no JournalID.")
-                    continue
-
+                    return
                 jr_defaults = {
                     "journal_number": journal.get("JournalNumber"),
                     "reference": journal.get("Reference"),
@@ -280,21 +277,17 @@ class XeroDataImporter:
                     journal_id=journal_id,
                     defaults=jr_defaults
                 )
-
-                lines = journal.get("JournalLines", [])
-                for line in lines:
+                for line in journal.get("JournalLines", []):
                     line_id = line.get("JournalLineID")
                     if not line_id:
                         logger.warning(f"Skipping line in Journal {journal_id} with no JournalLineID.")
                         continue
-
                     tcat = line.get("TrackingCategories", [])
                     tracking_name = None
                     tracking_option = None
                     if tcat:
                         tracking_name = tcat[0].get("Name")
                         tracking_option = tcat[0].get("Option")
-
                     jline_defaults = {
                         "tenant_id": self.integration.org.id,
                         "journal_id": journal_id,
@@ -322,35 +315,28 @@ class XeroDataImporter:
                         defaults=jline_defaults
                     )
 
-            # If fewer than 100 records were returned, we assume we've reached the end.
+            BatchUtils.process_in_batches(journals, process_journal, batch_size=1000)
             if len(journals) < 100:
                 break
-
-            # Otherwise, use the JournalNumber of the last journal as the next offset.
             offset = journals[-1].get("JournalNumber")
-            logger.info(f"Pagination: Fetched {len(journals)} journals, next offset: {offset}")
+            logger.info(f"Pagination: next offset: {offset}")
 
         self.log_import_event(module_name="xero_journal_lines", fetched_records=total_fetched)
         logger.info("Completed Xero Journal import & transform with pagination.")
 
-    ### 4. Contacts ###
     def get_contacts(self):
         return self.get_paginated_results("https://api.xero.com/api.xro/2.0/Contacts", "Contacts")
 
-    @transaction.atomic
     def import_xero_contacts(self):
-        """
-        Import Xero contacts into XeroContactsRaw.
-        """
         logger.info("Importing Xero Contacts...")
         now_ts = timezone.now()
         contacts = self.get_contacts()
-        for contact in contacts:
+
+        def process_contact(contact):
             contact_id = contact.get("ContactID")
             if not contact_id:
-
                 logger.warning("Skipping contact with no ContactID.")
-                continue
+                return
             XeroContactsRaw.objects.update_or_create(
                 tenant_id=self.integration.org.id,
                 contact_id=contact_id,
@@ -362,30 +348,24 @@ class XeroDataImporter:
                     "source_system": "XERO"
                 }
             )
-            
-        self.log_import_event(module_name="xero_contacts", fetched_records=len(contacts))
 
+        BatchUtils.process_in_batches(contacts, process_contact, batch_size=1000)
+        self.log_import_event(module_name="xero_contacts", fetched_records=len(contacts))
         logger.info("Completed Xero Contacts import.")
 
-    ### 5. Invoices ###
     def get_invoices(self):
         return self.get_paginated_results("https://api.xero.com/api.xro/2.0/Invoices", "Invoices")
 
-    @transaction.atomic
     def import_xero_invoices(self):
-        """
-        Import Xero invoices + line items into XeroInvoicesRaw.
-        """
         logger.info("Importing Xero Invoices...")
         invoices = self.get_invoices()
         now_ts = timezone.now()
 
-        for inv in invoices:
+        def process_invoice(inv):
             invoice_id = inv.get("InvoiceID")
             if not invoice_id:
                 logger.warning("Skipping invoice with no InvoiceID.")
-                continue
-
+                return
             XeroInvoicesRaw.objects.update_or_create(
                 tenant_id=self.integration.org.id,
                 invoice_id=invoice_id,
@@ -413,15 +393,12 @@ class XeroDataImporter:
                         'account_code': line.get('AccountCode'),
                     }
                 )
+
+        BatchUtils.process_in_batches(invoices, process_invoice, batch_size=1000)
         self.log_import_event(module_name="xero_invoices", fetched_records=len(invoices))
         logger.info("Completed Xero Invoices import.")
 
-    ### 6. Bank Transactions ###
     def get_bank_transactions(self):
-        """
-        Fetch Xero bank transactions using pagination.
-        The page size is set; we accumulate until final page.
-        """
         url = "https://api.xero.com/api.xro/2.0/BankTransactions"
         headers = {
             "Authorization": f"Bearer {self.get_valid_xero_token()}",
@@ -441,26 +418,22 @@ class XeroDataImporter:
             response.raise_for_status()
             bank_transactions = response.json().get("BankTransactions", [])
             results.extend(bank_transactions)
-
             if len(bank_transactions) < page_size:
                 break
             page += 1
 
         return results
 
-    @transaction.atomic
     def import_xero_bank_transactions(self):
         logger.info("Importing Xero Bank Transactions...")
         now_ts = timezone.now()
-        fetched_count = 0
-
         transactions = self.get_bank_transactions()
 
-        for bt in transactions:
+        def process_transaction(bt):
             bt_id = bt.get("BankTransactionID")
             if not bt_id:
                 logger.warning("Skipping bank transaction with no BankTransactionID.")
-                continue
+                return
             XeroBankTransactionsRaw.objects.update_or_create(
                 bank_transaction_id=bt_id,
                 tenant_id=self.integration.org.id,
@@ -474,7 +447,6 @@ class XeroDataImporter:
                     "source_system": "XERO",
                 }
             )
-
             for line in bt.get('LineItems', []):
                 XeroInvoiceLineItems.objects.update_or_create(
                     line_item_id=line['LineItemID'],
@@ -499,20 +471,15 @@ class XeroDataImporter:
                             'option': tracking.get('Option'),
                         }
                     )
-            fetched_count += 1  # or use len(transactions) if each corresponds to one record
 
-        self.log_import_event(module_name="xero_bank_transactions", fetched_records=fetched_count)
+        BatchUtils.process_in_batches(transactions, process_transaction, batch_size=1000)
+        self.log_import_event(module_name="xero_bank_transactions", fetched_records=len(transactions))
         logger.info("Completed Xero Bank Transactions import.")
 
-    ### 7. Budgets + Budget Period Balances ###
     def get_budgets(self):
         return self.get_paginated_results("https://api.xero.com/api.xro/2.0/Budgets", "Budgets")
 
     def get_budget_period_balances(self, budget_id: str):
-        """
-        Hypothetical function: e.g. GET /Budgets/{budget_id}/periodBalances
-        Not an actual standard Xero endpoint in many cases.
-        """
         url = f"https://api.xero.com/api.xro/2.0/Budgets/{budget_id}"
         headers = {
             "Authorization": f"Bearer {self.get_valid_xero_token()}",
@@ -531,27 +498,21 @@ class XeroDataImporter:
             else:
                 raise
 
-    @transaction.atomic
     def import_xero_budgets(self):
-        """
-        Import budgets and period balances from Xero.
-        """
         logger.info("Importing Xero Budgets & Period Balances...")
         now_ts = timezone.now()
-
         budgets = self.get_budgets()
-        for budget in budgets:
+
+        def process_budget(budget):
             budget_id = budget.get("BudgetID")
             if not budget_id:
                 logger.warning("Skipping budget with no BudgetID.")
-                continue
-
-            # Update or create the raw budget record.
+                return
             XeroBudgetsRaw.objects.update_or_create(
                 budget_id=budget_id,
-                tenant_id=self.integration.org.id,  # lookup on unique fields only
+                tenant_id=self.integration.org.id,
                 defaults={
-                    "tenant_name": self.integration.org,  # set in defaults
+                    "tenant_name": self.integration.org,
                     "status": budget.get("Status"),
                     "type": budget.get("Type"),
                     "description": budget.get("Description"),
@@ -561,39 +522,30 @@ class XeroDataImporter:
                     "source_system": "XERO"
                 }
             )
-
-            # Get the budget period balances response.
             bp_response = self.get_budget_period_balances(budget_id)
             if not bp_response:
                 logger.warning(f"No period balances found for budget_id: {budget_id}")
-                continue
-
-            # Iterate over each budget object in the response.
-            # (Usually this list contains one item, but we handle multiple in case it occurs.)
+                return
             for b_item in bp_response:
-                # Extract tracking values from the budget record.
-                # The "Tracking" key contains a list; grab the first entry if available.
                 tracking_list = b_item.get("Tracking", [])
                 tracking_obj = tracking_list[0] if tracking_list else {}
-                
-                # Extract the BudgetLines from the budget object.
                 budget_lines = b_item.get("BudgetLines", [])
                 for line in budget_lines:
                     account_id = line.get("AccountID")
                     account_code = line.get("AccountCode")
-                    account_name = XeroAccountsRaw.objects.get(
-                        tenant_id=self.integration.org.id,
-                        account_id=account_id
-                    ).name
-                    # Each line has a list of BudgetBalances.
+                    try:
+                        account_name = XeroAccountsRaw.objects.get(
+                            tenant_id=self.integration.org.id,
+                            account_id=account_id
+                        ).name
+                    except XeroAccountsRaw.DoesNotExist:
+                        account_name = None
                     raw_balances = line.get("BudgetBalances", [])
-                    # Sort the balances by the Period field (e.g., "2024-12", "2024-11", etc.)
                     sorted_balances = sorted(raw_balances, key=lambda x: x.get("Period"))
                     for pb in sorted_balances:
                         period = pb.get("Period")
                         amount = pb.get("Amount")
                         notes = pb.get("Notes")
-                        # Use the UpdatedDateUTC from the budget response for the line.
                         updated_date_utc = self.parse_xero_datetime(b_item.get("UpdatedDateUTC"))
                         XeroBudgetPeriodBalancesRaw.objects.update_or_create(
                             budget_id=budget_id,
@@ -601,7 +553,7 @@ class XeroDataImporter:
                             account_id=account_id,
                             period=period,
                             defaults={
-                                "tenant_name": self.integration.org,  # set in defaults
+                                "tenant_name": self.integration.org,
                                 "account_code": account_code,
                                 "account_name": account_name,
                                 "amount": amount,
@@ -615,33 +567,25 @@ class XeroDataImporter:
                             }
                         )
 
+        BatchUtils.process_in_batches(budgets, process_budget, batch_size=1000)
         self.log_import_event(module_name="xero_budgets", fetched_records=len(budgets))
         logger.info("Completed Xero Budgets & Period Balances import.")
 
     def map_xero_general_ledger(self):
-        """
-        Recreate Xero General Ledger from the staging tables.
-        Processes data in batches to keep memory usage low and calls close_old_connections()
-        after each batch.
-        """
-        from django.db import close_old_connections, transaction
-
-        # 1) Delete existing GL rows in a separate atomic block.
+        logger.info("Mapping Xero General Ledger...")
+        # Delete existing GL rows in an atomic block.
         with transaction.atomic():
             XeroGeneralLedger.objects.all().delete()
 
-        # 2) Identify the newest row per (tenant_id, journal_line_id).
+        # Identify the newest row per (tenant_id, journal_line_id).
         latest_by_line = {}
         for line in XeroJournalLines.objects.order_by('-journal_date').iterator(chunk_size=1000):
             key = (line.tenant_id, line.journal_line_id)
             if key not in latest_by_line:
                 latest_by_line[key] = line
 
-        # 3) Build final GL rows in batches for bulk_create.
-        BATCH_SIZE = 1000
-        batch = []
-        total_count = 0
-
+        # Build the list of final GL objects.
+        gl_objects = []
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
@@ -730,14 +674,13 @@ class XeroDataImporter:
                 reporting_code = jl.raw.get("ReportingCode") if jl.raw else None
                 reporting_code_name = jl.raw.get("ReportingCodeName") if jl.raw else None
 
-            # Use standard attribute names for tracking fields.
             tracking_category_name = jtc.name if jtc and hasattr(jtc, "name") else None
             tracking_category_option = jtc.option if jtc and hasattr(jtc, "option") else None
 
             gl_obj = XeroGeneralLedger(
                 org=self.integration.org,
                 tenant_id=tenant_id,
-                tenant_name=self.integration.org.name,  # Adjust if tenant_name is a FK.
+                tenant_name=self.integration.org.name,
                 journal_id=jl.journal_id,
                 journal_number=(int(jl.journal_number) if jl.journal_number else None),
                 journal_date=jl.journal_date,
@@ -766,52 +709,8 @@ class XeroDataImporter:
                 invoice_number=invoice_number,
                 invoice_url=invoice_url
             )
-            batch.append(gl_obj)
-            total_count += 1
+            gl_objects.append(gl_obj)
 
-            # Once the batch is full, bulk create in its own atomic block and refresh the connection.
-            if len(batch) >= BATCH_SIZE:
-                print(f"Batch size saved: {len(batch)}")
-                with transaction.atomic():
-                    XeroGeneralLedger.objects.bulk_create(batch, batch_size=BATCH_SIZE)
-                batch.clear()
-                close_old_connections()
-
-        # Create any remaining records in a final atomic block.
-        if batch:
-            with transaction.atomic():
-                XeroGeneralLedger.objects.bulk_create(batch, batch_size=BATCH_SIZE)
-            total_count += len(batch)
-            close_old_connections()
-
+        total_count = BatchUtils.bulk_create_batches(XeroGeneralLedger, gl_objects, batch_size=1000)
         self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
         logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
-
-    ### 8. Master function to import everything ###
-    @transaction.atomic
-    def import_xero_data(self):
-        """
-        Master function to import all Xero data we care about.
-        """
-        # 1. Accounts
-        self.sync_xero_chart_of_accounts()
-
-        # 2. Journal Lines (with pagination)
-        self.import_xero_journal_lines()
-
-        # 3. Contacts
-        self.import_xero_contacts()
-
-        # 4. Invoices
-        self.import_xero_invoices()
-
-        # 5. Bank Transactions
-        self.import_xero_bank_transactions()
-
-        # 6. Budgets
-        self.import_xero_budgets()
-
-        # 7. General Ledger
-        self.map_xero_general_ledger()
-
-        logger.info("Finished full Xero data import successfully.")
