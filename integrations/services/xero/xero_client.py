@@ -618,20 +618,19 @@ class XeroDataImporter:
         self.log_import_event(module_name="xero_budgets", fetched_records=len(budgets))
         logger.info("Completed Xero Budgets & Period Balances import.")
 
-    @transaction.atomic
     def map_xero_general_ledger(self):
         """
         Recreate Xero General Ledger from the staging tables.
         Processes data in batches to keep memory usage low and calls close_old_connections()
         after each batch.
         """
-        from django.db import close_old_connections
+        from django.db import close_old_connections, transaction
 
-        # 1) Delete existing GL rows
-        XeroGeneralLedger.objects.all().delete()
+        # 1) Delete existing GL rows in a separate atomic block.
+        with transaction.atomic():
+            XeroGeneralLedger.objects.all().delete()
 
         # 2) Identify the newest row per (tenant_id, journal_line_id).
-        # Use an iterator with a chunk size to prevent loading all rows into memory.
         latest_by_line = {}
         for line in XeroJournalLines.objects.order_by('-journal_date').iterator(chunk_size=1000):
             key = (line.tenant_id, line.journal_line_id)
@@ -649,8 +648,6 @@ class XeroDataImporter:
                     tenant_id=tenant_id,
                     journal_line_id=journal_line_id
                 )
-                # (Minimal logging; you can enable debug logging if needed)
-                # logger.debug(f"Tracking record: {jtc}")
             except XeroJournalLineTrackingCategories.DoesNotExist:
                 jtc = None
 
@@ -687,7 +684,6 @@ class XeroDataImporter:
                     )
                     bt_payload = bt.raw_payload or {}
                     contact_name = bt_payload.get("Contact", {}).get("Name")
-                    invoice_description_fallback = bt_payload.get("Description")
                 except XeroBankTransactionsRaw.DoesNotExist:
                     pass
 
@@ -734,14 +730,14 @@ class XeroDataImporter:
                 reporting_code = jl.raw.get("ReportingCode") if jl.raw else None
                 reporting_code_name = jl.raw.get("ReportingCodeName") if jl.raw else None
 
-            # Use standard attribute names (adjust if your model uses different ones).
+            # Use standard attribute names for tracking fields.
             tracking_category_name = jtc.name if jtc and hasattr(jtc, "name") else None
             tracking_category_option = jtc.option if jtc and hasattr(jtc, "option") else None
 
             gl_obj = XeroGeneralLedger(
                 org=self.integration.org,
                 tenant_id=tenant_id,
-                tenant_name=self.integration.org.name,  # Adjust if tenant_name is a FK (pass instance) or a string.
+                tenant_name=self.integration.org.name,  # Adjust if tenant_name is a FK.
                 journal_id=jl.journal_id,
                 journal_number=(int(jl.journal_number) if jl.journal_number else None),
                 journal_date=jl.journal_date,
@@ -773,16 +769,18 @@ class XeroDataImporter:
             batch.append(gl_obj)
             total_count += 1
 
-            # Once the batch is full, bulk create and refresh the connection.
+            # Once the batch is full, bulk create in its own atomic block and refresh the connection.
             if len(batch) >= BATCH_SIZE:
                 print(f"Batch size saved: {len(batch)}")
-                XeroGeneralLedger.objects.bulk_create(batch, batch_size=BATCH_SIZE)
+                with transaction.atomic():
+                    XeroGeneralLedger.objects.bulk_create(batch, batch_size=BATCH_SIZE)
                 batch.clear()
                 close_old_connections()
 
-        # Create any remaining records.
+        # Create any remaining records in a final atomic block.
         if batch:
-            XeroGeneralLedger.objects.bulk_create(batch, batch_size=BATCH_SIZE)
+            with transaction.atomic():
+                XeroGeneralLedger.objects.bulk_create(batch, batch_size=BATCH_SIZE)
             total_count += len(batch)
             close_old_connections()
 
