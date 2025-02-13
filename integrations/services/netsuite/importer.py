@@ -570,6 +570,9 @@ class NetSuiteImporter:
             try:
                 trandate_dt = rec.trandate
                 gl_defaults = {
+                    "tenant_name": rec.company_name,
+                    "subsidiary_name": rec.subsidiary,
+                    "account_name": NetSuiteAccounts.objects.get(account_id=rec.account, company_name=rec.company_name).name,
                     "abbrevtype": rec.abbrevtype,
                     "uniquekey": f"{rec.transactionid}-{rec.linesequencenumber}",
                     "linesequencenumber": rec.linesequencenumber,
@@ -579,7 +582,7 @@ class NetSuiteImporter:
                     "yearperiod": rec.yearperiod,
                     "trandate": trandate_dt,
                     "subsidiary": rec.subsidiary,
-                    "account": rec.account,
+                    "account_id": rec.account,
                     "acctnumber": rec.acctnumber,
                     "amount": rec.amount,
                     "debit": rec.debit,
@@ -590,7 +593,7 @@ class NetSuiteImporter:
                     "record_date": rec.record_date,
                 }
                 NetSuiteGeneralLedger.objects.update_or_create(
-                    company_name=rec.company_name,
+                    tenant_name=rec.company_name,
                     transactionid=rec.transactionid,
                     linesequencenumber=rec.linesequencenumber,
                     defaults=gl_defaults
@@ -657,7 +660,7 @@ class NetSuiteImporter:
 
             if not rows:
                 break
-                
+
             for r in rows:
                 netsuite_id = r.get("id")
                 if not netsuite_id:

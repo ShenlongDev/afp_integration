@@ -84,8 +84,8 @@ class NetSuiteDepartmentsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteGeneralLedgerAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'record_date', 'trandate', 'subsidiary')  
-    search_fields = ('company_name', 'is_inactive', 'record_date')
+    list_display = ('tenant_name', 'record_date', 'trandate', 'subsidiary')  
+    search_fields = ('tenant_name', 'is_inactive', 'record_date')
 
 
 class NetSuiteJournalsAdmin(admin.ModelAdmin):

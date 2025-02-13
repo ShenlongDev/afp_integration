@@ -534,10 +534,13 @@ class XeroDataImporter:
                     account_id = line.get("AccountID")
                     account_code = line.get("AccountCode")
                     try:
-                        account_name = XeroAccountsRaw.objects.get(
+                        account = XeroAccountsRaw.objects.get(
                             tenant_id=self.integration.org.id,
-                            account_id=account_id
-                        ).name
+                            id=account_id
+                        )
+                        reporting_code = account.raw_payload.get("ReportingCode")
+                        reporting_code_name = account.raw_payload.get("ReportingCodeName")
+                        account_name = account.name
                     except XeroAccountsRaw.DoesNotExist:
                         account_name = None
                     raw_balances = line.get("BudgetBalances", [])
@@ -556,6 +559,8 @@ class XeroDataImporter:
                                 "tenant_name": self.integration.org,
                                 "account_code": account_code,
                                 "account_name": account_name,
+                                "reporting_code": reporting_code,
+                                "reporting_code_name": reporting_code_name,
                                 "amount": amount,
                                 "notes": notes,
                                 "updated_date_utc": updated_date_utc,

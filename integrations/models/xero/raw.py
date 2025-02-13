@@ -57,6 +57,8 @@ class XeroBudgetPeriodBalancesRaw(models.Model):
     account_id = models.CharField(max_length=255)
     account_code = models.CharField(max_length=255, blank=True, null=True)
     account_name = models.CharField(max_length=255, blank=True, null=True)
+    reporting_code = models.CharField(max_length=255, blank=True, null=True)
+    reporting_code_name = models.CharField(max_length=255, blank=True, null=True)
     period = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)

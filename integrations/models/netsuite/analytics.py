@@ -124,7 +124,7 @@ class NetSuiteTransactions(models.Model):
 
 
 class NetSuiteGeneralLedger(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
     abbrevtype = models.CharField(max_length=255, null=True)
     transactionid = models.CharField(max_length=255, null=True)
     uniquekey = models.CharField(max_length=255, null=True)
@@ -135,8 +135,10 @@ class NetSuiteGeneralLedger(models.Model):
     yearperiod = models.IntegerField(null=True)
     trandate = models.DateTimeField(null=True)
     subsidiary = models.CharField(max_length=255, null=True)
-    account = models.CharField(max_length=255, null=True)
+    account_id = models.CharField(max_length=255, null=True)
     acctnumber = models.CharField(max_length=255, null=True)
+    account_name = models.CharField(max_length=255, null=True)
+    subsidiary_name = models.CharField(max_length=255, null=True)
     amount = models.DecimalField(max_digits=19, decimal_places=2, null=True)
     debit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
     credit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
@@ -148,14 +150,14 @@ class NetSuiteGeneralLedger(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['company_name', 'transactionid', 'linesequencenumber'],
+                fields=['tenant_name', 'transactionid', 'linesequencenumber'],
                 name='unique_netsuite_gl_entry'
             )
         ]
         indexes = [
-            models.Index(fields=['company_name', 'transactionid']),
+            models.Index(fields=['tenant_name', 'transactionid']),
             models.Index(fields=['trandate']),
-            models.Index(fields=['account']),
+            models.Index(fields=['account_id']),
         ]
 
 
