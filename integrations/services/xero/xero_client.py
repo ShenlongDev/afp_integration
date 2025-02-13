@@ -536,7 +536,7 @@ class XeroDataImporter:
                     try:
                         account = XeroAccountsRaw.objects.get(
                             tenant_id=self.integration.org.id,
-                            id=account_id
+                            account_id=account_id
                         )
                         reporting_code = account.raw_payload.get("ReportingCode")
                         reporting_code_name = account.raw_payload.get("ReportingCodeName")
