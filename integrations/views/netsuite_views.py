@@ -6,7 +6,6 @@ from integrations.models.models import Integration
 from integrations.services.netsuite.importer import NetSuiteImporter
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from integrations.services.netsuite_transformer import NetSuiteTransformer
 
 class NetsuiteImportDataView(APIView):
     """
@@ -34,7 +33,6 @@ class NetsuiteImportDataView(APIView):
             # importer.import_departments()
             # importer.import_entities()
             # importer.import_accounting_periods()
-            importer.map_net_suite_general_ledger()
 
             
             # After importing raw data, transform it
