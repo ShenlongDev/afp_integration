@@ -1,4 +1,5 @@
 from django.db import models
+from integrations.models.models import Organisation
 
 
 class XeroAccountsRaw(models.Model):
@@ -45,17 +46,26 @@ class XeroBankTransactionsRaw(models.Model):
 
 class XeroBudgetPeriodBalancesRaw(models.Model):
     id = models.AutoField(primary_key=True)
-
+    tenant_name = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name="xero_budget_period_balances_raws",
+        null=True
+    )
     tenant_id = models.CharField(max_length=255)
     budget_id = models.CharField(max_length=255)
     account_id = models.CharField(max_length=255)
     account_code = models.CharField(max_length=255, blank=True, null=True)
+    account_name = models.CharField(max_length=255, blank=True, null=True)
     period = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     updated_date_utc = models.DateTimeField(blank=True, null=True)
     ingestion_timestamp = models.DateTimeField(blank=True, null=True)
     source_system = models.CharField(max_length=50, blank=True, null=True)
+    tracking_category_id = models.CharField(max_length=255, blank=True, null=True)
+    tracking_category_name = models.CharField(max_length=255, blank=True, null=True)
+    tracking_category_option = models.CharField(max_length=255, blank=True, null=True)
 
     class Meta:
         unique_together = (('tenant_id', 'budget_id', 'account_id', 'period'), )
@@ -70,6 +80,12 @@ class XeroBudgetsRaw(models.Model):
 
     budget_id = models.CharField(max_length=255)
     tenant_id = models.CharField(max_length=255, blank=True, null=True)
+    tenant_name = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name="xero_budgets_raws",
+        null=True
+    )
     status = models.CharField(max_length=50, blank=True, null=True)
     type = models.CharField(max_length=50, blank=True, null=True)
     description = models.TextField(blank=True, null=True)

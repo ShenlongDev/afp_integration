@@ -523,7 +523,6 @@ class XeroDataImporter:
                 "DateFrom": "2024-01-01",
                 "DateTo": "2025-02-11"
             })
-            print(response.json(), "for budget period balances")
             response.raise_for_status()
             return response.json().get("Budgets", [])
         except requests.exceptions.HTTPError as e:
@@ -550,8 +549,9 @@ class XeroDataImporter:
             # Update or create the raw budget record.
             XeroBudgetsRaw.objects.update_or_create(
                 budget_id=budget_id,
-                tenant_id=self.integration.org.id,
+                tenant_id=self.integration.org.id,  # lookup on unique fields only
                 defaults={
+                    "tenant_name": self.integration.org,  # set in defaults
                     "status": budget.get("Status"),
                     "type": budget.get("Type"),
                     "description": budget.get("Description"),
@@ -571,11 +571,20 @@ class XeroDataImporter:
             # Iterate over each budget object in the response.
             # (Usually this list contains one item, but we handle multiple in case it occurs.)
             for b_item in bp_response:
+                # Extract tracking values from the budget record.
+                # The "Tracking" key contains a list; grab the first entry if available.
+                tracking_list = b_item.get("Tracking", [])
+                tracking_obj = tracking_list[0] if tracking_list else {}
+                
                 # Extract the BudgetLines from the budget object.
                 budget_lines = b_item.get("BudgetLines", [])
                 for line in budget_lines:
                     account_id = line.get("AccountID")
                     account_code = line.get("AccountCode")
+                    account_name = XeroAccountsRaw.objects.get(
+                        tenant_id=self.integration.org.id,
+                        account_id=account_id
+                    ).name
                     # Each line has a list of BudgetBalances.
                     raw_balances = line.get("BudgetBalances", [])
                     # Sort the balances by the Period field (e.g., "2024-12", "2024-11", etc.)
@@ -592,12 +601,17 @@ class XeroDataImporter:
                             account_id=account_id,
                             period=period,
                             defaults={
+                                "tenant_name": self.integration.org,  # set in defaults
                                 "account_code": account_code,
+                                "account_name": account_name,
                                 "amount": amount,
                                 "notes": notes,
                                 "updated_date_utc": updated_date_utc,
                                 "ingestion_timestamp": now_ts,
-                                "source_system": "XERO"
+                                "source_system": "XERO",
+                                "tracking_category_id": tracking_obj.get("TrackingCategoryID"),
+                                "tracking_category_name": tracking_obj.get("Name"),
+                                "tracking_category_option": tracking_obj.get("Option")
                             }
                         )
 
@@ -632,6 +646,8 @@ class XeroDataImporter:
                     tenant_id=tenant_id,
                     journal_line_id=journal_line_id
                 )
+                # Log the tracking object for debugging.
+                logger.debug(f"Tracking record found for tenant_id {tenant_id}, journal_line_id {journal_line_id}: {jtc}")
             except XeroJournalLineTrackingCategories.DoesNotExist:
                 jtc = None
 
@@ -657,7 +673,7 @@ class XeroDataImporter:
                     inv_payload = inv.raw_payload or {}
                     contact_name = inv_payload.get("Contact", {}).get("Name")
                     invoice_description_fallback = inv_payload.get("Description")
-                    invoice_number = inv_payload.get("Reference")
+                    invoice_number = inv.invoice_number
                     invoice_url = inv_payload.get("Url")
                 except XeroInvoicesRaw.DoesNotExist:
                     pass
@@ -713,6 +729,19 @@ class XeroDataImporter:
                 account_class = None
                 statement_val = None
 
+            # Get reporting code information from account raw (if available)
+            if acct and acct.raw_payload:
+                reporting_code = acct.raw_payload.get("ReportingCode")
+                reporting_code_name = acct.raw_payload.get("ReportingCodeName")
+            else:
+                reporting_code = jl.raw.get("ReportingCode") if jl.raw else None
+                reporting_code_name = jl.raw.get("ReportingCodeName") if jl.raw else None
+
+            # Use the correct attributes for tracking fields.
+            # Adjust these attribute names if your XeroJournalLineTrackingCategories model uses different ones.
+            tracking_category_name = jtc.tracking_category_name if jtc and hasattr(jtc, "tracking_category_name") else None
+            tracking_category_option = jtc.tracking_category_option if jtc and hasattr(jtc, "tracking_category_option") else None
+
             gl_obj = XeroGeneralLedger(
                 org=self.integration.org,
                 tenant_id=tenant_id,
@@ -725,8 +754,8 @@ class XeroDataImporter:
                 journal_reference=final_journal_reference,
                 source_id=jl.source_id,
                 source_type=jl.source_type,
-                tracking_category_name=(jtc.name if jtc else None),
-                tracking_category_option=(jtc.option if jtc else None),
+                tracking_category_name=tracking_category_name,
+                tracking_category_option=tracking_category_option,
                 account_id=jl.account_id,
                 account_code=account_code or jl.account_code,
                 account_type=account_type or jl.account_type,
@@ -734,6 +763,8 @@ class XeroDataImporter:
                 account_status=account_status,
                 account_tax_type=account_tax_type,
                 account_class=account_class,
+                account_reporting_code=reporting_code,
+                account_reporting_code_name=reporting_code_name,
                 statement=statement_val,
                 bank_account_type=None,
                 journal_line_description=jl.description,
@@ -745,6 +776,7 @@ class XeroDataImporter:
             )
             gl_objects.append(gl_obj)
 
+        # Bulk create the new GL records.
         XeroGeneralLedger.objects.bulk_create(gl_objects)
         self.log_import_event(module_name="xero_general_ledger", fetched_records=len(gl_objects))
         logger.info(f"map_xero_general_ledger: Inserted {len(gl_objects)} rows (latest lines only).")
