@@ -622,23 +622,26 @@ class XeroDataImporter:
     def map_xero_general_ledger(self):
         """
         Recreate Xero General Ledger from the staging tables.
+        Processes data in batches to keep memory usage low and calls close_old_connections()
+        after each batch.
         """
+        from django.db import close_old_connections
+
         # 1) Delete existing GL rows
         XeroGeneralLedger.objects.all().delete()
 
         # 2) Identify the newest row per (tenant_id, journal_line_id).
-        all_lines = (
-            XeroJournalLines.objects
-            .order_by('-journal_date')
-        )
+        # Use an iterator with a chunk size to prevent loading all rows into memory.
         latest_by_line = {}
-        for line in all_lines:
+        for line in XeroJournalLines.objects.order_by('-journal_date').iterator(chunk_size=1000):
             key = (line.tenant_id, line.journal_line_id)
             if key not in latest_by_line:
                 latest_by_line[key] = line
 
-        # 3) Build final GL rows
-        gl_objects = []
+        # 3) Build final GL rows in batches for bulk_create.
+        BATCH_SIZE = 1000
+        batch = []
+        total_count = 0
 
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
             try:
@@ -646,8 +649,8 @@ class XeroDataImporter:
                     tenant_id=tenant_id,
                     journal_line_id=journal_line_id
                 )
-                # Log the tracking object for debugging.
-                logger.debug(f"Tracking record found for tenant_id {tenant_id}, journal_line_id {journal_line_id}: {jtc}")
+                # (Minimal logging; you can enable debug logging if needed)
+                # logger.debug(f"Tracking record: {jtc}")
             except XeroJournalLineTrackingCategories.DoesNotExist:
                 jtc = None
 
@@ -661,7 +664,6 @@ class XeroDataImporter:
 
             contact_name = None
             invoice_description_fallback = None
-            # Retrieve invoice metadata for ACCPAY / ACCREC types.
             invoice_number = None
             invoice_url = None
             if jl.source_type in ["ACCPAY", "ACCREC"]:
@@ -689,13 +691,9 @@ class XeroDataImporter:
                 except XeroBankTransactionsRaw.DoesNotExist:
                     pass
 
-            desc_candidate = None
             if contact_name or jl.description:
-                base = (contact_name + " - ") if contact_name else ""
-                if jl.description:
-                    desc_candidate = base + jl.description
-                else:
-                    desc_candidate = invoice_description_fallback
+                base = f"{contact_name} - " if contact_name else ""
+                desc_candidate = base + jl.description if jl.description else invoice_description_fallback
             else:
                 desc_candidate = invoice_description_fallback
 
@@ -714,7 +712,7 @@ class XeroDataImporter:
             if acct:
                 account_code = acct.raw_payload.get("Code") if acct.raw_payload else None
                 account_type = acct.raw_payload.get("Type") if acct.raw_payload else None
-                account_name = acct.raw_payload.get("Name") if acct.raw_payload else None
+                account_name_val = acct.raw_payload.get("Name") if acct.raw_payload else None
                 account_status = acct.status
                 account_tax_type = (acct.raw_payload or {}).get("TaxType")
                 account_class = (acct.raw_payload or {}).get("Class")
@@ -723,13 +721,12 @@ class XeroDataImporter:
             else:
                 account_code = jl.account_code
                 account_type = jl.account_type
-                account_name = jl.account_name
+                account_name_val = jl.account_name
                 account_status = None
                 account_tax_type = None
                 account_class = None
                 statement_val = None
 
-            # Get reporting code information from account raw (if available)
             if acct and acct.raw_payload:
                 reporting_code = acct.raw_payload.get("ReportingCode")
                 reporting_code_name = acct.raw_payload.get("ReportingCodeName")
@@ -737,15 +734,14 @@ class XeroDataImporter:
                 reporting_code = jl.raw.get("ReportingCode") if jl.raw else None
                 reporting_code_name = jl.raw.get("ReportingCodeName") if jl.raw else None
 
-            # Use the correct attributes for tracking fields.
-            # Adjust these attribute names if your XeroJournalLineTrackingCategories model uses different ones.
-            tracking_category_name = jtc.tracking_category_name if jtc and hasattr(jtc, "tracking_category_name") else None
-            tracking_category_option = jtc.tracking_category_option if jtc and hasattr(jtc, "tracking_category_option") else None
+            # Use standard attribute names (adjust if your model uses different ones).
+            tracking_category_name = jtc.name if jtc and hasattr(jtc, "name") else None
+            tracking_category_option = jtc.option if jtc and hasattr(jtc, "option") else None
 
             gl_obj = XeroGeneralLedger(
                 org=self.integration.org,
                 tenant_id=tenant_id,
-                tenant_name=self.integration.org.name,
+                tenant_name=self.integration.org.name,  # Adjust if tenant_name is a FK (pass instance) or a string.
                 journal_id=jl.journal_id,
                 journal_number=(int(jl.journal_number) if jl.journal_number else None),
                 journal_date=jl.journal_date,
@@ -759,7 +755,7 @@ class XeroDataImporter:
                 account_id=jl.account_id,
                 account_code=account_code or jl.account_code,
                 account_type=account_type or jl.account_type,
-                account_name=account_name or jl.account_name,
+                account_name=account_name_val or jl.account_name,
                 account_status=account_status,
                 account_tax_type=account_tax_type,
                 account_class=account_class,
@@ -774,12 +770,24 @@ class XeroDataImporter:
                 invoice_number=invoice_number,
                 invoice_url=invoice_url
             )
-            gl_objects.append(gl_obj)
+            batch.append(gl_obj)
+            total_count += 1
 
-        # Bulk create the new GL records.
-        XeroGeneralLedger.objects.bulk_create(gl_objects)
-        self.log_import_event(module_name="xero_general_ledger", fetched_records=len(gl_objects))
-        logger.info(f"map_xero_general_ledger: Inserted {len(gl_objects)} rows (latest lines only).")
+            # Once the batch is full, bulk create and refresh the connection.
+            if len(batch) >= BATCH_SIZE:
+                print(f"Batch size saved: {len(batch)}")
+                XeroGeneralLedger.objects.bulk_create(batch, batch_size=BATCH_SIZE)
+                batch.clear()
+                close_old_connections()
+
+        # Create any remaining records.
+        if batch:
+            XeroGeneralLedger.objects.bulk_create(batch, batch_size=BATCH_SIZE)
+            total_count += len(batch)
+            close_old_connections()
+
+        self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
+        logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
 
     ### 8. Master function to import everything ###
     @transaction.atomic

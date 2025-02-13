@@ -657,7 +657,7 @@ class NetSuiteImporter:
 
             if not rows:
                 break
-
+                
             for r in rows:
                 netsuite_id = r.get("id")
                 if not netsuite_id:
