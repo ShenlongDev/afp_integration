@@ -8,7 +8,7 @@ from django.db import close_old_connections
 from django.utils import timezone
 from dateutil import tz
 from dateutil.parser import parse as dateutil_parse
-from integrations.services.utils import BatchUtils
+from integrations.services.utils import BatchUtils, compute_unique_key
 
 from .client import NetSuiteClient
 from integrations.models.models import Integration, Organisation, SyncTableLogs
@@ -50,8 +50,7 @@ class NetSuiteImporter:
     """
     def __init__(self, integration: Integration, since_date: Optional[str] = None, until_date: Optional[str] = None):
         self.integration = integration
-        self.consolidation_key = int(integration.netsuite_account_id)
-        self.client = NetSuiteClient(self.consolidation_key, integration)
+        self.client = NetSuiteClient(self.integration.netsuite_account_id, integration)
         self.org_name = integration.org
         self.now_ts = timezone.now()
         self.org = Organisation.objects.get(name=self.org_name)
@@ -366,21 +365,17 @@ class NetSuiteImporter:
     # 7) Import Transactions (using keyset pagination and date filtering)
     # ------------------------------------------------------------
     def import_transactions(self, last_import_date: Optional[str] = None):
-        logger.info("Importing NetSuite Transactions " +
-                    ("incrementally..." if (last_import_date or self.since_date) else "(full import)..."))
-        filter_since = last_import_date or self.since_date
-        date_filter_clause = ""
-        if filter_since:
-            date_filter_clause = f"AND LASTMODIFIEDDATE > TO_DATE('{filter_since}', 'YYYY-MM-DD HH24:MI:SS')"
-        limit = 500
+        logger.info("Importing NetSuite Transactions with start date filtering...")
+        # Use the provided last_import_date, or fall back to the since_date
+        start_date = last_import_date or self.since_date
+        # Use the helper to build a clause with only a start date (>=)
+        date_filter_clause = self.build_date_clause("LASTMODIFIEDDATE", start_date, None)
+        min_id = "0"
         total_imported = 0
-        marker = None
+        batch_size = 500
 
         while True:
             close_old_connections()
-            marker_clause = ""
-            if marker:
-                marker_clause = f"AND (LASTMODIFIEDDATE, ID) > (TO_DATE('{marker[0]}', 'YYYY-MM-DD HH24:MI:SS'), {marker[1]})"
             query = f"""
                 SELECT 
                     ID,
@@ -433,14 +428,14 @@ class NetSuiteImporter:
                     CUSTBODY_NEXUS_NOTC,
                     MEMO
                 FROM Transaction
-                WHERE 1=1
+                WHERE ID > {min_id}
                     {date_filter_clause}
-                    {marker_clause}
-                ORDER BY LASTMODIFIEDDATE ASC, ID ASC
-                FETCH NEXT {limit} ROWS ONLY
+                ORDER BY ID ASC
+                FETCH NEXT {batch_size} ROWS ONLY
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
+                print(f"fetched {len(rows)} transaction records, {rows[:1]}")
                 logger.info(f"Fetched {len(rows)} transaction records.")
             except Exception as e:
                 logger.error(f"Error importing transactions: {e}", exc_info=True)
@@ -500,7 +495,6 @@ class NetSuiteImporter:
                             "recordtype": r.get("recordtype"),
                             "source": r.get("source"),
                             "status": r.get("status"),
-                            "subsidiary": r.get("subsidiary"),
                             "terms": r.get("terms"),
                             "tobeprinted": r.get("tobeprinted"),
                             "trandate": self.parse_date(r.get("trandate")),
@@ -515,25 +509,25 @@ class NetSuiteImporter:
                             "custbody_nexus_notc": r.get("custbody_nexus_notc"),
                             "memo": r.get("memo"),
                             "record_date": last_mod,
+                            "custbody_rpc_duplicate_bill_created": r.get("custbody_rpc_duplicate_bill_created"),
+                            "custbody_rpc_duplicate_bill_credit_crt": r.get("custbody_rpc_duplicate_bill_credit_crt"),
+                            "custbody_rpc_lightyear_bill": r.get("custbody_rpc_lightyear_bill"),
+                            "custbody_rpc_lightyear_bill_credit": r.get("custbody_rpc_lightyear_bill_credit"),
+                            "custbody_rpc_payment_approved": r.get("custbody_rpc_payment_approved"),
+                            "custbody_rpc_same_reference_number": r.get("custbody_rpc_same_reference_number"),
+                            "consolidation_key": self.integration.netsuite_account_id,
                         }
                     )
                 except Exception as e:
                     logger.error(f"Error importing transaction row: {e}", exc_info=True)
 
-            BatchUtils.process_in_batches(rows, process_transaction, batch_size=limit)
+            BatchUtils.process_in_batches(rows, process_transaction, batch_size=batch_size)
             total_imported += len(rows)
-            last_row = rows[-1]
-            new_marker_date_raw = last_row.get("LASTMODIFIEDDATE")
-            new_marker_id = last_row.get("ID")
-            if new_marker_date_raw:
-                new_marker_date = self.parse_datetime(new_marker_date_raw)
-                new_marker_date_str = new_marker_date.strftime("%Y-%m-%d %H:%M:%S") if new_marker_date else "1970-01-01 00:00:00"
-            else:
-                new_marker_date_str = "1970-01-01 00:00:00"
-            marker = (new_marker_date_str, new_marker_id)
-            logger.info(f"Processed batch. New marker: LASTMODIFIEDDATE={new_marker_date_str}, ID={new_marker_id}.")
-            if len(rows) < limit:
+            # Prepare for the next batch by setting min_id to the last row's ID
+            min_id = rows[-1].get("id")
+            if len(rows) < batch_size:
                 break
+
         self.log_import_event(module_name="netsuite_transactions", fetched_records=total_imported)
         logger.info(f"Imported Transactions: {total_imported} records processed.")
 
@@ -595,14 +589,17 @@ class NetSuiteImporter:
         batch_size = 500
         min_id = min_id or "0"
         start_date = start_date or self.since_date
+        print(f"start_date: {start_date}")
         total_fetched = 0
         date_filter_clause = self.build_date_clause("LINELASTMODIFIEDDATE", since=last_modified_after or start_date, until=end_date)
 
+        line_counter = 0
         while True:
             close_old_connections()
             query = f"""
                 SELECT
                     id,
+                    ACCOUNTINGLINETYPE,
                     ISBILLABLE,
                     ISCLOSED,
                     ISCOGS,
@@ -613,6 +610,13 @@ class NetSuiteImporter:
                     ISREVRECTRANSACTION,
                     LINELASTMODIFIEDDATE,
                     LINESEQUENCENUMBER,
+                    ENTITY,
+                    FOREIGNAMOUNT,
+                    FOREIGNAMOUNTPAID,
+                    FOREIGNAMOUNTUNPAID,
+                    CREDITFOREIGNAMOUNT,
+                    CLOSEDATE,
+                    DOCUMENTNUMBER,
                     LOCATION,
                     MAINLINE,
                     MEMO,
@@ -623,7 +627,9 @@ class NetSuiteImporter:
                     QUANTITYSHIPRECV,
                     SUBSIDIARY,
                     TAXLINE,
-                    TRANSACTIONDISCOUNT
+                    TRANSACTIONDISCOUNT,
+                    TRANSACTION
+                    -- (If available, extend this query to include additional columns for the new fields)
                 FROM TransactionLine
                 WHERE id > {min_id}
                     {date_filter_clause}
@@ -632,6 +638,7 @@ class NetSuiteImporter:
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
+                print(f"fetched {len(rows)} transaction accounting line records, {rows[:3]}")
                 logger.info(f"Fetched {len(rows)} transaction line records with id > {min_id}{date_filter_clause}.")
             except Exception as e:
                 logger.error(f"Error importing transaction lines: {e}", exc_info=True)
@@ -641,14 +648,16 @@ class NetSuiteImporter:
                 break
 
             def process_line(r):
-                netsuite_id = r.get("id")
-                if not netsuite_id:
-                    return
+                nonlocal line_counter
+                line_counter += 1
+                unique_key = f"{self.integration.netsuite_account_id}_{line_counter}"
+                
                 try:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
                     NetSuiteTransactionLine.objects.update_or_create(
-                        id=netsuite_id,
+                        unique_key=unique_key,  # Using consolidation_key plus counter as our unique field
                         defaults={
+                            "transaction_line_id": r.get("id"),
                             "company_name": self.org_name,
                             "is_billable": r.get("isbillable"),
                             "is_closed": r.get("isclosed"),
@@ -672,10 +681,30 @@ class NetSuiteImporter:
                             "quantity_ship_recv": r.get("quantityshiprecv"),
                             "source_uri": r.get("source_uri"),
                             "subsidiary": r.get("subsidiary"),
-                            "subsidiary_id": r.get("subsidiaryid"),
+                            "subsidiaryid": r.get("subsidiaryid"),
                             "tax_line": r.get("taxline"),
                             "transaction_discount": r.get("transactiondiscount"),
-                            "transaction_id": r.get("transactionid"),
+                            "transactionid": r.get("transaction"),
+                            # New fields:
+                            "accountinglinetype": r.get("accountinglinetype"),
+                            "cleared": r.get("cleared"),
+                            "commitmentfirm": r.get("commitmentfirm"),
+                            "department": r.get("department"),
+                            "departmentid": r.get("departmentid"),
+                            "donotdisplayline": r.get("donotdisplayline"),
+                            "eliminate": r.get("eliminate"),
+                            "entity": r.get("entity"),
+                            "entityid": r.get("entityid"),
+                            "expenseaccount": r.get("expenseaccount"),
+                            "expenseaccountid": r.get("expenseaccountid"),
+                            "foreignamount": decimal_or_none(r.get("foreignamount")),
+                            "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
+                            "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
+                            "creditforeignamount": decimal_or_none(r.get("creditforeignamount")),
+                            "closedate": self.parse_date(r.get("closedate")),
+                            "documentnumber": r.get("documentnumber"),
+                            "class_field": r.get("class_field"),
+                            "consolidation_key": self.integration.netsuite_account_id,
                         }
                     )
                 except Exception as e:
@@ -694,9 +723,9 @@ class NetSuiteImporter:
     # 10) Import Transaction Accounting Lines (with date filtering and keyset pagination)
     # ------------------------------------------------------------
     def import_transaction_accounting_lines(self, min_id: Optional[str] = None,
-                                            last_modified_after: Optional[str] = None,
-                                            start_date: Optional[str] = None,
-                                            end_date: Optional[str] = None):
+                                        last_modified_after: Optional[str] = None,
+                                        start_date: Optional[str] = None,
+                                        end_date: Optional[str] = None):
         logger.info("Importing Transaction Accounting Lines...")
         min_id = min_id or "0"
         limit = 500
@@ -731,6 +760,7 @@ class NetSuiteImporter:
                     AMOUNTUNPAID,
                     LASTMODIFIEDDATE,
                     PROCESSEDBYREVCOMMIT
+                    -- (Include additional columns if available, e.g. source_uri, datarol_date)
                 FROM TransactionAccountingLine
                 WHERE TRANSACTION > {min_id}
                     {date_filter_clause}
@@ -756,8 +786,7 @@ class NetSuiteImporter:
                         transaction_line=r.get("transactionline").lower(),
                         defaults={
                             "links": r.get("links"),
-                            "account": r.get("account").lower(),
-                            "accountingbook": r.get("accountingbook").lower(),
+                            "accountingbook": r.get("accountingbook").lower() if r.get("accountingbook") else None,
                             "amount": decimal_or_none(r.get("amount")),
                             "amountlinked": decimal_or_none(r.get("amountlinked")),
                             "debit": decimal_or_none(r.get("debit")),
@@ -770,6 +799,9 @@ class NetSuiteImporter:
                             "amountunpaid": decimal_or_none(r.get("amountunpaid")),
                             "lastmodifieddate": last_modified,
                             "processedbyrevcommit": r.get("processedbyrevcommit"),
+                            # New fields:
+                            "consolidation_key": self.integration.netsuite_account_id,
+                            "source_uri": r.get("source_uri"),
                         }
                     )
                 except Exception as e:
@@ -784,7 +816,8 @@ class NetSuiteImporter:
                 break
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported Transaction Accounting Lines: {total_imported} records processed.")
-
+    
+    
     # ------------------------------------------------------------
     # 11) Transform Transactions (into unified transformed records)
     # ------------------------------------------------------------
@@ -915,6 +948,7 @@ class NetSuiteImporter:
         BatchUtils.process_in_batches(list(accounting_lines), process_transformation, batch_size=1000)
         logger.info(f"Transformation complete: {total_transformed} entries processed.")
         self.log_import_event(module_name="netsuite_transformed_transaction", fetched_records=total_transformed)
+
 
     # ------------------------------------------------------------
     # Helper Methods

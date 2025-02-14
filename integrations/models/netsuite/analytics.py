@@ -43,11 +43,10 @@ class NetSuiteAccounts(models.Model):
 
 
 class NetSuiteTransactions(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
-    # We assume the NetSuite Transaction ID is unique; here we use it as the primary key.
     transactionid = models.CharField(max_length=50, null=True)
+    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
     
-    # Text fields (using TextField for very long VARCHAR columns)
+    # Text (VARCHAR) fields
     links = models.TextField(null=True, blank=True)
     abbrevtype = models.TextField(null=True, blank=True)
     approvalstatus = models.TextField(null=True, blank=True)
@@ -94,16 +93,17 @@ class NetSuiteTransactions(models.Model):
     memo = models.TextField(null=True, blank=True)
     source_uri = models.TextField(null=True, blank=True)
     
-    # Date/Time fields
+    # Date fields
     closedate = models.DateField(null=True, blank=True)
     createddate = models.DateField(null=True, blank=True)
     duedate = models.DateField(null=True, blank=True)
     trandate = models.DateField(null=True, blank=True)
-    custbody_report_timestamp = models.DateTimeField(null=True, blank=True)
     lastmodifieddate = models.DateField(null=True, blank=True)
+    # Timestamp field from SQL:
+    custbody_report_timestamp = models.DateTimeField(null=True, blank=True)
     record_date = models.DateTimeField(null=True, blank=True)
     
-    # Numeric fields (stored as BigInteger or Float)
+    # Numeric fields
     customtype = models.BigIntegerField(null=True, blank=True)
     daysopen = models.BigIntegerField(null=True, blank=True)
     daysoverduesearch = models.BigIntegerField(null=True, blank=True)
@@ -113,14 +113,11 @@ class NetSuiteTransactions(models.Model):
     number = models.DecimalField(max_digits=50, decimal_places=20, null=True, blank=True)
     nexus = models.BigIntegerField(null=True, blank=True)
     
-    # This field is defined as VARCHAR(255) NOT NULL in the table.
+    # This field is NOT NULL per SQL.
     consolidation_key = models.CharField(max_length=255, null=True)
-
+    
     def __str__(self):
         return f"Transaction {self.transactionid}"
-    
-    class Meta:
-        db_table = "Transaction"
 
 
 class NetSuiteGeneralLedger(models.Model):
@@ -159,7 +156,6 @@ class NetSuiteGeneralLedger(models.Model):
             models.Index(fields=['trandate']),
             models.Index(fields=['account_id']),
         ]
-
 
 
 class NetSuiteAccountingPeriods(models.Model):
@@ -287,56 +283,16 @@ class NetSuiteJournals(models.Model):
         ]
 
 
-class NetSuiteTransactionLine(models.Model):
-    # Use the NetSuite TransactionLine ID as the primary key.
-    id = models.BigIntegerField(primary_key=True)  # maps to the "ID" column
-
-    # Optional: record the company associated with the data import.
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
-
-    # Varchar fields
-    is_billable = models.CharField(max_length=50, blank=True, null=True)            # ISBILLABLE
-    is_closed = models.CharField(max_length=50, blank=True, null=True)              # ISCLOSED
-    is_cogs = models.CharField(max_length=50, blank=True, null=True)                # ISCOGS
-    is_custom_gl_line = models.CharField(max_length=50, blank=True, null=True)      # ISCUSTOMGLLINE
-    is_fully_shipped = models.CharField(max_length=50, blank=True, null=True)       # ISFULLYSHIPPED
-    is_fx_variance = models.CharField(max_length=50, blank=True, null=True)         # ISFXVARIANCE
-    is_inventory_affecting = models.CharField(max_length=50, blank=True, null=True)   # ISINVENTORYAFFECTING
-    is_rev_rec_transaction = models.CharField(max_length=50, blank=True, null=True) # ISREVRECTRANSACTION
-    links = models.CharField(max_length=255, blank=True, null=True)                 # LINKS
-    location = models.CharField(max_length=255, blank=True, null=True)              # LOCATION
-    main_line = models.CharField(max_length=50, blank=True, null=True)              # MAINLINE
-    match_bill_to_receipt = models.CharField(max_length=50, blank=True, null=True)  # MATCHBILLTORECEIPT
-    memo = models.TextField(blank=True, null=True)                                # MEMO
-    old_commitment_firm = models.CharField(max_length=255, blank=True, null=True)   # OLDCOMMITMENTFIRM
-    subsidiary = models.CharField(max_length=255, blank=True, null=True)            # SUBSIDIARY
-    tax_line = models.CharField(max_length=255, blank=True, null=True)              # TAXLINE
-    transaction_discount = models.CharField(max_length=255, blank=True, null=True)  # TRANSACTIONDISCOUNT
-
-    # Number/Float/Decimal fields
-    line_sequence_number = models.IntegerField(blank=True, null=True)             # LINESEQUENCENUMBER
-    net_amount = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True)  # NETAMOUNT
-    quantity_billed = models.FloatField(blank=True, null=True)                    # QUANTITYBILLED
-    quantity_rejected = models.FloatField(blank=True, null=True)                  # QUANTITYREJECTED
-    quantity_ship_recv = models.FloatField(blank=True, null=True)                 # QUANTITYSHIPRECV
-
-    # Date field – note that even though the column is named LINELASTMODIFIEDDATE,
-    # you may choose to store it as a date (or datetime) based on your needs.
-    line_last_modified_date = models.DateField(blank=True, null=True)             # LINELASTMODIFIEDDATE
-
-    def __str__(self):
-        return f"Line {self.id}"
-    
-    
 class NetSuiteTransactionAccountingLine(models.Model):
     org = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
-    # Text fields (the huge VARCHAR columns are stored as TextFields)
+    
+    # Text fields
     links = models.TextField(null=True, blank=True)
     accountingbook = models.TextField(null=True, blank=True)
     posting = models.TextField(null=True, blank=True)
     processedbyrevcommit = models.TextField(null=True, blank=True)
     
-    # Numeric fields (using BigIntegerField for NUMBER(38,0) and DecimalField for NUMBER(15,2))
+    # Numeric fields
     account = models.BigIntegerField(null=True, blank=True)
     amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     amountlinked = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
@@ -348,20 +304,86 @@ class NetSuiteTransactionAccountingLine(models.Model):
     amountpaid = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     amountunpaid = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     
-    # Transaction identifiers (assumed NUMBER(38,0))
-    transaction = models.CharField(max_length=355, null=True, blank=True)
-    transaction_line = models.BigIntegerField(null=True, blank=True)
+    # Transaction identifiers – here we store them as strings to allow use of .lower() in transformations.
+    transaction = models.CharField(max_length=50, null=True, blank=True)
+    transaction_line = models.CharField(max_length=50, null=True, blank=True)
     
-
-    # Date/Time fields
+    # Date/Time field
     lastmodifieddate = models.DateTimeField(null=True, blank=True)
     
-    # This field is defined as VARCHAR(255) NOT NULL in the source table.
-    consolidation_key = models.CharField(max_length=255)
+    # NOT NULL per SQL.
+    consolidation_key = models.CharField(max_length=255, null=True)
+    
+    source_uri = models.TextField(null=True, blank=True)
+    
+    def __str__(self):
+        return f"AcctLine {self.transaction}-{self.transaction_line}"
 
-    class Meta:
-        db_table = "Transaction Accounting Line"  
-        
+
+class NetSuiteTransactionLine(models.Model):
+    id = models.AutoField(primary_key=True)
+    transaction_line_id = models.BigIntegerField(null=True, blank=True)
+    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    unique_key = models.CharField(max_length=32, unique=True, null=True, blank=True)
+    
+    # Many of the long VARCHAR columns are stored as TextFields.
+    links = models.TextField(null=True, blank=True)
+    accountinglinetype = models.TextField(null=True, blank=True)
+    cleared = models.TextField(null=True, blank=True)
+    commitmentfirm = models.TextField(null=True, blank=True)
+    old_commitment_firm = models.TextField(null=True, blank=True)
+    department = models.TextField(null=True, blank=True)
+    departmentid = models.BigIntegerField(null=True, blank=True)
+    donotdisplayline = models.TextField(null=True, blank=True)
+    eliminate = models.TextField(null=True, blank=True)
+    entity = models.TextField(null=True, blank=True)
+    entityid = models.BigIntegerField(null=True, blank=True)
+    expenseaccount = models.TextField(null=True, blank=True)
+    expenseaccountid = models.BigIntegerField(null=True, blank=True)
+    foreignamount = models.FloatField(null=True, blank=True)
+    foreignamountpaid = models.FloatField(null=True, blank=True)
+    foreignamountunpaid = models.FloatField(null=True, blank=True)
+    
+    # Fields already defined in your original model (some sizes increased to TextField)
+    is_billable = models.CharField(max_length=50, blank=True, null=True)
+    is_closed = models.CharField(max_length=50, blank=True, null=True)
+    is_cogs = models.CharField(max_length=50, blank=True, null=True)
+    is_custom_gl_line = models.CharField(max_length=50, blank=True, null=True)
+    is_fully_shipped = models.CharField(max_length=50, blank=True, null=True)
+    is_fx_variance = models.CharField(max_length=50, blank=True, null=True)
+    is_inventory_affecting = models.CharField(max_length=50, blank=True, null=True)
+    is_rev_rec_transaction = models.CharField(max_length=50, blank=True, null=True)
+    
+    line_last_modified_date = models.DateField(null=True, blank=True)
+    line_sequence_number = models.IntegerField(null=True, blank=True)
+    main_line = models.CharField(max_length=50, blank=True, null=True)
+    match_bill_to_receipt = models.CharField(max_length=50, blank=True, null=True)
+    memo = models.TextField(null=True, blank=True)
+    net_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    quantity_billed = models.FloatField(null=True, blank=True)
+    quantity_rejected = models.FloatField(null=True, blank=True)
+    quantity_ship_recv = models.FloatField(null=True, blank=True)
+    
+    # Additional fields from the SQL:
+    subsidiary = models.TextField(null=True, blank=True)
+    subsidiaryid = models.BigIntegerField(null=True, blank=True)
+    tax_line = models.TextField(null=True, blank=True)
+    transactionid = models.BigIntegerField(null=True, blank=True)
+    transaction_discount = models.TextField(null=True, blank=True)
+    uniquekey = models.BigIntegerField(null=True, blank=True)
+    creditforeignamount = models.FloatField(null=True, blank=True)
+    closedate = models.DateField(null=True, blank=True)
+    documentnumber = models.TextField(null=True, blank=True)
+    # Use TextField for long text data.
+    location = models.TextField(null=True, blank=True)
+    class_field = models.TextField(null=True, blank=True)
+    
+    consolidation_key = models.CharField(max_length=255, null=True)
+    source_uri = models.TextField(null=True, blank=True)
+    
+    def __str__(self):
+        return f"TransactionLine {self.id}"
+    
         
 class NetSuiteTransformedTransaction(models.Model):
     company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)

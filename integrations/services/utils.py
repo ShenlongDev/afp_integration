@@ -1,8 +1,9 @@
 from django.db import transaction, close_old_connections
+import hashlib
 
 class BatchUtils:
     @staticmethod
-    def bulk_create_batches(model, objects, batch_size=1000):
+    def bulk_create_batches(model, objects, batch_size=10000):
         """
         Accepts a model and an iterable of objects.
         Creates the objects in batches (each in its own atomic block)
@@ -27,7 +28,7 @@ class BatchUtils:
         return total_count
 
     @staticmethod
-    def process_in_batches(items, process_func, batch_size=1000):
+    def process_in_batches(items, process_func, batch_size=10000):
         """
         Accepts an iterable of items and a processing function.
         Processes each batch inside an atomic transaction.
@@ -44,3 +45,13 @@ class BatchUtils:
             with transaction.atomic():
                 for i in batch:
                     process_func(i)
+
+
+
+def compute_unique_key(row):
+    """
+    Generate a unique key for a transaction line by combining several fields.
+    Adjust the fields as needed.
+    """
+    unique_str = f"{row.get('id')}-{row.get('linelastmodifieddate')}-{row.get('transactionid')}-{row.get('linesequencenumber')}"
+    return hashlib.md5(unique_str.encode('utf-8')).hexdigest()

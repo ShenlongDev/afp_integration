@@ -105,7 +105,6 @@ class Command(BaseCommand):
                     importer = NetSuiteImporter(
                         integration,
                         since_date=since_date_formatted,
-                        until_date=until_date_formatted
                     )
 
                     import_methods = {

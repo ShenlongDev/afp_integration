@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class NetSuiteClient:
     def __init__(self, consolidation_key: str, integration: Integration):
         self.consolidation_key = consolidation_key
+        
         self.auth_service = NetSuiteAuthService(integration)
         self.token = self.auth_service.get_access_token()
 

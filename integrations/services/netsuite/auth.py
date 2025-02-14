@@ -22,6 +22,7 @@ class NetSuiteAuthService:
 
         # The NetSuite account ID, e.g. "1234567_SB2"
         # This is stored in integration.netsuite_account_id
+        print(f"integration.netsuite_account_id: {integration}")
         account_id = integration.netsuite_account_id
 
         if not account_id:
