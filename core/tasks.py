@@ -13,9 +13,7 @@ app = Celery('core')
 # ------------------- NetSuite Tasks -------------------
 
 @shared_task
-def netsuite_import_accounts(integration_id: int):
-    from integrations.models.models import Integration
-    integration = Integration.objects.get(id=integration_id)
+def netsuite_import_accounts(integration):
     importer = NetSuiteImporter(integration)
     importer.import_accounts()
     logger.info(f"NetSuite accounts imported for integration: {integration}")
@@ -78,29 +76,20 @@ def netsuite_import_transaction_accounting_lines(integration):
 
 
 @shared_task
-def sync_netsuite_data(consolidation_key: str):
+def sync_netsuite_data(integration):
     """
     Chain all the NetSuite import and transformation tasks.
     """
-    from integrations.models.models import Integration
-    
-    # Get the integration object using the consolidation_key
-    try:
-        integration = Integration.objects.get(netsuite_account_id=consolidation_key)
-    except Integration.DoesNotExist:
-        logger.error(f"No integration found with consolidation key: {consolidation_key}")
-        return
-
     task_chain = chain(
-        netsuite_import_accounts.s(integration.id),
-        netsuite_import_accounting_periods.s(integration.id),
-        netsuite_import_entity.s(integration.id),
-        netsuite_import_vendors.s(integration.id),
-        netsuite_import_subsidiary.s(integration.id),
-        netsuite_import_departments.s(integration.id),
-        netsuite_import_transactions.s(integration.id),
-        netsuite_import_transaction_lines.s(integration.id),
-        netsuite_import_transaction_accounting_lines.s(integration.id),
+        netsuite_import_accounts.s(integration),
+        netsuite_import_accounting_periods.s(integration),
+        netsuite_import_entity.s(integration),
+        netsuite_import_vendors.s(integration),
+        netsuite_import_subsidiary.s(integration),
+        netsuite_import_departments.s(integration),
+        netsuite_import_transactions.s(integration),
+        netsuite_import_transaction_lines.s(integration),
+        netsuite_import_transaction_accounting_lines.s(integration),
     )
     task_chain.apply_async()
     logger.info(f"Dispatched NetSuite sync tasks for integration: {integration}")
@@ -184,7 +173,7 @@ def run_data_sync():
         )
         for integration in netsuite_integrations:
             logger.info(f"Dispatching NetSuite sync for integration: {integration}")
-            sync_netsuite_data.delay(integration.consolidation_key)
+            sync_netsuite_data.delay(integration)
 
         # Dispatch Xero tasks.
         logger.info("Dispatching Xero sync tasks.")

@@ -1,0 +1,80 @@
+{# templates/admin/data_import_form.html #}
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <style>
+    /* Container styles for centering and card-like appearance */
+    .data-import-container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border-radius: 6px;
+    }
+    .data-import-container h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 24px;
+      color: #333;
+    }
+    /* Form input styling */
+    .data-import-form p {
+      margin-bottom: 15px;
+    }
+    .data-import-form input[type="text"],
+    .data-import-form input[type="email"],
+    .data-import-form input[type="password"],
+    .data-import-form textarea,
+    .data-import-form select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .data-import-form label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #555;
+    }
+    /* Submit button styling */
+    .data-import-form input[type="submit"] {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      color: #fff;
+      background-color: #337ab7;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    .data-import-form input[type="submit"]:hover {
+      background-color: #286090;
+    }
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .data-import-container {
+        margin: 20px;
+        padding: 15px;
+      }
+    }
+  </style>
+{% endblock extrahead %}
+
+{% block content %}
+  <div class="data-import-container">
+    <h1>Import Data</h1>
+    <form class="data-import-form" method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <input type="submit" value="Start Import">
+    </form>
+  </div>
+{% endblock %}
