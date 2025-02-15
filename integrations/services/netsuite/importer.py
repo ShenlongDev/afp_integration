@@ -818,188 +818,128 @@ class NetSuiteImporter:
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported Transaction Accounting Lines: {total_imported} records processed.")
     
-    
-    def compute_yearperiod(self, postingperiod):
-        """
-        Compute YEARPERIOD using logic similar to the SQL:
-        200000 + (fiscal_year * 100) + period_val,
-        where fiscal_year is the 2 digits following 'FY' in postingperiod,
-        and period_val is extracted from postingperiod (or set to 13 if 'ADJUSTMENT' appears).
-        """
-        if not postingperiod:
-            return None
-        posting_upper = postingperiod.upper()
-        pos = posting_upper.find('FY')
-        try:
-            fiscal_year = int(postingperiod[pos+2: pos+4])
-        except (ValueError, TypeError):
-            fiscal_year = 0
-        # Default: extract two digits starting at position 1 (index 1) for period value.
-        try:
-            period_val = int(postingperiod[1:3])
-        except (ValueError, TypeError):
-            period_val = 0
-        if 'ADJUSTMENT' in posting_upper:
-            period_val = 13
-        return 200000 + fiscal_year * 100 + period_val
-
+    from django.db import transaction
     def transform_transactions(self):
         logger.info("Starting transformation of NetSuite transactions...")
         total_transformed = 0
-
-        # Get all accounting lines for the org, ordered (you can adjust ordering as needed)
         accounting_lines = NetSuiteTransactionAccountingLine.objects.filter(org=self.org).order_by("transaction", "transaction_line")
 
         def process_transformation(al):
             nonlocal total_transformed
-            # --- Look up the related transaction record ---
             try:
-                txn = NetSuiteTransactions.objects.get(transactionid=str(al.transaction), company_name=self.org)
-            except NetSuiteTransactions.DoesNotExist:
-                # If no matching transaction record, skip this line.
-                return
+                # Lookup the transaction record using the accounting line’s transaction value.
+                txn = NetSuiteTransactions.objects.filter(transactionid=str(al.transaction), company_name=self.org).first()
+                if not txn:
+                    return  # Skip if no matching transaction
 
-            # --- Look up the related line item from the new NETSUITE_LINEITEMS table ---
-            # (Assuming 'lineitem_id' is stored on the accounting line)
-            lineitem = (NetSuiteTransactionLine.objects
-                        .filter(id=al.lineitem_id, company_name=self.org)
-                        .order_by('-id')
-                        .first())
-            if not lineitem:
-                return
+                # Use the proper field for transaction line lookup:
+                tline = NetSuiteTransactionLine.objects.filter(transaction_line_id=al.transaction_line, company_name=self.org).first()
+                if not tline:
+                    return  # Skip if no matching transaction line
 
-            # --- Emulate duplicate removal: only process the lineitem if it is the latest for its unique key.
-            latest_for_key = (NetSuiteTransactionLine.objects
-                            .filter(unique_key=lineitem.unique_key, company_name=self.org)
-                            .order_by('-id')
-                            .first())
-            if not latest_for_key or latest_for_key.id != lineitem.id:
-                # Skip if this lineitem is not the most recent for its unique key.
-                return
+                # Lookup the account (if available) using its proper key.
+                account_str = str(al.account) if al.account is not None else None
+                account_obj = None
+                if account_str:
+                    account_obj = NetSuiteAccounts.objects.filter(account_id=account_str, company_name=self.org).first()
 
-            # --- Look up account details using the accounting line's account field ---
-            account_str = str(al.account) if al.account is not None else None
-            account_obj = None
-            if account_str:
-                try:
-                    account_obj = NetSuiteAccounts.objects.get(account_id=account_str, company_name=self.org)
-                except NetSuiteAccounts.DoesNotExist:
-                    pass
+                # Lookup subsidiary info from the transaction line.
+                subsidiary_obj = None
+                if tline.subsidiary:
+                    subsidiary_obj = NetSuiteSubsidiaries.objects.filter(subsidiary_id=tline.subsidiary, company_name=self.org).first()
 
-            # --- Look up subsidiary details using the line item's subsidiary ID ---
-            subsidiary_obj = None
-            if lineitem.subsidiaryid:
-                try:
-                    subsidiary_obj = NetSuiteSubsidiaries.objects.get(subsidiary_id=lineitem.subsidiary, company_name=self.org)
-                except NetSuiteSubsidiaries.DoesNotExist:
-                    pass
+                # Lookup entity if provided.
+                entity_obj = None
+                if txn.entity:
+                    entity_obj = NetSuiteEntity.objects.filter(id=txn.entity, company_name=self.org).first()
 
-            # --- Look up company details from the companies table (joined via the lineitem) ---
-            company_name = lineitem.company_name
+                # Calculate yearperiod using your helper method.
+                yearperiod = self.extract_yearperiod(txn.postingperiod or "")
 
-            # --- Look up entity details from the transaction (if present) ---
-            entity_obj = None
-            if txn.entity:
-                try:
-                    entity_obj = NetSuiteEntity.objects.get(id=txn.entity, company_name=self.org)
-                except NetSuiteEntity.DoesNotExist:
-                    pass
+                transformed_data = {
+                    "company_name": txn.company_name,
+                    "consolidation_key": self.integration.netsuite_account_id,
+                    "transactionid": txn.transactionid,
+                    "abbrevtype": txn.abbrevtype,
+                    "approvalstatus": txn.approvalstatus,
+                    "number": txn.number,
+                    "source": txn.source,
+                    "status": txn.status,
+                    "trandisplayname": txn.trandisplayname,
+                    "tranid": txn.tranid,
+                    "transactionnumber": txn.transactionnumber,
+                    "type": txn.type,
+                    "recordtype": txn.recordtype,
+                    "createdby": txn.createdby,
+                    "createddate": txn.createddate,
+                    "lastmodifiedby": txn.lastmodifiedby,
+                    "lastmodifieddate": txn.lastmodifieddate,
+                    "postingperiod": txn.postingperiod,
+                    "yearperiod": yearperiod,
+                    "trandate": txn.trandate,
+                    "subsidiary": subsidiary_obj.name if subsidiary_obj else txn.subsidiary,
+                    "subsidiaryfullname": subsidiary_obj.full_name if subsidiary_obj else None,
+                    "subsidiaryid": tline.subsidiary,
+                    "department": getattr(tline, "department", None),
+                    "departmentid": getattr(tline, "departmentid", None),
+                    "linesequencenumber": tline.line_sequence_number,
+                    "lineid": str(tline.id),
+                    "location": tline.location,
+                    "clas": getattr(tline, "class_field", None),
+                    "linenmemo": tline.memo,
+                    "memo": txn.memo,
+                    "externalid": txn.externalid,
+                    "entity_id": entity_obj.entity_id if entity_obj else txn.entity,
+                    "entity_title": entity_obj.entity_title if entity_obj else None,
+                    "legal_name": entity_obj.legal_name if entity_obj else None,
+                    "parent_entity": entity_obj.parent_entity if entity_obj else None,
+                    "entity_email": entity_obj.email if entity_obj else None,
+                    "entity_phone": entity_obj.phone if entity_obj else None,
+                    "terms": txn.terms,
+                    "daysopen": txn.daysopen,
+                    "daysoverduesearch": txn.daysoverduesearch,
+                    "duedate": txn.duedate,
+                    "closedate": txn.closedate,
+                    "accountingbook": al.accountingbook,
+                    "amount": al.amount,
+                    "amountlinked": al.amountlinked,
+                    "debit": al.debit,
+                    "credit": al.credit,
+                    "netamount": al.netamount,
+                    "paymentamountunused": al.paymentamountunused,
+                    "paymentamountused": al.paymentamountused,
+                    "posting_field": al.posting,
+                    "amountpaid": al.amountpaid,
+                    "amountunpaid": al.amountunpaid,
+                    "linenetamount": tline.net_amount,
+                    "account": account_str,
+                    "acctnumber": account_obj.acctnumber if account_obj else None,
+                    "accountsearchdisplayname": account_obj.accountsearchdisplayname if account_obj else None,
+                    "accttype": account_obj.accttype if account_obj else None,
+                    "displaynamewithhierarchy": account_obj.displaynamewithhierarchy if account_obj else None,
+                    "fullname": account_obj.fullname if account_obj else None,
+                    "sspecacct": account_obj.sspecacct if account_obj else None,
+                    "billingstatus": txn.billingstatus,
+                    "custbody_report_timestamp": txn.custbody_report_timestamp,
+                    "currency": txn.currency,
+                    "exchangerate": Decimal(txn.exchangerate) if txn.exchangerate else None,
+                    "foreignamountpaid": Decimal(txn.foreignamountpaid) if txn.foreignamountpaid else None,
+                    "foreignamountunpaid": Decimal(txn.foreignamountunpaid) if txn.foreignamountunpaid else None,
+                    "foreigntotal": Decimal(txn.foreigntotal) if txn.foreigntotal else None,
+                    "foreignlineamount": getattr(tline, "foreignlineamount", None),
+                    "record_date": txn.record_date,
+                }
 
-            # --- Compute calculated column YEARPERIOD from transaction.POSTINGPERIOD ---
-            yearperiod = self.compute_yearperiod(txn.postingperiod)
+                NetSuiteTransformedTransaction.objects.update_or_create(
+                    company_name=txn.company_name,
+                    transactionid=txn.transactionid,
+                    linesequencenumber=tline.line_sequence_number,
+                    defaults=transformed_data
+                )
+                total_transformed += 1
 
-            # --- Build the transformed record dictionary ---
-            transformed_data = {
-                # From the companies join:
-                "company_name": company_name if company_name else txn.company_name,
-                "consolidation_key": txn.consolidation_key,  # or self.integration.netsuite_account_id
-                "transactionid": txn.transactionid,
-                "abbrevtype": txn.abbrevtype,
-                "approvalstatus": txn.approvalstatus,
-                "number": txn.number,
-                "source": txn.source,
-                "status": txn.status,
-                "trandisplayname": txn.trandisplayname,
-                "tranid": txn.tranid,
-                "transactionnumber": txn.transactionnumber,
-                "type": txn.type,
-                "recordtype": txn.recordtype,
-                "createdby": txn.createdby,
-                "createddate": txn.createddate,
-                "lastmodifiedby": txn.lastmodifiedby,
-                "lastmodifieddate": txn.lastmodifieddate,
-                "postingperiod": txn.postingperiod,
-                "yearperiod": yearperiod,
-                "trandate": txn.trandate,
-                # Subsidiary details from lineitem and subsidiary table:
-                "subsidiary": subsidiary_obj.name if subsidiary_obj else lineitem.subsidiary,
-                "subsidiaryfullname": subsidiary_obj.full_name if subsidiary_obj else None,
-                "subsidiaryid": lineitem.subsidiaryid,
-                # Department and location details from lineitem:
-                "department": lineitem.department,
-                "departmentid": lineitem.departmentid,
-                "linesequencenumber": lineitem.linesequencenumber,
-                "lineid": str(lineitem.id),
-                "location": lineitem.location,
-                "clas": lineitem.class_field,
-                "linenmemo": lineitem.memo,
-                "memo": txn.memo,
-                "externalid": txn.externalid,
-                "entity_id": entity_obj.entity_id if entity_obj else txn.entity,
-                "entity_title": entity_obj.entity_title if entity_obj else None,
-                "legal_name": entity_obj.legal_name if entity_obj else None,
-                "parent_entity": entity_obj.parent_entity if entity_obj else None,
-                "entity_email": entity_obj.email if entity_obj else None,
-                "entity_phone": entity_obj.phone if entity_obj else None,
-                "terms": txn.terms,
-                "daysopen": txn.daysopen,
-                "daysoverduesearch": txn.daysoverduesearch,
-                "duedate": txn.duedate,
-                "closedate": txn.closedate,
-                # Accounting line fields:
-                "accountingbook": al.accountingbook,
-                "amount": al.amount,
-                "amountlinked": al.amountlinked,
-                "debit": al.debit,
-                "credit": al.credit,
-                "netamount": al.netamount,
-                "paymentamountunused": al.paymentamountunused,
-                "paymentamountused": al.paymentamountused,
-                "posting_field": al.posting,
-                "amountpaid": al.amountpaid,
-                "amountunpaid": al.amountunpaid,
-                # Use lineitem's netamount as line net amount:
-                "linenetamount": lineitem.netamount,
-                # Account details:
-                "account": account_str,
-                "acctnumber": account_obj.acctnumber if account_obj else None,
-                "accountsearchdisplayname": account_obj.accountsearchdisplayname if account_obj else None,
-                "accttype": account_obj.accttype if account_obj else None,
-                "displaynamewithhierarchy": account_obj.displaynamewithhierarchy if account_obj else None,
-                "fullname": account_obj.fullname if account_obj else None,
-                "sspecacct": account_obj.sspecacct if account_obj else None,
-                "billingstatus": txn.billingstatus,
-                "custbody_report_timestamp": txn.custbody_report_timestamp,
-                "currency": txn.currency,
-                "exchangerate": Decimal(txn.exchangerate) if txn.exchangerate else None,
-                "foreignamountpaid": Decimal(txn.foreignamountpaid) if txn.foreignamountpaid else None,
-                "foreignamountunpaid": Decimal(txn.foreignamountunpaid) if txn.foreignamountunpaid else None,
-                "foreigntotal": Decimal(txn.foreigntotal) if txn.foreigntotal else None,
-                # You can also include additional fields from lineitem if needed:
-                "foreignlineamount": getattr(lineitem, "foreignamount", None),
-                "record_date": txn.record_date,
-                # Preserve the unique key (to help with duplicate removal downstream)
-                "uniquekey": lineitem.unique_key,
-            }
-
-            # Create or update the transformed record.
-            NetSuiteTransformedTransaction.objects.update_or_create(
-                company_name=txn.company_name,
-                transactionid=txn.transactionid,
-                linesequencenumber=lineitem.linesequencenumber,
-                defaults=transformed_data
-            )
-            total_transformed += 1
+            except Exception as e:
+                logger.error(f"Error transforming transaction {txn.transactionid if txn else 'N/A'} for AL {al.pk}: {e}", exc_info=True)
 
         BatchUtils.process_in_batches(list(accounting_lines), process_transformation, batch_size=1000)
         logger.info(f"Transformation complete: {total_transformed} entries processed.")

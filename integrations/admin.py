@@ -56,11 +56,11 @@ class SyncTableLogsAdmin(admin.ModelAdmin):
     search_fields = ('module_name', 'integration__org__name', 'organization__name', 'organization')
 
 class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
-    list_display = ('org', 'transaction', 'account', 'amount', 'lastmodifieddate')
+    list_display = ('org', 'transaction', 'account', 'amount', 'lastmodifieddate', 'transaction_line')
     search_fields = ('transaction', 'account', 'amount')
     
 class NetSuiteTransactionLinesAdmin(admin.ModelAdmin):
-    list_display = ('company_name',  'subsidiary')
+    list_display = ('company_name',  'subsidiary', 'transactionid')
     search_fields = ('subsidiary',)
 
 
