@@ -259,3 +259,15 @@ admin.site.register(NetSuiteAccountingPeriods, NetSuiteAccountingPeriodsAdmin)
 admin.site.register(NetSuiteTransactionLine, NetSuiteTransactionLinesAdmin)
 admin.site.register(NetSuiteTransactionAccountingLine, NetSuiteTransactionAccountingLineAdmin)
 admin.site.register(NetSuiteTransformedTransaction, NetSuiteTransformedTransactionAdmin)
+
+
+from integrations.models.netsuite.temp import (
+    NetSuiteTransactionAccountingLine1,
+    NetSuiteTransactionLine1,
+    NetSuiteTransactions1
+)
+
+
+admin.site.register(NetSuiteTransactionAccountingLine1)
+admin.site.register(NetSuiteTransactionLine1)
+admin.site.register(NetSuiteTransactions1)
