@@ -66,6 +66,16 @@
       }
     }
   </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      const integrationTypeField = document.getElementById('id_integration_type');
+      integrationTypeField.addEventListener('change', function(){
+          // Simple approach: Auto-submit the form on integration type change.
+          // The backend form __init__ will pick up the new integration_type and update modules choices.
+          this.form.submit();
+      });
+    });
+  </script>
 {% endblock extrahead %}
 
 {% block content %}

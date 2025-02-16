@@ -2,8 +2,8 @@ from celery import Celery, shared_task, chain
 from integrations.services.netsuite.importer import NetSuiteImporter
 from datetime import datetime
 import logging
-
-
+from integrations.models.models import Integration
+from integrations.modules import MODULES
 
 logger = logging.getLogger(__name__)
 
@@ -276,3 +276,47 @@ app.conf.beat_schedule = {
         'schedule': 60 * 60 * 24,
     },
 }
+
+@shared_task(bind=True)
+def process_data_import_task(self, integration_id, integration_type, since_date_str, selected_modules):
+    """
+    A Celery task that:
+    1. Retrieves the Integration object based on integration_id.
+    2. Converts the provided since_date (as a string) to a datetime.
+    3. Instantiates the importer class (from MODULES) for that integration type.
+    4. Processes the selected module(s) or runs the full import.
+    """
+    try:
+        # Retrieve the Integration object
+        integration = Integration.objects.get(pk=integration_id)
+        # Convert since_date from string to datetime (assuming YYYY-MM-DD format)
+        since_date = datetime.strptime(since_date_str, "%Y-%m-%d")
+        
+        # Load the module configuration for the selected integration type
+        module_config = MODULES[integration_type]
+        ImporterClass = module_config['client']
+        importer = ImporterClass(integration, since_date)
+        
+        if selected_modules:
+            # Process only the selected modules/components
+            for module in selected_modules:
+                import_func = module_config['import_methods'].get(module)
+                if import_func:
+                    logger.info(f"Importing {module} for integration ID {integration_id}")
+                    import_func(importer)
+        else:
+            # No specific module selected; use the full import if available
+            full_import = module_config.get('full_import')
+            if full_import:
+                logger.info(f"Starting full import for integration ID {integration_id}")
+                full_import(importer)
+            else:
+                # If full import is not defined, process all modules
+                for import_func in module_config['import_methods'].values():
+                    import_func(importer)
+        
+        logger.info(f"Data import for integration {integration_id} completed successfully.")
+    
+    except Exception as ex:
+        logger.error(f"Data import failed for integration {integration_id}: {ex}", exc_info=True)
+        raise ex  # Optionally re-raise to let Celery retry or flag the task

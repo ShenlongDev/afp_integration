@@ -60,8 +60,8 @@ class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
     search_fields = ('transaction', 'account', 'amount')
     
 class NetSuiteTransactionLinesAdmin(admin.ModelAdmin):
-    list_display = ('company_name',  'subsidiary', 'transactionid')
-    search_fields = ('subsidiary',)
+    list_display = ('transaction_line_id',  'subsidiary', 'transactionid')
+    search_fields = ('transaction_line_id', 'transactionid', 'subsidiary')
 
 
 
@@ -95,8 +95,8 @@ class NetSuiteJournalsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteTransactionsAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'abbrevtype', 'createdby', 'transactionid', 'createddate')
-    search_fields = ('abbrevtype', 'createdby', 'transactionid')
+    list_display = ('company_name', 'approvalstatus', 'createdby', 'transactionid', 'createddate', 'memo')
+    search_fields = ('abbrevtype', 'createdby', 'transactionid', 'memo', 'transactionnumber')
 
 
 class NetSuiteVendorsAdmin(admin.ModelAdmin):
@@ -105,8 +105,8 @@ class NetSuiteVendorsAdmin(admin.ModelAdmin):
 
 
 class NetSuiteAccountsAdmin(admin.ModelAdmin):
-    list_display = ('account_id', 'is_inactive')
-    search_fields = ('account_id', 'is_inactive')
+    list_display = ('account_id', 'is_inactive', 'accountsearchdisplayname', 'accountsearchdisplaynamecopy')
+    search_fields = ('account_id', 'is_inactive', 'accountsearchdisplayname', 'accountsearchdisplaynamecopy')
 
 
 class IntegrationAdmin(admin.ModelAdmin):
