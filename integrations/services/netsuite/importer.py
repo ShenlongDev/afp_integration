@@ -444,6 +444,7 @@ class NetSuiteImporter:
                     """
 
                     rows = list(self.client.execute_suiteql(query))
+                    print(f"fetched {len(rows)} transaction records at {min_id}")
                     if not rows:
                         break
                     
@@ -636,7 +637,7 @@ class NetSuiteImporter:
                 if not rows:
                     break
                 
-                print(f"fetched {len(rows)} transaction accounting line records, {rows[:3]}")
+                print(f"fetched {len(rows)} transaction accounting line records at {min_id}")
                 logger.info(f"Fetched {len(rows)} transaction line records with transaction > {min_id}{date_filter_clause}.")
                 
                 # Get the last transaction ID for the next iteration
@@ -769,7 +770,7 @@ class NetSuiteImporter:
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
-                print(f"fetched {len(rows)} transaction accounting line records, {rows[:3]}")
+                print(f"fetched {len(rows)} transaction accounting line records at {min_id}")
                 logger.info(f"Fetched {len(rows)} transaction accounting line records with TRANSACTION > {min_id}{date_filter_clause}.")
             except Exception as e:
                 logger.error(f"Error importing transaction accounting lines: {e}", exc_info=True)
@@ -818,6 +819,7 @@ class NetSuiteImporter:
                 break
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported Transaction Accounting Lines: {total_imported} records processed.")
+    
     
     def transform_transactions(self):
         logger.info("Starting transformation of NetSuite transactions...")
