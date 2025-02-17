@@ -5,8 +5,11 @@
 {% block extrahead %}
   {{ block.super }}
   <style>
-    /* Container styles for centering and card-like appearance */
     .data-import-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 90%;
       max-width: 800px;
       margin: 40px auto;
       padding: 20px;
@@ -21,9 +24,21 @@
       font-size: 24px;
       color: #333;
     }
-    /* Form input styling */
+    .data-import-form {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-gap: 15px;
+      width: 100%;
+    }
     .data-import-form p {
-      margin-bottom: 15px;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .data-import-form label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #555;
     }
     .data-import-form input[type="text"],
     .data-import-form input[type="email"],
@@ -36,16 +51,7 @@
       border-radius: 4px;
       box-sizing: border-box;
     }
-    .data-import-form label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: bold;
-      color: #555;
-    }
-    /* Submit button styling */
     .data-import-form input[type="submit"] {
-      display: block;
-      width: 100%;
       padding: 10px;
       font-size: 16px;
       color: #fff;
@@ -58,22 +64,34 @@
     .data-import-form input[type="submit"]:hover {
       background-color: #286090;
     }
-    /* Responsive adjustments */
+    .since-date-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .since-date-container select {
+      width: 100%;
+    }
     @media (max-width: 768px) {
       .data-import-container {
-        margin: 20px;
+        width: 95%;
+        margin: 20px auto;
         padding: 15px;
+      }
+      .data-import-form {
+        grid-gap: 10px;
       }
     }
   </style>
   <script>
     document.addEventListener('DOMContentLoaded', function(){
       const integrationTypeField = document.getElementById('id_integration_type');
-      integrationTypeField.addEventListener('change', function(){
-          // Simple approach: Auto-submit the form on integration type change.
-          // The backend form __init__ will pick up the new integration_type and update modules choices.
+      if (integrationTypeField) {
+        integrationTypeField.addEventListener('change', function(){
+          // Auto-submit the form on integration type change.
           this.form.submit();
-      });
+        });
+      }
     });
   </script>
 {% endblock extrahead %}
@@ -83,7 +101,24 @@
     <h1>Import Data</h1>
     <form class="data-import-form" method="post">
       {% csrf_token %}
-      {{ form.as_p }}
+      <p>
+        {{ form.integration_type.label_tag }}
+        {{ form.integration_type }}
+      </p>
+      <p>
+        {{ form.organisation.label_tag }}
+        {{ form.organisation }}
+      </p>
+      <p>
+        {{ form.since_date.label_tag }}
+        <div class="since-date-container">
+          {{ form.since_date }}
+        </div>
+      </p>
+      <p>
+        {{ form.modules.label_tag }}
+        {{ form.modules }}
+      </p>
       <input type="submit" value="Start Import">
     </form>
   </div>

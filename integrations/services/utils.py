@@ -55,3 +55,33 @@ def compute_unique_key(row):
     """
     unique_str = f"{row.get('id')}-{row.get('linelastmodifieddate')}-{row.get('transactionid')}-{row.get('linesequencenumber')}"
     return hashlib.md5(unique_str.encode('utf-8')).hexdigest()
+
+
+def get_organisations_by_integration_type(integration_type):
+    """
+    Returns a queryset of Organisation objects eligible for the given integration type.
+
+    For 'xero', an organisation is eligible if it has at least one related Integration with non-null
+    xero_client_id and xero_client_secret.
+    
+    For 'netsuite', an organisation is eligible if it has at least one related Integration with non-null
+    netsuite_client_id and netsuite_client_secret.
+    
+    Organisations can be eligible for both, and are included in the corresponding querysets.
+    """
+    from core.models import Organisation
+    from integrations.models.models import Integration
+
+    if integration_type.lower() == 'xero':
+        return Organisation.objects.filter(
+            integrations__xero_client_id__isnull=False,
+            integrations__xero_client_secret__isnull=False
+        ).distinct()
+    elif integration_type.lower() == 'netsuite':
+        return Organisation.objects.filter(
+            integrations__netsuite_client_id__isnull=False,
+            integrations__netsuite_client_secret__isnull=False
+        ).distinct()
+
+    return Organisation.objects.none()
+

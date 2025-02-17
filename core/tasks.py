@@ -239,37 +239,6 @@ def refresh_netsuite_token_task():
         raise e
 
 
-# --------------------- COMBINED DATA SYNC TASK ---------------------
-
-@shared_task
-def run_data_sync():
-    """
-    Dispatches both NetSuite and Xero sync tasks.
-    """
-    try:
-        from integrations.models.models import Integration
-        # Dispatch NetSuite tasks.
-        netsuite_integrations = Integration.objects.filter(
-            netsuite_client_id__isnull=False,
-            netsuite_client_secret__isnull=False
-        )
-        for integration in netsuite_integrations:
-            consolidation_key = integration.consolidation_key
-            logger.info(f"Dispatching NetSuite sync for consolidation_key: {consolidation_key}")
-            sync_netsuite_data.delay(consolidation_key)
-
-        # Dispatch Xero tasks.
-        logger.info("Dispatching Xero sync tasks.")
-        sync_xero_data.delay()
-
-        # Optionally, refresh the NetSuite token.
-        refresh_netsuite_token_task.delay()
-
-        logger.info("All data sync tasks have been dispatched.")
-    except Exception as e:
-        logger.error(f"Error in run_data_sync: {e}")
-        raise e
-
 app.conf.beat_schedule = {
     'run-data-sync-every-day-at-midnight': {
         'task': 'core.tasks.run_data_sync',

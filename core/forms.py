@@ -5,6 +5,7 @@ from integrations.models.models import Organisation, Integration
 from integrations.modules import MODULES
 from django.utils import timezone
 from datetime import datetime
+from integrations.services.utils import get_organisations_by_integration_type
 
 def get_integration_type_choices():
     """
@@ -40,7 +41,13 @@ class DataImportForm(forms.Form):
     )
     since_date = forms.DateField(
         initial="2010-01-01",
-        widget=forms.SelectDateWidget,
+        widget=forms.SelectDateWidget(
+            attrs={
+                'class': 'date-select',
+                'style': 'width: 100%; display: inline-block; margin-right: 1%;'
+            },
+            years=range(2022, datetime.now().year + 1)
+        ),
         label="Import Data Since"
     )
     modules = forms.MultipleChoiceField(
@@ -63,11 +70,15 @@ class DataImportForm(forms.Form):
             integration_type = integration_choices[0][0]
             self.initial['integration_type'] = integration_type
 
+        # Update the modules field based on the integration_type.
         if integration_type:
             self.fields['modules'].choices = get_module_choices(integration_type)
         else:
             self.fields['modules'].choices = []
 
+        # NEW: Limit the organisations to only the ones eligible for the selected integration type.
+        self.fields['organisation'].queryset = get_organisations_by_integration_type(integration_type)
+        
         # Optionally, if you have a field to choose a specific integration,
         # update its queryset based on the selected organisation.
         if 'organisation' in self.data:
