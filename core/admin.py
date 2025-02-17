@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Organisation
+from .models import Organisation, TaskLog
 from core.forms import DataImportForm
 from django.urls import path
 from django.shortcuts import render, redirect
@@ -71,5 +71,11 @@ class OrganisationAdmin(admin.ModelAdmin):
     list_display = ('name',)
     search_fields = ('name',)
     
+
+class TaskLogAdmin(admin.ModelAdmin):
+    list_display = ('task_name', 'status', 'timestamp')
+    search_fields = ('task_name', 'status')
+    list_filter = ('status',)
     
 admin.site.register(Organisation, DataImportAdmin)
+admin.site.register(TaskLog)

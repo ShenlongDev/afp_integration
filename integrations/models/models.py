@@ -106,3 +106,16 @@ class SyncTableLogs(models.Model):
 
     def __str__(self):
         return f"{self.module_name} import on {self.last_updated_date} ({self.fetched_records} records)" 
+
+
+class HighPriorityTask(models.Model):
+    integration = models.ForeignKey(Integration, on_delete=models.CASCADE)
+    integration_type = models.CharField(max_length=50)
+    since_date = models.DateField()
+    selected_modules = models.JSONField(default=list, blank=True)
+    processed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"HighPriorityTask for Integration: {self.integration_id}"
+    

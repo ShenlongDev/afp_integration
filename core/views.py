@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from core.forms import DataImportForm
-from core.tasks import process_data_import_task
+from core.models import HighPriorityTask
 
 
 def import_data_view(request):
@@ -10,18 +10,22 @@ def import_data_view(request):
         if form.is_valid():
             integration = form.cleaned_data['integration']
             integration_type = form.cleaned_data['integration_type']
-            # Convert the since_date to a string; here we assume the date is in YYYY-MM-DD format.
-            since_date_str = form.cleaned_data['since_date'].strftime("%Y-%m-%d")
+            since_date = form.cleaned_data['since_date']
+            since_date_str = since_date.strftime("%Y-%m-%d")
             selected_modules = form.cleaned_data.get('modules', [])
             
-            # Queue the task in Celery
-            process_data_import_task.delay(
-                integration.id, integration_type, since_date_str, selected_modules
+            # Create a high priority task record.
+            HighPriorityTask.objects.create(
+                integration=integration,
+                integration_type=integration_type,
+                since_date=since_date,
+                selected_modules=selected_modules,
+                processed=False  # This flag ensures it's available for the dispatcher.
             )
             
             messages.info(
                 request,
-                "Import task queued. The data import will be processed in the background."
+                "High priority data import record has been created. It will be processed shortly."
             )
             return redirect('admin:import-data')
     else:

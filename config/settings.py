@@ -209,36 +209,49 @@ JAZZMIN_SETTINGS = {
 
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
-# LOGGING = {
-#     'version': 1,
-#     'disable_existing_loggers': False,
-#     'formatters': {
-#         'verbose': {
-#             'format': '{levelname} {asctime} {module} {message}',
-#             'style': '{',
-#         },
-#     },
-#     'handlers': {
-#         'console': {
-#             'level': 'DEBUG',
-#             'class': 'logging.StreamHandler',
-#             'formatter': 'verbose',
-#         },
-#         'file': {
-#             'level': 'DEBUG',
-#             'class': 'logging.FileHandler',
-#             'filename': os.getenv('DJANGO_LOG_FILE'),
-#             'formatter': 'verbose',
-#         },
-#     },
-#     'loggers': {
-#         'django': {
-#             'handlers': ['console'] if ENVIRONMENT == 'development' else ['file'],
-#             'level': 'DEBUG',
-#             'propagate': True,
-#         },
-#     },
-# }
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO', 
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': os.getenv('DJANGO_LOG_FILE'),
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'WARNING',  # Only WARNING and above for Django modules
+            'propagate': True,
+        },
+        'django.db.backends': {
+            'handlers': ['console', 'file'],
+            'level': 'WARNING',  # Hide SQL debug logs
+            'propagate': False,
+        },
+        # You can leave your custom logger at INFO:
+        'netsuite': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
 
 JAZZMIN_UI_TWEAKS = {
     "navbar_small_text": False,

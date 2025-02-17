@@ -751,7 +751,7 @@ class NetSuiteImporter:
                     TRANSACTION,
                     TRANSACTIONLINE,
                     ACCOUNT,
-                    ACCOUNTINGBOOK,
+                    BUILTIN.DF (ACCOUNTINGBOOK) AS ACCOUNTINGBOOK,
                     AMOUNT,
                     AMOUNTLINKED,
                     DEBIT,
@@ -772,7 +772,7 @@ class NetSuiteImporter:
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
-                print(f"fetched {len(rows)} transaction accounting line records at {min_id}")
+                print(f"fetched {len(rows)} transaction accounting line records at {min_id}, {rows[:2]}")
                 logger.info(f"Fetched {len(rows)} transaction accounting line records with TRANSACTION > {min_id}{date_filter_clause}.")
             except Exception as e:
                 logger.error(f"Error importing transaction accounting lines: {e}", exc_info=True)
@@ -792,6 +792,7 @@ class NetSuiteImporter:
                         defaults={
                             "links": r.get("links"),
                             "accountingbook": r.get("accountingbook").lower() if r.get("accountingbook") else None,
+                            "account": r.get("account").lower() if r.get("account") else None,
                             "amount": decimal_or_none(r.get("amount")),
                             "amountlinked": decimal_or_none(r.get("amountlinked")),
                             "debit": decimal_or_none(r.get("debit")),

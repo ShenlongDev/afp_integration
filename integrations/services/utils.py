@@ -61,10 +61,10 @@ def get_organisations_by_integration_type(integration_type):
     """
     Returns a queryset of Organisation objects eligible for the given integration type.
 
-    For 'xero', an organisation is eligible if it has at least one related Integration with non-null
+    For 'xero', an Organisation is eligible if it has at least one related Integration with non-null 
     xero_client_id and xero_client_secret.
     
-    For 'netsuite', an organisation is eligible if it has at least one related Integration with non-null
+    For 'netsuite', an Organisation is eligible if it has at least one related Integration with non-null
     netsuite_client_id and netsuite_client_secret.
     
     Organisations can be eligible for both, and are included in the corresponding querysets.
@@ -85,3 +85,31 @@ def get_organisations_by_integration_type(integration_type):
 
     return Organisation.objects.none()
 
+
+def log_task_event(task_name, status, detail):
+    from core.models import TaskLog
+    from django.utils import timezone
+    TaskLog.objects.create(
+        task_name=task_name,
+        status=status,
+        detail=detail,
+        timestamp=timezone.now()
+    )
+    
+
+def get_integrations_by_integration_type(integration_type):
+    """
+    Returns a queryset of Integration objects eligible for the given integration type.
+    """
+    from integrations.models.models import Integration
+    if integration_type.lower() == 'xero':
+        return Integration.objects.filter(
+            xero_client_id__isnull=False,
+            xero_client_secret__isnull=False
+        )
+    elif integration_type.lower() == 'netsuite':
+        return Integration.objects.filter(
+            netsuite_client_id__isnull=False,
+            netsuite_client_secret__isnull=False
+        )
+    return Integration.objects.none()
