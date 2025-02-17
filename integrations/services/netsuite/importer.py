@@ -772,7 +772,7 @@ class NetSuiteImporter:
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
-                print(f"fetched {len(rows)} transaction accounting line records at {min_id}, {rows[:2]}")
+                print(f"fetched {len(rows)} transaction accounting line records at {min_id}")
                 logger.info(f"Fetched {len(rows)} transaction accounting line records with TRANSACTION > {min_id}{date_filter_clause}.")
             except Exception as e:
                 logger.error(f"Error importing transaction accounting lines: {e}", exc_info=True)

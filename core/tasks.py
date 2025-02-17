@@ -179,11 +179,9 @@ def xero_map_general_ledger_task(integration_id: int, since_str: str = None):
 @shared_task(bind=True, max_retries=3)
 def run_data_sync(self):
     """
-    This task is responsible for scheduling Netsuite and Xero sync subtasks.
+    Schedules Netsuite and Xero sync subtasks.
     It acquires a global lock so that no new top-level scheduling starts until the current one is done.
-    It uses get_organisations_by_integration_type to filter the eligible Organisations, then
-    for each Organisation, it iterates through the related, eligible integrations.
-    Note: The dispatched subtasks (e.g. netsuite_import_accounts) run asynchronously.
+    This task dispatches sync tasks per eligible integration.
     """
     if not acquire_global_lock():
         logger.info("run_data_sync: Another top-level sync is in progress. Retrying in 10 seconds...")
@@ -193,13 +191,16 @@ def run_data_sync(self):
         # Optionally, refresh the NetSuite token.
         refresh_netsuite_token_task.delay()
 
-        eligible_integrations = get_integrations_by_integration_type("netsuite")
-        if eligible_integrations.exists():
-            for integration in eligible_integrations:
+        # Dispatch Netsuite tasks.
+        eligible_netsuite_integrations = get_integrations_by_integration_type("netsuite")
+        
+        if eligible_netsuite_integrations.exists():
+            for integration in eligible_netsuite_integrations:
                 logger.info(f"Dispatching Netsuite sync for integration: {integration}")
                 sync_netsuite_data.delay(integration.id)
         else:
             logger.warning("No eligible Netsuite integrations found.")
+        
         # Dispatch Xero tasks.
         logger.info("Dispatching Xero sync tasks.")
         sync_xero_data.delay()
@@ -215,34 +216,30 @@ def run_data_sync(self):
 @shared_task
 def sync_xero_data(since_str: str = None):
     """
-    Finds all integrations with Xero credentials and begins the sync chain for each.
+    Finds all eligible Xero integrations and begins the sync chain for each.
     Optionally accepts a since date string (YYYY-MM-DD) to pass along.
     """
     from datetime import datetime
-    from integrations.services.utils import get_organisations_by_integration_type
+    from integrations.services.utils import get_integrations_by_integration_type
     from celery import chain
 
     since_str = since_str or datetime.now().strftime('%Y-%m-%d')
-    organisations = get_organisations_by_integration_type("xero")
-    if not organisations.exists():
-        logger.warning("No organisations found with Xero eligible integrations.")
+    eligible_integrations = get_integrations_by_integration_type("xero")
+    
+    if not eligible_integrations.exists():
+        logger.warning("No eligible integrations found with Xero credentials.")
         return
 
-    for org in organisations:
-        integrations = org.integrations.filter(
-            xero_client_id__isnull=False,
-            xero_client_secret__isnull=False
+    for integration in eligible_integrations:
+        task_chain = chain(
+            xero_sync_accounts_task.s(integration.id, since_str),
+            xero_import_journal_lines_task.s(integration.id, since_str),
+            xero_import_contacts_task.s(integration.id, since_str),
+            xero_import_invoices_task.s(integration.id, since_str),
+            xero_import_bank_transactions_task.s(integration.id, since_str)
         )
-        for integration in integrations:
-            task_chain = chain(
-                xero_sync_accounts_task.s(integration.id, since_str),
-                xero_import_journal_lines_task.s(integration.id, since_str),
-                xero_import_contacts_task.s(integration.id, since_str),
-                xero_import_invoices_task.s(integration.id, since_str),
-                xero_import_bank_transactions_task.s(integration.id, since_str),
-            )
-            task_chain.apply_async()
-            logger.info(f"Dispatched Xero sync tasks for integration: {integration}")
+        task_chain.apply_async()
+        logger.info(f"Dispatched Xero sync tasks for integration: {integration}")
 
 
 # --------------------- NETSUITE TOKEN REFRESH TASK ---------------------
@@ -269,7 +266,6 @@ def refresh_netsuite_token_task():
     except Exception as e:
         logger.error(f"Error refreshing NetSuite token: {e}")
         raise e
-
 
 
 @shared_task(bind=True, max_retries=5)
