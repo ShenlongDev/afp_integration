@@ -699,21 +699,27 @@ class XeroDataImporter:
         self.sync_xero_chart_of_accounts()
 
         # 2. Journal Lines (with pagination)
+        print("Importing Xero Journal Lines...")
         self.import_xero_journal_lines()
 
         # 3. Contacts
+        print("Importing Xero Contacts...")
         self.import_xero_contacts()
 
         # 4. Invoices
+        print("Importing Xero Invoices...")
         self.import_xero_invoices()
 
         # 5. Bank Transactions
+        print("Importing Xero Bank Transactions...")
         self.import_xero_bank_transactions()
 
         # 6. Budgets
+        print("Importing Xero Budgets...")
         self.import_xero_budgets()
 
         # 7. General Ledger
+        print("Mapping Xero General Ledger...")
         self.map_xero_general_ledger()
 
         logger.info("Finished full Xero data import successfully.")
