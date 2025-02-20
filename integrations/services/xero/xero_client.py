@@ -561,7 +561,6 @@ class XeroDataImporter:
         # Build the list of final GL objects.
         gl_objects = []
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
-            print(f".")
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
                     tenant_id=tenant_id,
@@ -685,6 +684,7 @@ class XeroDataImporter:
                 invoice_url=invoice_url
             )
             gl_objects.append(gl_obj)
+            print(f"batch {len(gl_objects)}")
 
         total_count = BatchUtils.bulk_create_batches(XeroGeneralLedger, gl_objects, batch_size=1000)
         self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
