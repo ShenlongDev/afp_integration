@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from django.utils import timezone
 from django.db import transaction
 from integrations.services.utils import BatchUtils
-from django.db import close_old_connections
+
 # Import your models as before
 from integrations.models.models import Integration, IntegrationAccessToken, SyncTableLogs
 from integrations.models.xero.raw import (
@@ -547,7 +547,7 @@ class XeroDataImporter:
 
     def map_xero_general_ledger(self):
         logger.info("Mapping Xero General Ledger...")
-        # Delete existing GL rows.
+        # Delete existing GL rows in an atomic block.
         with transaction.atomic():
             XeroGeneralLedger.objects.all().delete()
 
@@ -558,13 +558,9 @@ class XeroDataImporter:
             if key not in latest_by_line:
                 latest_by_line[key] = line
 
-        total_count = 0
-        batch_size = 1000
-        gl_objects = []  # Batch accumulator
-
-        # Process each unique journal line.
+        # Build the list of final GL objects.
+        gl_objects = []
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
-            # Get tracking category (if available)
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
                     tenant_id=tenant_id,
@@ -573,7 +569,6 @@ class XeroDataImporter:
             except XeroJournalLineTrackingCategories.DoesNotExist:
                 jtc = None
 
-            # Get account details (if available)
             try:
                 acct = XeroAccountsRaw.objects.get(
                     tenant_id=tenant_id,
@@ -582,7 +577,6 @@ class XeroDataImporter:
             except XeroAccountsRaw.DoesNotExist:
                 acct = None
 
-            # Determine contact and invoice details.
             contact_name = None
             invoice_description_fallback = None
             invoice_number = None
@@ -596,7 +590,7 @@ class XeroDataImporter:
                     inv_payload = inv.raw_payload or {}
                     contact_name = inv_payload.get("Contact", {}).get("Name")
                     invoice_description_fallback = inv_payload.get("Description")
-                    invoice_number = inv_payload.get("Reference")
+                    invoice_number = inv.invoice_number
                     invoice_url = inv_payload.get("Url")
                 except XeroInvoicesRaw.DoesNotExist:
                     pass
@@ -608,7 +602,6 @@ class XeroDataImporter:
                     )
                     bt_payload = bt.raw_payload or {}
                     contact_name = bt_payload.get("Contact", {}).get("Name")
-                    invoice_description_fallback = bt_payload.get("Description")
                 except XeroBankTransactionsRaw.DoesNotExist:
                     pass
 
@@ -692,31 +685,18 @@ class XeroDataImporter:
             )
             gl_objects.append(gl_obj)
 
-            # Every batch_size records, commit the batch.
-            if len(gl_objects) >= batch_size:
-                with transaction.atomic():
-                    XeroGeneralLedger.objects.bulk_create(gl_objects, batch_size=batch_size)
-                total_count += len(gl_objects)
-                logger.info(f"Saved a batch of {len(gl_objects)} records. Total saved: {total_count}")
-                gl_objects.clear()
-                close_old_connections()
-
-        # Save any remaining records.
-        if gl_objects:
-            with transaction.atomic():
-                XeroGeneralLedger.objects.bulk_create(gl_objects, batch_size=batch_size)
-            total_count += len(gl_objects)
-            logger.info(f"Saved final batch of {len(gl_objects)} records. Total saved: {total_count}")
-            close_old_connections()
-
+        total_count = BatchUtils.bulk_create_batches(XeroGeneralLedger, gl_objects, batch_size=1000)
         self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
         logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
 
 
     def map_xero_general_ledger_1(self):
         logger.info("Mapping Xero General Ledger incrementally...")
+        # Delete existing GL rows in an atomic block.
+        with transaction.atomic():
+            XeroGeneralLedger.objects.all().delete()
 
-        # Identify the newest journal line for each (tenant_id, journal_line_id)
+        # Identify the newest row per (tenant_id, journal_line_id).
         latest_by_line = {}
         for line in XeroJournalLines.objects.order_by('-journal_date').iterator(chunk_size=1000):
             key = (line.tenant_id, line.journal_line_id)
@@ -724,13 +704,8 @@ class XeroDataImporter:
                 latest_by_line[key] = line
 
         total_count = 0
-        inserted_count = 0
-        updated_count = 0
-        batch_size = 1000
-        counter = 0
-
+        # Process each line individually and save immediately
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
-            # Get tracking category (if exists)
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
                     tenant_id=tenant_id,
@@ -739,7 +714,6 @@ class XeroDataImporter:
             except XeroJournalLineTrackingCategories.DoesNotExist:
                 jtc = None
 
-            # Get account details (if exists)
             try:
                 acct = XeroAccountsRaw.objects.get(
                     tenant_id=tenant_id,
@@ -748,7 +722,6 @@ class XeroDataImporter:
             except XeroAccountsRaw.DoesNotExist:
                 acct = None
 
-            # Determine contact and invoice details based on source type.
             contact_name = None
             invoice_description_fallback = None
             invoice_number = None
@@ -823,58 +796,48 @@ class XeroDataImporter:
             tracking_category_name = jtc.name if jtc and hasattr(jtc, "name") else None
             tracking_category_option = jtc.option if jtc and hasattr(jtc, "option") else None
 
-            gl_data = {
-                "org": self.integration.org,
-                "tenant_name": self.integration.org.name,
-                "journal_id": jl.journal_id,
-                "journal_number": int(jl.journal_number) if jl.journal_number else None,
-                "journal_date": jl.journal_date,
-                "created_date": jl.created_date_utc,
-                "journal_reference": final_journal_reference,
-                "source_id": jl.source_id,
-                "source_type": jl.source_type,
-                "tracking_category_name": tracking_category_name,
-                "tracking_category_option": tracking_category_option,
-                "account_id": jl.account_id,
-                "account_code": account_code or jl.account_code,
-                "account_type": account_type or jl.account_type,
-                "account_name": account_name_val or jl.account_name,
-                "account_status": account_status,
-                "account_tax_type": account_tax_type,
-                "account_class": account_class,
-                "account_reporting_code": reporting_code,
-                "account_reporting_code_name": reporting_code_name,
-                "statement": statement_val,
-                "bank_account_type": None,
-                "journal_line_description": jl.description,
-                "net_amount": jl.net_amount,
-                "gross_amount": jl.gross_amount,
-                "tax_amount": jl.tax_amount,
-                "invoice_number": invoice_number,
-                "invoice_url": invoice_url,
-            }
-
-            # Use update_or_create based on the composite key (tenant_id, journal_line_id)
-            obj, created = XeroGeneralLedger1.objects.update_or_create(
+            gl_obj = XeroGeneralLedger1(
+                org=self.integration.org,
                 tenant_id=tenant_id,
+                tenant_name=self.integration.org.name,
+                journal_id=jl.journal_id,
+                journal_number=(int(jl.journal_number) if jl.journal_number else None),
+                journal_date=jl.journal_date,
+                created_date=jl.created_date_utc,
                 journal_line_id=journal_line_id,
-                defaults=gl_data,
+                journal_reference=final_journal_reference,
+                source_id=jl.source_id,
+                source_type=jl.source_type,
+                tracking_category_name=tracking_category_name,
+                tracking_category_option=tracking_category_option,
+                account_id=jl.account_id,
+                account_code=account_code or jl.account_code,
+                account_type=account_type or jl.account_type,
+                account_name=account_name_val or jl.account_name,
+                account_status=account_status,
+                account_tax_type=account_tax_type,
+                account_class=account_class,
+                account_reporting_code=reporting_code,
+                account_reporting_code_name=reporting_code_name,
+                statement=statement_val,
+                bank_account_type=None,
+                journal_line_description=jl.description,
+                net_amount=jl.net_amount,
+                gross_amount=jl.gross_amount,
+                tax_amount=jl.tax_amount,
+                invoice_number=invoice_number,
+                invoice_url=invoice_url
             )
-            if created:
-                inserted_count += 1
-            else:
-                updated_count += 1
-
-            counter += 1
+            gl_obj.save()
             total_count += 1
 
-            # Every batch_size records, log progress and refresh connections.
-            if counter % batch_size == 0:
-                logger.info(f"Processed {counter} records so far. Inserted: {inserted_count}, Updated: {updated_count}.")
-                close_old_connections()
+            if total_count % 1000 == 0:
+                logger.info(f"map_xero_general_ledger_incremental: Processed {total_count} rows so far...")
 
-        logger.info(f"map_xero_general_ledger_1: Completed incremental mapping. Total processed: {total_count} (Inserted: {inserted_count}, Updated: {updated_count}).")
         self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
+        logger.info(f"map_xero_general_ledger_incremental: Inserted {total_count} rows (latest lines only).")
+
+
 
 
     @transaction.atomic
