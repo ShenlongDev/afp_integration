@@ -136,5 +136,5 @@ class XeroGeneralLedger1(models.Model):
 
     class Meta:
         unique_together = (('tenant_id', 'journal_id', 'journal_line_id'), )
-        verbose_name = "Xero General Ledger"
+        verbose_name = "Xero General Ledger1"
 

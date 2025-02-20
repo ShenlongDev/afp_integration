@@ -78,6 +78,7 @@ class Command(BaseCommand):
                         'bank_transactions': xero.import_xero_bank_transactions,
                         'budgets': xero.import_xero_budgets,
                         'general_ledger': xero.map_xero_general_ledger,
+                        'general_ledger_1': xero.map_xero_general_ledger_1,
                     }
                     for component in components:
                         if component in import_methods:
