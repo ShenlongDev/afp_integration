@@ -559,7 +559,7 @@ class XeroDataImporter:
                 latest_by_line[key] = line
 
         total_count = 0
-        batch_size = 1000
+        batch_size = 10000
         keys = list(latest_by_line.keys())
         total_keys = len(keys)
         
