@@ -561,6 +561,7 @@ class XeroDataImporter:
         # Build the list of final GL objects.
         gl_objects = []
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
+            print(f".")
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
                     tenant_id=tenant_id,
