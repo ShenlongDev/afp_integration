@@ -547,21 +547,26 @@ class XeroDataImporter:
 
     def map_xero_general_ledger(self):
         logger.info("Mapping Xero General Ledger incrementally...")
+        print("Starting Xero General Ledger mapping...")
 
         # Instead of deleting everything first, we assume that GL rows are uniquely identified
         # by the composite (tenant_id, journal_line_id) and we use update_or_create.
         # Identify the newest journal line for each (tenant_id, journal_line_id).
         latest_by_line = {}
+        print("Identifying latest journal lines...")
         for line in XeroJournalLines.objects.order_by('-journal_date').iterator(chunk_size=1000):
             key = (line.tenant_id, line.journal_line_id)
             if key not in latest_by_line:
                 latest_by_line[key] = line
+        print(f"Found {len(latest_by_line)} unique journal lines")
 
         batch = []
         batch_size = 1000
         total_count = 0
 
+        print("Processing journal lines...")
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
+            print(f"Processing journal line {journal_line_id} for tenant {tenant_id}")
             # Get tracking category for this journal line, if available.
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
@@ -695,21 +700,26 @@ class XeroDataImporter:
             batch.append(gl_obj)
 
             if len(batch) >= batch_size:
+                print(f"Saving batch of {len(batch)} records...")
                 with transaction.atomic():
                     XeroGeneralLedger.objects.bulk_create(batch, batch_size=batch_size)
                 total_count += len(batch)
                 logger.info(f"Saved batch of {len(batch)} records. Total so far: {total_count}")
+                print(f"Successfully saved batch. Total records processed: {total_count}")
                 batch.clear()
 
         # Save any remaining records.
         if batch:
+            print(f"Saving final batch of {len(batch)} records...")
             with transaction.atomic():
                 XeroGeneralLedger.objects.bulk_create(batch, batch_size=batch_size)
             total_count += len(batch)
             logger.info(f"Saved final batch of {len(batch)} records. Total: {total_count}")
+            print(f"Successfully saved final batch. Total records processed: {total_count}")
 
         self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
         logger.info(f"map_xero_general_ledger: Completed incremental mapping. Inserted/Updated {total_count} rows.")
+        print(f"Completed Xero General Ledger mapping. Total records processed: {total_count}")
 
     def map_xero_general_ledger_1(self):
         logger.info("Mapping Xero General Ledger incrementally...")
