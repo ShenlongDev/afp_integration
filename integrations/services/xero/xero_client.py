@@ -673,3 +673,15 @@ class XeroDataImporter:
         total_count = BatchUtils.bulk_create_batches(XeroGeneralLedger, gl_objects, batch_size=1000)
         self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
         logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
+
+
+    def import_xero_data(self):
+        self.sync_xero_chart_of_accounts()
+        self.import_xero_journal_lines()
+        self.import_xero_contacts()
+        self.import_xero_invoices()
+        self.import_xero_bank_transactions()
+        self.import_xero_budgets()
+        self.map_xero_general_ledger()
+        
+
