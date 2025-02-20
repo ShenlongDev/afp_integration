@@ -26,6 +26,8 @@ from integrations.models.xero.transformations import (
     XeroJournalLineTrackingCategories
 )
 from integrations.models.xero.analytics import XeroGeneralLedger
+import time
+
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +44,25 @@ class XeroDataImporter:
         self.client_id = integration.xero_client_id
         self.client_secret = integration.xero_client_secret
         self.tenant_id = integration.xero_tenant_id
-
+        
     def get_paginated_results(self, url: str, result_key: str, extra_params: dict = None) -> list:
         results = []
         page = 1
         params = extra_params.copy() if extra_params else {}
+        logger = logging.getLogger(__name__)
+
         while True:
             params.update({"page": page})
             headers = self.build_headers()
             response = requests.get(url, headers=headers, params=params)
+
+            # Handle rate limit (HTTP 429)
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", 60))
+                logger.warning(f"Rate limit hit on page {page}. Retrying after {retry_after} seconds.")
+                time.sleep(retry_after)
+                continue
+
             response.raise_for_status()
             page_results = response.json().get(result_key, [])
             logger.info(f"Fetched {len(page_results)} records on page {page}")
@@ -61,6 +73,7 @@ class XeroDataImporter:
                 break
             page += 1
         return results
+
 
     def request_new_xero_token(self):
         if not self.client_id or not self.client_secret:
@@ -351,6 +364,7 @@ class XeroDataImporter:
         BatchUtils.process_in_batches(invoices, process_invoice, batch_size=1000)
         self.log_import_event(module_name="xero_invoices", fetched_records=len(invoices))
         logger.info("Completed Xero Invoices import.")
+
 
     def get_bank_transactions(self):
         url = "https://api.xero.com/api.xro/2.0/BankTransactions"
@@ -675,13 +689,33 @@ class XeroDataImporter:
         logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
 
 
+    @transaction.atomic
     def import_xero_data(self):
+        """
+        Master function to import all Xero data we care about.
+        """
+        # 1. Accounts
+        print("Importing Xero Chart of Accounts...")
         self.sync_xero_chart_of_accounts()
+
+        # 2. Journal Lines (with pagination)
         self.import_xero_journal_lines()
+
+        # 3. Contacts
         self.import_xero_contacts()
+
+        # 4. Invoices
         self.import_xero_invoices()
+
+        # 5. Bank Transactions
         self.import_xero_bank_transactions()
+
+        # 6. Budgets
         self.import_xero_budgets()
+
+        # 7. General Ledger
         self.map_xero_general_ledger()
+
+        logger.info("Finished full Xero data import successfully.")
         
 
