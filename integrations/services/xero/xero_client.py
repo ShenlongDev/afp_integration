@@ -545,10 +545,7 @@ class XeroDataImporter:
         logger.info("Completed Xero Budgets & Period Balances import.")
 
     def map_xero_general_ledger(self):
-        logger.info("Mapping Xero General Ledger...")
-        # Delete existing GL rows in an atomic block.
-        with transaction.atomic():
-            XeroGeneralLedger.objects.all().delete()
+        logger.info("Mapping Xero General Ledger incrementally...")
 
         # Identify the newest row per (tenant_id, journal_line_id).
         latest_by_line = {}
@@ -557,9 +554,11 @@ class XeroDataImporter:
             if key not in latest_by_line:
                 latest_by_line[key] = line
 
-        # Build the list of final GL objects.
-        gl_objects = []
+        updated_count = 0
+        inserted_count = 0
+
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
+            print(f"iteration {journal_line_id}")
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
                     tenant_id=tenant_id,
@@ -576,6 +575,7 @@ class XeroDataImporter:
             except XeroAccountsRaw.DoesNotExist:
                 acct = None
 
+            # Extract common details from journal line and related records
             contact_name = None
             invoice_description_fallback = None
             invoice_number = None
@@ -650,43 +650,53 @@ class XeroDataImporter:
             tracking_category_name = jtc.name if jtc and hasattr(jtc, "name") else None
             tracking_category_option = jtc.option if jtc and hasattr(jtc, "option") else None
 
-            gl_obj = XeroGeneralLedger(
-                org=self.integration.org,
-                tenant_id=tenant_id,
-                tenant_name=self.integration.org.name,
-                journal_id=jl.journal_id,
-                journal_number=(int(jl.journal_number) if jl.journal_number else None),
-                journal_date=jl.journal_date,
-                created_date=jl.created_date_utc,
-                journal_line_id=journal_line_id,
-                journal_reference=final_journal_reference,
-                source_id=jl.source_id,
-                source_type=jl.source_type,
-                tracking_category_name=tracking_category_name,
-                tracking_category_option=tracking_category_option,
-                account_id=jl.account_id,
-                account_code=account_code or jl.account_code,
-                account_type=account_type or jl.account_type,
-                account_name=account_name_val or jl.account_name,
-                account_status=account_status,
-                account_tax_type=account_tax_type,
-                account_class=account_class,
-                account_reporting_code=reporting_code,
-                account_reporting_code_name=reporting_code_name,
-                statement=statement_val,
-                bank_account_type=None,
-                journal_line_description=jl.description,
-                net_amount=jl.net_amount,
-                gross_amount=jl.gross_amount,
-                tax_amount=jl.tax_amount,
-                invoice_number=invoice_number,
-                invoice_url=invoice_url
-            )
-            gl_objects.append(gl_obj)
+            gl_data = {
+                "org": self.integration.org,
+                "tenant_name": self.integration.org.name,
+                "journal_id": jl.journal_id,
+                "journal_number": (int(jl.journal_number) if jl.journal_number else None),
+                "journal_date": jl.journal_date,
+                "created_date": jl.created_date_utc,
+                "journal_reference": final_journal_reference,
+                "source_id": jl.source_id,
+                "source_type": jl.source_type,
+                "tracking_category_name": tracking_category_name,
+                "tracking_category_option": tracking_category_option,
+                "account_id": jl.account_id,
+                "account_code": account_code or jl.account_code,
+                "account_type": account_type or jl.account_type,
+                "account_name": account_name_val or jl.account_name,
+                "account_status": account_status,
+                "account_tax_type": account_tax_type,
+                "account_class": account_class,
+                "account_reporting_code": reporting_code,
+                "account_reporting_code_name": reporting_code_name,
+                "statement": statement_val,
+                "bank_account_type": None,
+                "journal_line_description": jl.description,
+                "net_amount": jl.net_amount,
+                "gross_amount": jl.gross_amount,
+                "tax_amount": jl.tax_amount,
+                "invoice_number": invoice_number,
+                "invoice_url": invoice_url,
+            }
 
-        total_count = BatchUtils.bulk_create_batches(XeroGeneralLedger, gl_objects, batch_size=1000)
-        self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
-        logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
+            # Use update_or_create keyed on (tenant_id, journal_line_id)
+            obj, created = XeroGeneralLedger.objects.update_or_create(
+                tenant_id=tenant_id,
+                journal_line_id=journal_line_id,
+                defaults=gl_data,
+            )
+            if created:
+                inserted_count = 1
+                updated_count = 0
+            else:
+                inserted_count = 0
+                updated_count = 1
+
+        logger.info(f"map_xero_general_ledger: Completed incremental GL mapping. "
+                    f"Rows inserted: {inserted_count}, updated: {updated_count}.")
+        self.log_import_event(module_name="xero_general_ledger", fetched_records=(inserted_count+updated_count))
 
 
     @transaction.atomic
