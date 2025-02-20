@@ -551,146 +551,163 @@ class XeroDataImporter:
         with transaction.atomic():
             XeroGeneralLedger.objects.all().delete()
 
-        # Identify the newest row per (tenant_id, journal_line_id).
+        # Identify the newest row per (tenant_id, journal_line_id)
         latest_by_line = {}
         for line in XeroJournalLines.objects.order_by('-journal_date').iterator(chunk_size=1000):
             key = (line.tenant_id, line.journal_line_id)
             if key not in latest_by_line:
                 latest_by_line[key] = line
 
-        # Build the list of final GL objects.
-        gl_objects = []
-        for (tenant_id, journal_line_id), jl in latest_by_line.items():
-            try:
-                jtc = XeroJournalLineTrackingCategories.objects.get(
-                    tenant_id=tenant_id,
-                    journal_line_id=journal_line_id
-                )
-            except XeroJournalLineTrackingCategories.DoesNotExist:
-                jtc = None
+            batch = []
+            batch_size = 1000
+            total_count = 0
 
-            try:
-                acct = XeroAccountsRaw.objects.get(
-                    tenant_id=tenant_id,
-                    account_id=jl.account_id
-                )
-            except XeroAccountsRaw.DoesNotExist:
-                acct = None
-
-            contact_name = None
-            invoice_description_fallback = None
-            invoice_number = None
-            invoice_url = None
-            if jl.source_type in ["ACCPAY", "ACCREC"]:
+            for (tenant_id, journal_line_id), jl in latest_by_line.items():
+                # Retrieve tracking category details if available
                 try:
-                    inv = XeroInvoicesRaw.objects.get(
+                    jtc = XeroJournalLineTrackingCategories.objects.get(
                         tenant_id=tenant_id,
-                        invoice_id=jl.source_id
+                        journal_line_id=journal_line_id
                     )
-                    inv_payload = inv.raw_payload or {}
-                    contact_name = inv_payload.get("Contact", {}).get("Name")
-                    invoice_description_fallback = inv_payload.get("Description")
-                    invoice_number = inv.invoice_number
-                    invoice_url = inv_payload.get("Url")
-                except XeroInvoicesRaw.DoesNotExist:
-                    pass
-            else:
+                except XeroJournalLineTrackingCategories.DoesNotExist:
+                    jtc = None
+
+                # Retrieve account details if available
                 try:
-                    bt = XeroBankTransactionsRaw.objects.get(
+                    acct = XeroAccountsRaw.objects.get(
                         tenant_id=tenant_id,
-                        bank_transaction_id=jl.source_id
+                        account_id=jl.account_id
                     )
-                    bt_payload = bt.raw_payload or {}
-                    contact_name = bt_payload.get("Contact", {}).get("Name")
-                except XeroBankTransactionsRaw.DoesNotExist:
-                    pass
+                except XeroAccountsRaw.DoesNotExist:
+                    acct = None
 
-            if contact_name or jl.description:
-                base = f"{contact_name} - " if contact_name else ""
-                desc_candidate = base + jl.description if jl.description else invoice_description_fallback
-            else:
-                desc_candidate = invoice_description_fallback
+                # Determine contact and invoice details from source invoices or bank transactions
+                contact_name = None
+                invoice_description_fallback = None
+                invoice_number = None
+                invoice_url = None
+                if jl.source_type in ["ACCPAY", "ACCREC"]:
+                    try:
+                        inv = XeroInvoicesRaw.objects.get(
+                            tenant_id=tenant_id,
+                            invoice_id=jl.source_id
+                        )
+                        inv_payload = inv.raw_payload or {}
+                        contact_name = inv_payload.get("Contact", {}).get("Name")
+                        invoice_description_fallback = inv_payload.get("Description")
+                        invoice_number = inv.invoice_number
+                        invoice_url = inv_payload.get("Url")
+                    except XeroInvoicesRaw.DoesNotExist:
+                        pass
+                else:
+                    try:
+                        bt = XeroBankTransactionsRaw.objects.get(
+                            tenant_id=tenant_id,
+                            bank_transaction_id=jl.source_id
+                        )
+                        bt_payload = bt.raw_payload or {}
+                        contact_name = bt_payload.get("Contact", {}).get("Name")
+                    except XeroBankTransactionsRaw.DoesNotExist:
+                        pass
 
-            ref = jl.reference
-            if ref == desc_candidate:
-                final_journal_reference = ref
-            elif ref is not None and desc_candidate is not None:
-                final_journal_reference = f"{ref} - {desc_candidate}"
-            elif ref is None and desc_candidate is not None:
-                final_journal_reference = desc_candidate
-            else:
-                final_journal_reference = ref
+                if contact_name or jl.description:
+                    base = f"{contact_name} - " if contact_name else ""
+                    desc_candidate = base + jl.description if jl.description else invoice_description_fallback
+                else:
+                    desc_candidate = invoice_description_fallback
 
-            invoice_description = desc_candidate if desc_candidate else invoice_description_fallback
+                ref = jl.reference
+                if ref == desc_candidate:
+                    final_journal_reference = ref
+                elif ref is not None and desc_candidate is not None:
+                    final_journal_reference = f"{ref} - {desc_candidate}"
+                elif ref is None and desc_candidate is not None:
+                    final_journal_reference = desc_candidate
+                else:
+                    final_journal_reference = ref
 
-            if acct:
-                account_code = acct.raw_payload.get("Code") if acct.raw_payload else None
-                account_type = acct.raw_payload.get("Type") if acct.raw_payload else None
-                account_name_val = acct.raw_payload.get("Name") if acct.raw_payload else None
-                account_status = acct.status
-                account_tax_type = (acct.raw_payload or {}).get("TaxType")
-                account_class = (acct.raw_payload or {}).get("Class")
-                acct_class_value = (acct.raw_payload or {}).get("Class", "").upper()
-                statement_val = "PL" if acct_class_value in ["REVENUE", "EXPENSE"] else "BS"
-            else:
-                account_code = jl.account_code
-                account_type = jl.account_type
-                account_name_val = jl.account_name
-                account_status = None
-                account_tax_type = None
-                account_class = None
-                statement_val = None
+                invoice_description = desc_candidate if desc_candidate else invoice_description_fallback
 
-            if acct and acct.raw_payload:
-                reporting_code = acct.raw_payload.get("ReportingCode")
-                reporting_code_name = acct.raw_payload.get("ReportingCodeName")
-            else:
-                reporting_code = jl.raw.get("ReportingCode") if jl.raw else None
-                reporting_code_name = jl.raw.get("ReportingCodeName") if jl.raw else None
+                if acct:
+                    account_code = acct.raw_payload.get("Code") if acct.raw_payload else None
+                    account_type = acct.raw_payload.get("Type") if acct.raw_payload else None
+                    account_name_val = acct.raw_payload.get("Name") if acct.raw_payload else None
+                    account_status = acct.status
+                    account_tax_type = (acct.raw_payload or {}).get("TaxType")
+                    account_class = (acct.raw_payload or {}).get("Class")
+                    acct_class_value = (acct.raw_payload or {}).get("Class", "").upper()
+                    statement_val = "PL" if acct_class_value in ["REVENUE", "EXPENSE"] else "BS"
+                else:
+                    account_code = jl.account_code
+                    account_type = jl.account_type
+                    account_name_val = jl.account_name
+                    account_status = None
+                    account_tax_type = None
+                    account_class = None
+                    statement_val = None
 
-            tracking_category_name = jtc.name if jtc and hasattr(jtc, "name") else None
-            tracking_category_option = jtc.option if jtc and hasattr(jtc, "option") else None
+                if acct and acct.raw_payload:
+                    reporting_code = acct.raw_payload.get("ReportingCode")
+                    reporting_code_name = acct.raw_payload.get("ReportingCodeName")
+                else:
+                    reporting_code = jl.raw.get("ReportingCode") if jl.raw else None
+                    reporting_code_name = jl.raw.get("ReportingCodeName") if jl.raw else None
 
-            gl_obj = XeroGeneralLedger(
-                org=self.integration.org,
-                tenant_id=tenant_id,
-                tenant_name=self.integration.org.name,
-                journal_id=jl.journal_id,
-                journal_number=(int(jl.journal_number) if jl.journal_number else None),
-                journal_date=jl.journal_date,
-                created_date=jl.created_date_utc,
-                journal_line_id=journal_line_id,
-                journal_reference=final_journal_reference,
-                source_id=jl.source_id,
-                source_type=jl.source_type,
-                tracking_category_name=tracking_category_name,
-                tracking_category_option=tracking_category_option,
-                account_id=jl.account_id,
-                account_code=account_code or jl.account_code,
-                account_type=account_type or jl.account_type,
-                account_name=account_name_val or jl.account_name,
-                account_status=account_status,
-                account_tax_type=account_tax_type,
-                account_class=account_class,
-                account_reporting_code=reporting_code,
-                account_reporting_code_name=reporting_code_name,
-                statement=statement_val,
-                bank_account_type=None,
-                journal_line_description=jl.description,
-                net_amount=jl.net_amount,
-                gross_amount=jl.gross_amount,
-                tax_amount=jl.tax_amount,
-                invoice_number=invoice_number,
-                invoice_url=invoice_url
-            )
-            gl_objects.append(gl_obj)
-            print(f"batch {len(gl_objects)}")
+                tracking_category_name = jtc.name if jtc and hasattr(jtc, "name") else None
+                tracking_category_option = jtc.option if jtc and hasattr(jtc, "option") else None
 
-        total_count = BatchUtils.bulk_create_batches(XeroGeneralLedger, gl_objects, batch_size=1000)
-        self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
-        logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
+                # Create a new GL instance (or, for an incremental approach, you might update_or_create)
+                gl_obj = XeroGeneralLedger(
+                    org=self.integration.org,
+                    tenant_id=tenant_id,
+                    tenant_name=self.integration.org.name,
+                    journal_id=jl.journal_id,
+                    journal_number=(int(jl.journal_number) if jl.journal_number else None),
+                    journal_date=jl.journal_date,
+                    created_date=jl.created_date_utc,
+                    journal_line_id=journal_line_id,
+                    journal_reference=final_journal_reference,
+                    source_id=jl.source_id,
+                    source_type=jl.source_type,
+                    tracking_category_name=tracking_category_name,
+                    tracking_category_option=tracking_category_option,
+                    account_id=jl.account_id,
+                    account_code=account_code or jl.account_code,
+                    account_type=account_type or jl.account_type,
+                    account_name=account_name_val or jl.account_name,
+                    account_status=account_status,
+                    account_tax_type=account_tax_type,
+                    account_class=account_class,
+                    account_reporting_code=reporting_code,
+                    account_reporting_code_name=reporting_code_name,
+                    statement=statement_val,
+                    bank_account_type=None,
+                    journal_line_description=jl.description,
+                    net_amount=jl.net_amount,
+                    gross_amount=jl.gross_amount,
+                    tax_amount=jl.tax_amount,
+                    invoice_number=invoice_number,
+                    invoice_url=invoice_url
+                )
+                batch.append(gl_obj)
 
+                # If we have reached a batch of 1,000, commit the batch
+                if len(batch) >= batch_size:
+                    with transaction.atomic():
+                        XeroGeneralLedger.objects.bulk_create(batch, batch_size=batch_size)
+                    total_count += len(batch)
+                    logger.info(f"Committed a batch of {len(batch)} records. Total committed so far: {total_count}")
+                    batch = []  # reset the batch
 
+            # Commit any remaining records in the final batch.
+            if batch:
+                with transaction.atomic():
+                    XeroGeneralLedger.objects.bulk_create(batch, batch_size=batch_size)
+                total_count += len(batch)
+                logger.info(f"Committed final batch of {len(batch)} records. Total committed: {total_count}")
+
+            self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
+            logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
 
     def map_xero_general_ledger_1(self):
         logger.info("Mapping Xero General Ledger incrementally...")
