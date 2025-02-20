@@ -97,7 +97,7 @@ class XeroGeneralLedger1(models.Model):
     org = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
-        related_name="xero_general_ledgers",
+        related_name="xero_general_ledgers1",
         null=True
     )
     tenant_id = models.CharField(max_length=255, null=True)
