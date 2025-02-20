@@ -690,21 +690,28 @@ class XeroDataImporter:
         logger.info(f"map_xero_general_ledger: Inserted {total_count} rows (latest lines only).")
 
 
+    @transaction.atomic
     def map_xero_general_ledger_1(self):
-        logger.info("Mapping Xero General Ledger incrementally...")
-        # Delete existing GL rows in an atomic block.
-        with transaction.atomic():
-            XeroGeneralLedger.objects.all().delete()
+        """
+        Recreate Xero General Ledger from the staging tables.
+        """
+        # 1) Delete existing GL rows
+        XeroGeneralLedger.objects.all().delete()
 
-        # Identify the newest row per (tenant_id, journal_line_id).
+        # 2) Identify the newest row per (tenant_id, journal_line_id).
+        all_lines = (
+            XeroJournalLines.objects
+            .order_by('-journal_date')
+        )
         latest_by_line = {}
-        for line in XeroJournalLines.objects.order_by('-journal_date').iterator(chunk_size=1000):
+        for line in all_lines:
             key = (line.tenant_id, line.journal_line_id)
             if key not in latest_by_line:
                 latest_by_line[key] = line
 
-        total_count = 0
-        # Process each line individually and save immediately
+        # 3) Build final GL rows
+        gl_objects = []
+
         for (tenant_id, journal_line_id), jl in latest_by_line.items():
             try:
                 jtc = XeroJournalLineTrackingCategories.objects.get(
@@ -724,6 +731,7 @@ class XeroDataImporter:
 
             contact_name = None
             invoice_description_fallback = None
+            # Retrieve invoice metadata for ACCPAY / ACCREC types.
             invoice_number = None
             invoice_url = None
             if jl.source_type in ["ACCPAY", "ACCREC"]:
@@ -735,7 +743,7 @@ class XeroDataImporter:
                     inv_payload = inv.raw_payload or {}
                     contact_name = inv_payload.get("Contact", {}).get("Name")
                     invoice_description_fallback = inv_payload.get("Description")
-                    invoice_number = inv.invoice_number
+                    invoice_number = inv_payload.get("Reference")
                     invoice_url = inv_payload.get("Url")
                 except XeroInvoicesRaw.DoesNotExist:
                     pass
@@ -747,12 +755,17 @@ class XeroDataImporter:
                     )
                     bt_payload = bt.raw_payload or {}
                     contact_name = bt_payload.get("Contact", {}).get("Name")
+                    invoice_description_fallback = bt_payload.get("Description")
                 except XeroBankTransactionsRaw.DoesNotExist:
                     pass
 
+            desc_candidate = None
             if contact_name or jl.description:
-                base = f"{contact_name} - " if contact_name else ""
-                desc_candidate = base + jl.description if jl.description else invoice_description_fallback
+                base = (contact_name + " - ") if contact_name else ""
+                if jl.description:
+                    desc_candidate = base + jl.description
+                else:
+                    desc_candidate = invoice_description_fallback
             else:
                 desc_candidate = invoice_description_fallback
 
@@ -771,7 +784,7 @@ class XeroDataImporter:
             if acct:
                 account_code = acct.raw_payload.get("Code") if acct.raw_payload else None
                 account_type = acct.raw_payload.get("Type") if acct.raw_payload else None
-                account_name_val = acct.raw_payload.get("Name") if acct.raw_payload else None
+                account_name = acct.raw_payload.get("Name") if acct.raw_payload else None
                 account_status = acct.status
                 account_tax_type = (acct.raw_payload or {}).get("TaxType")
                 account_class = (acct.raw_payload or {}).get("Class")
@@ -780,23 +793,13 @@ class XeroDataImporter:
             else:
                 account_code = jl.account_code
                 account_type = jl.account_type
-                account_name_val = jl.account_name
+                account_name = jl.account_name
                 account_status = None
                 account_tax_type = None
                 account_class = None
                 statement_val = None
 
-            if acct and acct.raw_payload:
-                reporting_code = acct.raw_payload.get("ReportingCode")
-                reporting_code_name = acct.raw_payload.get("ReportingCodeName")
-            else:
-                reporting_code = jl.raw.get("ReportingCode") if jl.raw else None
-                reporting_code_name = jl.raw.get("ReportingCodeName") if jl.raw else None
-
-            tracking_category_name = jtc.name if jtc and hasattr(jtc, "name") else None
-            tracking_category_option = jtc.option if jtc and hasattr(jtc, "option") else None
-
-            gl_obj = XeroGeneralLedger1(
+            gl_obj = XeroGeneralLedger(
                 org=self.integration.org,
                 tenant_id=tenant_id,
                 tenant_name=self.integration.org.name,
@@ -808,17 +811,15 @@ class XeroDataImporter:
                 journal_reference=final_journal_reference,
                 source_id=jl.source_id,
                 source_type=jl.source_type,
-                tracking_category_name=tracking_category_name,
-                tracking_category_option=tracking_category_option,
+                tracking_category_name=(jtc.name if jtc else None),
+                tracking_category_option=(jtc.option if jtc else None),
                 account_id=jl.account_id,
                 account_code=account_code or jl.account_code,
                 account_type=account_type or jl.account_type,
-                account_name=account_name_val or jl.account_name,
+                account_name=account_name or jl.account_name,
                 account_status=account_status,
                 account_tax_type=account_tax_type,
                 account_class=account_class,
-                account_reporting_code=reporting_code,
-                account_reporting_code_name=reporting_code_name,
                 statement=statement_val,
                 bank_account_type=None,
                 journal_line_description=jl.description,
@@ -828,15 +829,12 @@ class XeroDataImporter:
                 invoice_number=invoice_number,
                 invoice_url=invoice_url
             )
-            gl_obj.save()
-            total_count += 1
+            gl_objects.append(gl_obj)
 
-            if total_count % 1000 == 0:
-                logger.info(f"map_xero_general_ledger_incremental: Processed {total_count} rows so far...")
-
-        self.log_import_event(module_name="xero_general_ledger", fetched_records=total_count)
-        logger.info(f"map_xero_general_ledger_incremental: Inserted {total_count} rows (latest lines only).")
-
+        # Save in batches of 1000 for smooth operations
+        XeroGeneralLedger1.objects.bulk_create(gl_objects, batch_size=1000)
+        self.log_import_event(module_name="xero_general_ledger", fetched_records=len(gl_objects))
+        logger.info(f"map_xero_general_ledger: Inserted {len(gl_objects)} rows (latest lines only).")
 
 
 
