@@ -47,7 +47,7 @@ class XeroBudgetPeriodBalancesAdmin(admin.ModelAdmin):
     search_fields = ('tenant_id', 'period')
 
 class XeroGeneralLedgerAdmin(admin.ModelAdmin):
-    list_display = ('tenant_id', 'account_id', 'account_name', 'journal_date', 'created_date', 'net_amount', 'invoice_url')
+    list_display = ('tenant_id', 'account_id', 'account_reporting_code', 'account_name', 'journal_date', 'created_date', 'net_amount', 'tracking_category_name','invoice_url')
     search_fields = ('tenant_id', 'account_id', 'account_name', 'journal_date', 'created_date')
 
 class XeroBudgetPeriodBalancesAnalyticsAdmin(admin.ModelAdmin):

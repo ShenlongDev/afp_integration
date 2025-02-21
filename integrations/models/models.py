@@ -5,6 +5,7 @@ from core.models import Organisation
 INTEGRATION_TYPE_CHOICES = (
     ("XERO", "Xero"),
     ("NETSUITE", "NetSuite"),
+    ("TOAST", "Toast"),
 )
 
 
@@ -22,6 +23,9 @@ class Integration(models.Model):
     netsuite_account_id = models.CharField(max_length=255, blank=True, null=True)
     netsuite_client_id = models.CharField(max_length=255, blank=True, null=True)
     netsuite_client_secret = models.CharField(max_length=255, blank=True, null=True)
+    
+    toast_client_id = models.CharField(max_length=255, blank=True, null=True)
+    toast_client_secret = models.CharField(max_length=255, blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -55,41 +59,6 @@ class IntegrationAccessToken(models.Model):
             f"Token({self.integration_type} | "
             f"{self.integration.org.name})"
         )
-
-
-class ChartOfAccounts(models.Model):
-    integration = models.ForeignKey(Integration, on_delete=models.CASCADE, related_name="chart_of_accounts")
-    account_id = models.CharField(max_length=36, unique=True)  # e.g. Xero's or NetSuite's ID
-    code = models.CharField(max_length=50, blank=True, null=True)
-    name = models.CharField(max_length=255, blank=True, null=True)
-    table_name = models.CharField(max_length=255, blank=True, null=True)
-
-    status = models.CharField(max_length=50, blank=True, null=True)
-    account_type = models.CharField(max_length=50, blank=True, null=True)
-    currency_code = models.CharField(max_length=10, blank=True, null=True)
-    tax_type = models.CharField(max_length=50, blank=True, null=True)
-    description = models.TextField(blank=True, null=True)
-
-    updated_utc = models.DateTimeField(blank=True, null=True)
-    insights_source = models.CharField(max_length=50, default="Xero")  # or "NetSuite"
-    insights_imported_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.integration.org.name} - {self.account_id}"
-
-
-class OrphanBankTransaction(models.Model):
-    integration = models.ForeignKey(
-        Integration,
-        on_delete=models.CASCADE,
-        related_name="orphan_bank_transactions"
-    )
-    raw_data = models.JSONField()
-    mapped = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Orphan Transaction for {self.integration.org.name} at {self.created_at}"
 
 
 class SyncTableLogs(models.Model):
