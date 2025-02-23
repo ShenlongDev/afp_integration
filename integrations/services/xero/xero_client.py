@@ -820,7 +820,6 @@ class XeroDataImporter:
                             journal_line_id=journal_line_id
                         )
                     except XeroJournalLineTrackingCategories.DoesNotExist:
-                        print(f"doesn't exist for {tenant_id} and {journal_line_id}")
                         jtc = None
 
                     # Retrieve account information (if available).
