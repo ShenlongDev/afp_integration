@@ -3,7 +3,7 @@ from integrations.models.models import Organisation
 
 
 class NetSuiteTransactionAccountingLine1(models.Model):
-    org = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     
     # Text fields
     links = models.TextField(null=True, blank=True)
@@ -40,7 +40,7 @@ class NetSuiteTransactionAccountingLine1(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['org', 'transaction', 'transaction_line']),
+            models.Index(fields=['tenant_id', 'transaction', 'transaction_line']),
             models.Index(fields=['lastmodifieddate']),
             models.Index(fields=['consolidation_key']),
         ]
@@ -49,7 +49,7 @@ class NetSuiteTransactionAccountingLine1(models.Model):
 class NetSuiteTransactionLine1(models.Model):
     id = models.AutoField(primary_key=True)
     transaction_line_id = models.BigIntegerField(null=True, blank=True)
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     unique_key = models.CharField(max_length=32, unique=True, null=True, blank=True)
     
     # Many of the long VARCHAR columns are stored as TextFields.
@@ -112,12 +112,12 @@ class NetSuiteTransactionLine1(models.Model):
   
     class Meta:
         indexes = [
-            models.Index(fields=['company_name', 'transaction_line_id']),
+            models.Index(fields=['tenant_id', 'transaction_line_id']),
         ]
 
 class NetSuiteTransactions1(models.Model):
     transactionid = models.CharField(max_length=50, null=True)
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     
     # Text (VARCHAR) fields
     links = models.TextField(null=True, blank=True)
@@ -194,6 +194,6 @@ class NetSuiteTransactions1(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['company_name', 'transactionid']),
-            models.Index(fields=['company_name', 'lastmodifieddate']),
+            models.Index(fields=['tenant_id', 'transactionid']),
+            models.Index(fields=['tenant_id', 'lastmodifieddate']),
         ]

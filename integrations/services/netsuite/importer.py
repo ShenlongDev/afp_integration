@@ -51,10 +51,9 @@ class NetSuiteImporter:
     def __init__(self, integration: Integration, since_date: Optional[str] = None, until_date: Optional[str] = None):
         self.integration = integration
         self.client = NetSuiteClient(self.integration.netsuite_account_id, integration)
-        self.org_name = integration.org
+        self.org = integration.org
         self.now_ts = timezone.now()
-        self.org = Organisation.objects.get(name=self.org_name)
-        # Default since_date to today's date at midnight if not provided.
+        self.tenant_id = integration.org.id
         self.since_date = since_date or timezone.datetime.combine(date.today(), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S")
         self.until_date = until_date  # May be None
 
@@ -86,7 +85,7 @@ class NetSuiteImporter:
     def import_vendors(self, load_type="drop_and_reload"):
         logger.info("Importing NetSuite Vendors...")
         if load_type == "drop_and_reload":
-            NetSuiteVendors.objects.filter(company_name=self.org_name).delete()
+            NetSuiteVendors.objects.filter(tenant_id=self.tenant_id).delete()
 
         date_clause = self.build_date_clause("LASTMODIFIEDDATE", self.since_date, self.until_date)
         query = f"SELECT * FROM Vendor WHERE 1=1 {date_clause}"
@@ -101,7 +100,7 @@ class NetSuiteImporter:
                 NetSuiteVendors.objects.update_or_create(
                     vendor_id=vendor_id,
                     defaults={
-                        "company_name": self.org_name,
+                        "tenant_id": self.tenant_id,
                         "entity_id": r.get("entityid"),
                         "is_person": bool_from_str(r.get("isperson")),
                         "is_inactive": bool_from_str(r.get("isinactive")),
@@ -126,7 +125,7 @@ class NetSuiteImporter:
     def import_subsidiaries(self, load_type="drop_and_reload"):
         logger.info("Importing NetSuite Subsidiaries...")
         if load_type == "drop_and_reload":
-            NetSuiteSubsidiaries.objects.filter(company_name=self.org_name).delete()
+            NetSuiteSubsidiaries.objects.filter(tenant_id=self.tenant_id).delete()
 
         date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
         query = f"""
@@ -145,7 +144,7 @@ class NetSuiteImporter:
                 NetSuiteSubsidiaries.objects.update_or_create(
                     subsidiary_id=sub_id,
                     defaults={
-                        "company_name": self.org_name,
+                        "tenant_id": self.tenant_id,
                         "name": r.get("name"),
                         "name_nohi": r.get("namenohierarchy"),
                         "full_name": r.get("fullname"),
@@ -170,7 +169,7 @@ class NetSuiteImporter:
     def import_departments(self, load_type="drop_and_reload"):
         logger.info("Importing NetSuite Departments...")
         if load_type == "drop_and_reload":
-            NetSuiteDepartments.objects.filter(company_name=self.org_name).delete()
+            NetSuiteDepartments.objects.filter(tenant_id=self.tenant_id).delete()
 
         query = "SELECT id, name, fullname, subsidiary, isinactive FROM department ORDER BY id"
         rows = list(self.client.execute_suiteql(query))
@@ -183,7 +182,7 @@ class NetSuiteImporter:
                 NetSuiteDepartments.objects.update_or_create(
                     department_id=dept_id,
                     defaults={
-                        "company_name": self.org_name,
+                        "tenant_id": self.tenant_id,
                         "name": r.get("name"),
                         "full_name": r.get("fullname"),
                         "subsidiary": r.get("subsidiary"),
@@ -204,7 +203,7 @@ class NetSuiteImporter:
     def import_entities(self, load_type="drop_and_reload"):
         logger.info("Importing NetSuite Entities...")
         if load_type == "drop_and_reload":
-            NetSuiteEntity.objects.filter(company_name=self.org_name).delete()
+            NetSuiteEntity.objects.filter(tenant_id=self.tenant_id).delete()
 
         date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
         query = f"SELECT * FROM entity WHERE 1=1 {date_clause}"
@@ -220,7 +219,7 @@ class NetSuiteImporter:
                     entity_id=ent_id,
                     id=r.get("id"),
                     defaults={
-                        "company_name": r.get("companyname") or self.org_name,
+                        "tenant_id": self.tenant_id,
                         "entity_title": r.get("entitytitle"),
                         "type": r.get("type"),
                         "external_id": r.get("externalid"),
@@ -251,7 +250,7 @@ class NetSuiteImporter:
     def import_accounting_periods(self, load_type="drop_and_reload"):
         logger.info("Importing NetSuite Accounting Periods...")
         if load_type == "drop_and_reload":
-            NetSuiteAccountingPeriods.objects.filter(company_name=self.org_name).delete()
+            NetSuiteAccountingPeriods.objects.filter(tenant_id=self.tenant_id).delete()
 
         date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
         query = f"SELECT * FROM accountingperiod WHERE 1=1 {date_clause}"
@@ -270,7 +269,7 @@ class NetSuiteImporter:
                 NetSuiteAccountingPeriods.objects.update_or_create(
                     period_id=period_id,
                     defaults={
-                        "company_name": self.org_name,
+                        "tenant_id": self.tenant_id,
                         "period_name": r.get("periodname"),
                         "start_date": start_date_obj,
                         "end_date": end_date_obj,
@@ -296,7 +295,7 @@ class NetSuiteImporter:
     def import_accounts(self, load_type="drop_and_reload"):
         logger.info("Importing NetSuite Accounts...")
         if load_type == "drop_and_reload":
-            NetSuiteAccounts.objects.filter(company_name=self.org_name).delete()
+            NetSuiteAccounts.objects.filter(tenant_id=self.tenant_id).delete()
 
         offset = 0
         limit = 1000
@@ -324,7 +323,7 @@ class NetSuiteImporter:
                     NetSuiteAccounts.objects.update_or_create(
                         account_id=account_id,
                         defaults={
-                            "company_name": self.org_name,
+                            "tenant_id": self.tenant_id,
                             "acctnumber": r.get("acctnumber"),
                             "accountsearchdisplaynamecopy": r.get("accountsearchdisplaynamecopy"),
                             "fullname": r.get("fullname"),
@@ -463,7 +462,7 @@ class NetSuiteImporter:
                             from integrations.models.netsuite.temp import NetSuiteTransactions1
                             NetSuiteTransactions1.objects.update_or_create(
                                 transactionid=str(txn_id),
-                                company_name=self.org,
+                                tenant_id=self.tenant_id,
                                 defaults={
                                     "abbrevtype": r.get("abbrevtype"),
                                     "approvalstatus": r.get("approvalstatus"),
@@ -564,9 +563,9 @@ class NetSuiteImporter:
             try:
                 trandate_dt = rec.trandate
                 gl_defaults = {
-                    "tenant_name": rec.company_name,
+                    "tenant_id": rec.tenant_id,
                     "subsidiary_name": rec.subsidiary,
-                    "account_name": NetSuiteAccounts.objects.get(account_id=rec.account, company_name=rec.company_name).name,
+                    "account_name": NetSuiteAccounts.objects.get(account_id=rec.account, tenant_id=rec.tenant_id).name,
                     "abbrevtype": rec.abbrevtype,
                     "uniquekey": f"{rec.transactionid}-{rec.linesequencenumber}",
                     "linesequencenumber": rec.linesequencenumber,
@@ -587,7 +586,7 @@ class NetSuiteImporter:
                     "record_date": rec.record_date,
                 }
                 NetSuiteGeneralLedger.objects.update_or_create(
-                    tenant_name=rec.company_name,
+                    tenant_id=rec.tenant_id,
                     transactionid=rec.transactionid,
                     linesequencenumber=rec.linesequencenumber,
                     defaults=gl_defaults

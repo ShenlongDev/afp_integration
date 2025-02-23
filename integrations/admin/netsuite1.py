@@ -6,7 +6,7 @@ from integrations.models.netsuite.temp import (
 )
 
 class NetSuiteTransactionAccountingLine1Admin(admin.ModelAdmin):
-    list_display = ('org', 'transaction', 'account', 'amount', 'lastmodifieddate', 'transaction_line')
+    list_display = ('tenant_id', 'transaction', 'account', 'amount', 'lastmodifieddate', 'transaction_line')
     search_fields = ('transaction', 'account', 'amount')
 
 class NetSuiteTransactionLine1Admin(admin.ModelAdmin):
@@ -14,7 +14,7 @@ class NetSuiteTransactionLine1Admin(admin.ModelAdmin):
     search_fields = ('transaction_line_id', 'transactionid', 'subsidiary')
 
 class NetSuiteTransactions1Admin(admin.ModelAdmin):
-    list_display = ('company_name', 'approvalstatus', 'createdby', 'transactionid', 'createddate', 'memo')
+    list_display = ('tenant_id', 'approvalstatus', 'createdby', 'transactionid', 'createddate', 'memo')
     search_fields = ('abbrevtype', 'createdby', 'transactionid', 'memo', 'transactionnumber')
 
 admin.site.register(NetSuiteTransactionAccountingLine1, NetSuiteTransactionAccountingLine1Admin)

@@ -15,7 +15,7 @@ from integrations.models.netsuite.analytics import (
 
 class NetSuiteVendorsAdmin(admin.ModelAdmin):
     list_display = (
-        'vendor_id', 'company_name', 'entity_id', 'is_person', 'is_inactive',
+        'vendor_id', 'tenant_id', 'entity_id', 'is_person', 'is_inactive',
         'email', 'phone', 'currency', 'subsidiary', 'terms', 'record_date'
     )
     search_fields = (
@@ -28,7 +28,7 @@ class NetSuiteAccountsAdmin(admin.ModelAdmin):
     search_fields = ('account_id', 'is_inactive', 'accountsearchdisplayname', 'accountsearchdisplaynamecopy')
 
 class NetSuiteTransactionsAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'approvalstatus', 'createdby', 'transactionid', 'createddate', 'memo')
+    list_display = ('tenant_id', 'approvalstatus', 'createdby', 'transactionid', 'createddate', 'memo')
     search_fields = ('abbrevtype', 'createdby', 'transactionid', 'memo', 'transactionnumber')
 
 class NetSuiteSubsidiariesAdmin(admin.ModelAdmin):
@@ -36,23 +36,23 @@ class NetSuiteSubsidiariesAdmin(admin.ModelAdmin):
     search_fields = ('subsidiary_id', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')
 
 class NetSuiteDepartmentsAdmin(admin.ModelAdmin):
-    list_display = ('department_id', 'company_name', 'name', 'full_name', 'is_inactive', 'record_date')
+    list_display = ('department_id', 'tenant_id', 'name', 'full_name', 'is_inactive', 'record_date')
     search_fields = ('department_id', 'name', 'full_name', 'is_inactive', 'record_date')
 
 class NetSuiteGeneralLedgerAdmin(admin.ModelAdmin):
-    list_display = ('tenant_name', 'record_date', 'trandate', 'subsidiary')
-    search_fields = ('tenant_name', 'is_inactive', 'record_date')
+    list_display = ('tenant_id', 'record_date', 'trandate', 'subsidiary')
+    search_fields = ('tenant_id', 'is_inactive', 'record_date')
 
 class NetSuiteJournalsAdmin(admin.ModelAdmin):
-    list_display = ('journal_id', 'company_name', 'record_date')
+    list_display = ('journal_id', 'tenant_id', 'record_date')
     search_fields = ('journal_id', 'record_date')
 
 class NetSuiteEntityAdmin(admin.ModelAdmin):
-    list_display = ('id','company_name', 'entity_id', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'terms', 'last_modified_date', 'record_date')
+    list_display = ('id','tenant_id', 'entity_id', 'legal_name', 'is_person', 'is_inactive', 'parent_entity', 'email', 'phone', 'currency', 'terms', 'last_modified_date', 'record_date')
     search_fields = ('id', 'entity_id', 'email', 'phone', 'currency', 'terms')
 
 class NetSuiteAccountingPeriodsAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
+    list_display = ('tenant_id', 'period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
     search_fields = ('period_name', 'start_date', 'end_date', 'closed', 'all_locked', 'fiscal_calendar', 'record_date')
 
 class NetSuiteTransformedTransactionAdmin(admin.ModelAdmin):

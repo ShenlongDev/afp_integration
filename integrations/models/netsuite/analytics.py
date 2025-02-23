@@ -3,7 +3,7 @@ from integrations.models.models import Organisation
 
 
 class NetSuiteAccounts(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     account_id = models.CharField(max_length=255, null=True)
     links = models.TextField(null=True, blank=True)
     accountsearchdisplayname = models.TextField(null=True, blank=True)
@@ -41,7 +41,7 @@ class NetSuiteAccounts(models.Model):
 
 class NetSuiteTransactions(models.Model):
     transactionid = models.CharField(max_length=50, null=True)
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     lastmodifieddate = models.DateTimeField(null=True, blank=True)
     
     # Text (VARCHAR) fields
@@ -118,13 +118,13 @@ class NetSuiteTransactions(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['company_name', 'transactionid']),
-            models.Index(fields=['company_name', 'lastmodifieddate']),
+            models.Index(fields=['tenant_id', 'transactionid']),
+            models.Index(fields=['tenant_id', 'lastmodifieddate']),
         ]
 
 
 class NetSuiteGeneralLedger(models.Model):
-    tenant_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     abbrevtype = models.CharField(max_length=255, null=True)
     transactionid = models.CharField(max_length=255, null=True)
     uniquekey = models.CharField(max_length=255, null=True)
@@ -150,19 +150,19 @@ class NetSuiteGeneralLedger(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['tenant_name', 'transactionid', 'linesequencenumber'],
+                fields=['tenant_id', 'transactionid', 'linesequencenumber'],
                 name='unique_netsuite_gl_entry'
             )
         ]
         indexes = [
-            models.Index(fields=['tenant_name', 'transactionid']),
+            models.Index(fields=['tenant_id', 'transactionid']),
             models.Index(fields=['trandate']),
             models.Index(fields=['account_id']),
         ]
 
 
 class NetSuiteAccountingPeriods(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     period_id = models.CharField(max_length=255, null=True)
     period_name = models.CharField(max_length=255, null=True)
     start_date = models.DateField(null=True)
@@ -177,7 +177,7 @@ class NetSuiteAccountingPeriods(models.Model):
 
 
 class NetSuiteDepartments(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     department_id = models.CharField(max_length=255, null=True)
     name = models.CharField(max_length=255, null=True)
     full_name = models.CharField(max_length=255, null=True)
@@ -187,7 +187,7 @@ class NetSuiteDepartments(models.Model):
 
 
 class NetSuiteSubsidiaries(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     subsidiary_id = models.CharField(max_length=255, null=True)
     name = models.CharField(max_length=255, null=True)
     name_nohi = models.CharField(max_length=255, null=True)
@@ -201,7 +201,7 @@ class NetSuiteSubsidiaries(models.Model):
 
 
 class NetSuiteVendors(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     vendor_id = models.CharField(max_length=255, null=True)
     entity_id = models.CharField(max_length=255, null=True)
     is_person = models.BooleanField(null=True)
@@ -215,7 +215,7 @@ class NetSuiteVendors(models.Model):
 
 
 class NetSuiteBudgetPeriodBalances(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     budget_id = models.CharField(max_length=255, null=True)
     budget_name = models.CharField(max_length=255, null=True)
     budget_status = models.CharField(max_length=255, null=True)
@@ -235,11 +235,11 @@ class NetSuiteBudgetPeriodBalances(models.Model):
 
 
     class Meta:
-        unique_together = ['company_name', 'budget_id', 'account_id', 'period']
+        unique_together = ['tenant_id', 'budget_id', 'account_id', 'period']
 
 
 class NetSuiteEntity(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     id = models.CharField(primary_key=True, max_length=255)
     company_display_name = models.CharField(max_length=255, null=True)
     entity_id = models.CharField(max_length=255, null=True)
@@ -260,7 +260,7 @@ class NetSuiteEntity(models.Model):
 
 
 class NetSuiteJournals(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     journal_id = models.CharField(max_length=255, db_index=True, null=True)
     date = models.DateField(db_index=True, null=True)
     memo = models.TextField(null=True)
@@ -273,20 +273,20 @@ class NetSuiteJournals(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['company_name', 'journal_id']),
+            models.Index(fields=['tenant_id', 'journal_id']),
             models.Index(fields=['date']),
             models.Index(fields=['account']),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=['company_name', 'journal_id'],
+                fields=['tenant_id', 'journal_id'],
                 name='unique_journal_entry'
             )
         ]
 
 
 class NetSuiteTransactionAccountingLine(models.Model):
-    org = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     
     # Text fields
     links = models.TextField(null=True, blank=True)
@@ -323,7 +323,7 @@ class NetSuiteTransactionAccountingLine(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['org', 'transaction', 'transaction_line']),
+            models.Index(fields=['tenant_id', 'transaction', 'transaction_line']),
             models.Index(fields=['lastmodifieddate']),
             models.Index(fields=['consolidation_key']),
         ]
@@ -332,7 +332,7 @@ class NetSuiteTransactionAccountingLine(models.Model):
 class NetSuiteTransactionLine(models.Model):
     id = models.AutoField(primary_key=True)
     transaction_line_id = models.BigIntegerField(null=True, blank=True)
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     unique_key = models.CharField(max_length=32, unique=True, null=True, blank=True)
     
     # Many of the long VARCHAR columns are stored as TextFields.
@@ -395,12 +395,12 @@ class NetSuiteTransactionLine(models.Model):
     
     class Meta:
         indexes = [
-            models.Index(fields=['company_name', 'transaction_line_id']),
+            models.Index(fields=['tenant_id', 'transaction_line_id']),
         ]
 
 
 class NetSuiteTransformedTransaction(models.Model):
-    company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    tenant_id = models.IntegerField(null=True, blank=True)
     consolidation_key = models.IntegerField(null=True)
     # Transaction header fields (from NetSuiteTransactions)
     transactionid = models.CharField(max_length=50, null=True)
@@ -501,7 +501,7 @@ class NetSuiteTransformedTransaction(models.Model):
         return f"Transformed Transaction {self.transactionid} Line {self.linesequencenumber}"
 
     class Meta:
-        unique_together = ("company_name", "transactionid", "linesequencenumber")
+        unique_together = ("tenant_id", "transactionid", "linesequencenumber")
         
 
       

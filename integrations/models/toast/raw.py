@@ -82,7 +82,31 @@ class ToastJoinedOpeningHours(models.Model):
     monday_end_time = models.TimeField(null=True, blank=True)
     monday_overnight = models.BooleanField(default=False)
     monday_related_day_schedule = models.CharField(max_length=255, null=True, blank=True)
-    # Additional fields for Tuesday through Sunday would follow a similar pattern.
+    tuesday_start_time = models.TimeField(null=True, blank=True)
+    tuesday_end_time = models.TimeField(null=True, blank=True)
+    tuesday_overnight = models.BooleanField(default=False)
+    tuesday_related_day_schedule = models.CharField(max_length=255, null=True, blank=True)
+    wednesday_start_time = models.TimeField(null=True, blank=True)
+    wednesday_end_time = models.TimeField(null=True, blank=True)
+    wednesday_overnight = models.BooleanField(default=False)
+    wednesday_related_day_schedule = models.CharField(max_length=255, null=True, blank=True)
+    thursday_start_time = models.TimeField(null=True, blank=True)
+    thursday_end_time = models.TimeField(null=True, blank=True)
+    thursday_overnight = models.BooleanField(default=False)
+    thursday_related_day_schedule = models.CharField(max_length=255, null=True, blank=True) 
+    friday_start_time = models.TimeField(null=True, blank=True)
+    friday_end_time = models.TimeField(null=True, blank=True)
+    friday_overnight = models.BooleanField(default=False)
+    friday_related_day_schedule = models.CharField(max_length=255, null=True, blank=True)
+    saturday_start_time = models.TimeField(null=True, blank=True)
+    saturday_end_time = models.TimeField(null=True, blank=True)
+    saturday_overnight = models.BooleanField(default=False)
+    saturday_related_day_schedule = models.CharField(max_length=255, null=True, blank=True)
+    sunday_start_time = models.TimeField(null=True, blank=True)
+    sunday_end_time = models.TimeField(null=True, blank=True)
+    sunday_overnight = models.BooleanField(default=False)
+    sunday_related_day_schedule = models.CharField(max_length=255, null=True, blank=True)
+        
     
     def __str__(self):
         return f"ToastJoinedOpeningHours for {self.restaurant.general_name}"
