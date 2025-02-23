@@ -45,6 +45,7 @@ class NetSuiteAccounts(models.Model):
 class NetSuiteTransactions(models.Model):
     transactionid = models.CharField(max_length=50, null=True)
     company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
+    lastmodifieddate = models.DateTimeField(null=True, blank=True)
     
     # Text (VARCHAR) fields
     links = models.TextField(null=True, blank=True)
@@ -98,7 +99,6 @@ class NetSuiteTransactions(models.Model):
     createddate = models.DateField(null=True, blank=True)
     duedate = models.DateField(null=True, blank=True)
     trandate = models.DateField(null=True, blank=True)
-    lastmodifieddate = models.DateField(null=True, blank=True)
     # Timestamp field from SQL:
     custbody_report_timestamp = models.DateTimeField(null=True, blank=True)
     record_date = models.DateTimeField(null=True, blank=True)
@@ -118,6 +118,13 @@ class NetSuiteTransactions(models.Model):
     
     def __str__(self):
         return f"Transaction {self.transactionid}"
+
+    class Meta:
+        db_table = "Transaction"
+        indexes = [
+            models.Index(fields=['company_name', 'transactionid']),
+            models.Index(fields=['company_name', 'lastmodifieddate']),
+        ]
 
 
 class NetSuiteGeneralLedger(models.Model):
@@ -319,6 +326,13 @@ class NetSuiteTransactionAccountingLine(models.Model):
     def __str__(self):
         return f"AcctLine {self.transaction}-{self.transaction_line}"
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['org', 'transaction', 'transaction_line']),
+            models.Index(fields=['lastmodifieddate']),
+            models.Index(fields=['consolidation_key']),
+        ]
+
 
 class NetSuiteTransactionLine(models.Model):
     id = models.AutoField(primary_key=True)
@@ -384,7 +398,12 @@ class NetSuiteTransactionLine(models.Model):
     def __str__(self):
         return f"TransactionLine {self.id}"
     
-        
+    class Meta:
+        indexes = [
+            models.Index(fields=['company_name', 'transaction_line_id']),
+        ]
+
+
 class NetSuiteTransformedTransaction(models.Model):
     company_name = models.ForeignKey(Organisation, on_delete=models.CASCADE, null=True)
     consolidation_key = models.IntegerField(null=True)

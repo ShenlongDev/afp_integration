@@ -1179,13 +1179,19 @@ class XeroDataImporter:
             # Build desired data for each record in this chunk.
             for journal_line_id, jl in chunk:
                 try:
-                    # Retrieve tracking category (if exists).
-                    try:
-                        jtc = XeroJournalLineTrackingCategories.objects.get(
-                            tenant_id=tenant_id,
-                            journal_line_id=journal_line_id
-                        )
-                    except XeroJournalLineTrackingCategories.DoesNotExist:
+                    # Retrieve tracking category (if exists) using filter() to avoid MultipleObjectsReturned.
+                    qs = XeroJournalLineTrackingCategories.objects.filter(
+                        tenant_id=tenant_id,
+                        journal_line_id=journal_line_id
+                    ).order_by('ingestion_timestamp')
+                    if qs.exists():
+                        jtc = qs.first()
+                        if qs.count() > 1:
+                            logger.warning(
+                                "Multiple tracking categories found for tenant %s and journal_line_id %s; using the first.",
+                                tenant_id, journal_line_id
+                            )
+                    else:
                         jtc = None
 
                     # Retrieve account information (if available).
