@@ -1169,7 +1169,7 @@ class XeroDataImporter:
         logger.info("Total staging records to process for tenant %s: %s", tenant_id, total_records)
 
         # Define chunk size.
-        chunk_size = 1000
+        chunk_size = 10000
         total_processed = 0
 
         # Process in chunks.
