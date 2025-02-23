@@ -785,7 +785,6 @@ class NetSuiteImporter:
                     last_modified = self.parse_datetime(r.get("lastmodifieddate"))
                     from integrations.models.netsuite.temp import NetSuiteTransactionAccountingLine1
                     NetSuiteTransactionAccountingLine1.objects.update_or_create(
-                        org=self.org,
                         transaction=r.get("transaction").lower(),
                         transaction_line=r.get("transactionline").lower(),
                         defaults={
