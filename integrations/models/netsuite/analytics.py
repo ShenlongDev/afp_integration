@@ -37,9 +37,6 @@ class NetSuiteAccounts(models.Model):
 
     def __str__(self):
         return f"Account {self.account_id}"
-    
-    class Meta:
-        db_table = "Account"
 
 
 class NetSuiteTransactions(models.Model):
@@ -120,7 +117,6 @@ class NetSuiteTransactions(models.Model):
         return f"Transaction {self.transactionid}"
 
     class Meta:
-        db_table = "Transaction"
         indexes = [
             models.Index(fields=['company_name', 'transactionid']),
             models.Index(fields=['company_name', 'lastmodifieddate']),
@@ -276,7 +272,6 @@ class NetSuiteJournals(models.Model):
     record_date = models.DateTimeField(null=True)
 
     class Meta:
-        db_table = 'netsuite.journals'
         indexes = [
             models.Index(fields=['company_name', 'journal_id']),
             models.Index(fields=['date']),
