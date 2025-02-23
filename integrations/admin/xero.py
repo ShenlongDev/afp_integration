@@ -28,8 +28,8 @@ class XeroJournalLineTrackingCategoriesAdmin(admin.ModelAdmin):
     search_fields = ('tracking_category_id', 'journal_line_id', 'name', 'option')
 
 class XeroInvoiceLineItemsAdmin(admin.ModelAdmin):
-    list_display = ('invoice_id', 'description')
-    search_fields = ('invoice_id', 'description')
+    list_display = ('invoice_id', 'description', 'invoice_number', 'url')
+    search_fields = ('invoice_id', 'description', 'invoice_number', 'url')
 
 class XeroGeneralLedgerAdmin(admin.ModelAdmin):
     list_display = ('tenant_id', 'account_id', 'account_reporting_code', 'account_name', 'journal_date', 'created_date', 'net_amount', 'tracking_category_name','invoice_url')

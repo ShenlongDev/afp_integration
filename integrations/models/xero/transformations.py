@@ -72,6 +72,7 @@ class XeroInvoiceLineItems(models.Model):
     line_amount = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
     tax_type = models.CharField(max_length=50, blank=True, null=True)
     reference = models.CharField(max_length=255, blank=True, null=True)
+    type = models.CharField(max_length=50, blank=True, null=True)   
     url = models.TextField(blank=True, null=True)
     amount_due = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)
     amount_paid = models.DecimalField(max_digits=19, decimal_places=2, blank=True, null=True)

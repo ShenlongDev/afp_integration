@@ -374,6 +374,18 @@ class XeroDataImporter:
                     line_item_id=line['LineItemID'],
                     invoice_id=inv['InvoiceID'],
                     defaults={
+                        "contact_id": inv.get("Contact", {}).get("ContactID"),
+                        "contact_name": inv.get("Contact", {}).get("Name"),
+                        "reference": inv.get("Reference"),
+                        "date": self.parse_xero_datetime(inv.get("Date")),
+                        "due_date": self.parse_xero_datetime(inv.get("DueDate")),
+                        "updated_date_utc": self.parse_xero_datetime(inv.get("UpdatedDateUTC")),
+                        "fully_paid_on_date": self.parse_xero_datetime(inv.get("FullyPaidOnDate")),
+                        "invoice_number": inv.get("InvoiceNumber"),
+                        "tax_amount": line.get("TaxAmount"),
+                        "line_amount": line.get("LineAmount"),
+                        "url": inv.get("Url"),
+                        "type": inv.get("Type"),
                         'tenant_id': self.integration.org.id,
                         'description': line.get('Description'),
                         'quantity': line.get('Quantity'),
@@ -382,7 +394,7 @@ class XeroDataImporter:
                     }
                 )
 
-        BatchUtils.process_in_batches(invoices, process_invoice, batch_size=1000)
+        BatchUtils.process_in_batches(invoices, process_invoice, batch_size=10000)
         self.log_import_event(module_name="xero_invoices", fetched_records=len(invoices))
         logger.info("Completed Xero Invoices import.")
 
