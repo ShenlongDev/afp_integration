@@ -8,7 +8,6 @@ from django.utils import timezone
 from django.db import transaction
 from integrations.services.utils import BatchUtils
 
-# Import your models as before
 from integrations.models.models import Integration, IntegrationAccessToken, SyncTableLogs
 from integrations.models.xero.raw import (
     XeroAccountsRaw,
@@ -18,7 +17,6 @@ from integrations.models.xero.raw import (
     XeroBankTransactionsRaw,
     XeroBudgetsRaw,
     XeroBudgetPeriodBalancesRaw,
-    XeroConnectionsRaw
 )
 from integrations.models.xero.transformations import (
     XeroJournalLines,
@@ -1141,13 +1139,13 @@ class XeroDataImporter:
         self.log_import_event(module_name="xero_general_ledger", fetched_records=len(gl_objects))
         logger.info(f"map_xero_general_ledger: Inserted {len(gl_objects)} rows (latest lines only).")
 
+
     def map_xero_general_ledger_3(self):
         """
         Upsert (update or create) Xero General Ledger entries for a single tenant 
         (self.integration.org.id) in chunks. This version processes the staging data 
         in chunks of 1000 records, builds the desired state, and immediately saves each 
-        chunk. It includes all fields from the original method, including the reporting 
-        fields.
+        chunk. It includes all fields from the original method.
         """
         from django.db import transaction, close_old_connections
         import logging
@@ -1333,7 +1331,7 @@ class XeroDataImporter:
                         setattr(obj, field, value)
                     update_list.append(obj)
                 else:
-                    create_list.append(XeroGeneralLedger(**data))
+                    create_list.append(XeroGeneralLedger3(**data))
 
             # 4) Bulk save this chunk.
             with transaction.atomic():
@@ -1354,7 +1352,6 @@ class XeroDataImporter:
             logger.info("map_xero_general_ledger_3: Processed and saved %s records in this chunk, total processed %s.", len(new_data_chunk), total_processed)
 
         logger.info("map_xero_general_ledger_3: Completed processing of %s records.", total_processed)
-
 
 
     @transaction.atomic

@@ -149,14 +149,14 @@ class XeroGeneralLedger3(models.Model):
         related_name="xero_general_ledgers2",
         null=True
     )
-    tenant_id = models.CharField(max_length=255, null=True)
+    tenant_id = models.CharField(max_length=255, null=True, db_index=True)
     tenant_name = models.CharField(max_length=255, null=True)
 
-    journal_id = models.CharField(max_length=255, null=True)
+    journal_id = models.CharField(max_length=255, null=True, db_index=True)
     journal_number = models.IntegerField(null=True)
-    journal_date = models.DateField(blank=True, null=True)
+    journal_date = models.DateField(blank=True, null=True, db_index=True)
     created_date = models.DateTimeField(blank=True, null=True)
-    journal_line_id = models.CharField(max_length=255)
+    journal_line_id = models.CharField(max_length=255, db_index=True)
     journal_reference = models.TextField(blank=True, null=True)
     source_id = models.CharField(max_length=255, blank=True, null=True)
     source_type = models.CharField(max_length=255, blank=True, null=True)
@@ -186,3 +186,14 @@ class XeroGeneralLedger3(models.Model):
     class Meta:
         unique_together = (('tenant_id', 'journal_id', 'journal_line_id'), )
         verbose_name = "Xero General Ledger2"
+        indexes = [
+            models.Index(fields=['tenant_id']),
+            models.Index(fields=['journal_line_id']),
+            models.Index(fields=['journal_id']),
+            models.Index(fields=['tenant_id', 'journal_line_id']),
+            models.Index(fields=['journal_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.tenant_id} - {self.journal_line_id}"
+    
