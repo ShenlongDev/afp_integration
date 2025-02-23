@@ -1,20 +1,14 @@
 from rest_framework import serializers
-from .raw import (
-    SquareOrders,
+from integrations.models.xero.raw import (
     XeroAccountsRaw,
     XeroBankTransactionsRaw,
     XeroBudgetPeriodBalancesRaw,
     XeroBudgetsRaw,
-    XeroConnectionsRaw,
     XeroContactsRaw,
     XeroInvoicesRaw,
     XeroJournalsRaw
 )
 
-class SquareOrdersSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SquareOrders
-        fields = '__all__'
 
 class XeroAccountsRawSerializer(serializers.ModelSerializer):
     class Meta:
@@ -34,11 +28,6 @@ class XeroBudgetPeriodBalancesRawSerializer(serializers.ModelSerializer):
 class XeroBudgetsRawSerializer(serializers.ModelSerializer):
     class Meta:
         model = XeroBudgetsRaw
-        fields = '__all__'
-
-class XeroConnectionsRawSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = XeroConnectionsRaw
         fields = '__all__'
 
 class XeroContactsRawSerializer(serializers.ModelSerializer):

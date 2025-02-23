@@ -2,9 +2,6 @@ from django.db import models
 from integrations.models.models import Organisation
 
 
-from django.db import models
-from integrations.models.models import Organisation
-
 class XeroAccountsRaw(models.Model):
     id = models.AutoField(primary_key=True)
     tenant_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)

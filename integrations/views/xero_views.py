@@ -6,10 +6,10 @@ from datetime import datetime
 from integrations.models.models import Integration
 from rest_framework.views import APIView
 from rest_framework import generics
-from integrations.models.xero.transformations import XeroAccounts, XeroBankTransactionLineItems, XeroJournalLines
+from integrations.models.xero.raw import XeroAccountsRaw
+from integrations.models.xero.transformations import XeroJournalLines
+from integrations.serializers.xero.raw import XeroAccountsRawSerializer
 from integrations.serializers.xero.transformations import (
-    XeroAccountsSerializer,
-    XeroBankTransactionLineItemsSerializer,
     XeroJournalLinesSerializer
 )
 
@@ -50,25 +50,14 @@ class XeroDataImportView(APIView):
             return Response({"error": str(e)}, status=500)
 
 class XeroAccountsListCreateView(generics.ListCreateAPIView):
-    queryset = XeroAccounts.objects.all()
-    serializer_class = XeroAccountsSerializer
+    queryset = XeroAccountsRaw.objects.all()
+    serializer_class = XeroAccountsRawSerializer
 
 
 class XeroAccountsDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = XeroAccounts.objects.all()
-    serializer_class = XeroAccountsSerializer
+    queryset = XeroAccountsRaw.objects.all()
+    serializer_class = XeroAccountsRawSerializer
     lookup_field = 'account_id'
-
-
-class XeroBankTransactionLineItemsListCreateView(generics.ListCreateAPIView):
-    queryset = XeroBankTransactionLineItems.objects.all()
-    serializer_class = XeroBankTransactionLineItemsSerializer
-
-
-class XeroBankTransactionLineItemsDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = XeroBankTransactionLineItems.objects.all()
-    serializer_class = XeroBankTransactionLineItemsSerializer
-    lookup_field = 'line_item_id'
 
 
 class XeroJournalLinesListCreateView(generics.ListCreateAPIView):
