@@ -59,6 +59,7 @@ def process_data_import_task(self, integration_id, integration_type, since_date_
     from integrations.modules import MODULES
     module_config = MODULES[integration_type]
     ImporterClass = module_config['client']
+    print(f"ImporterClass: {ImporterClass}, integration: {integration}, since_date: {since_date}\n\n\n/n/n/n")
     importer = ImporterClass(integration, since_date)
     
     if selected_modules:
@@ -119,7 +120,13 @@ def dispatcher(self):
     try:
         hp_task = get_high_priority_task()
         if hp_task:
-            logger.info("High priority task found: %s", hp_task)
+            logger.info(
+                "Dispatching high priority task: integration id: %s, integration type: %s, since_date: %s, modules: %s",
+                hp_task.integration.id,
+                hp_task.integration_type,
+                hp_task.since_date,
+                hp_task.selected_modules
+            )
             process_data_import_task.apply_async(
                 args=[
                     hp_task.integration.id,

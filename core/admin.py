@@ -23,7 +23,7 @@ class DataImportAdmin(admin.ModelAdmin):
             form = DataImportForm(request.POST)
             if form.is_valid():
                 integration = form.cleaned_data['integration']
-                integration_type = form.cleaned_data['integration_type']
+                integration_type = form.cleaned_data['integration_type'].lower()
                 since_date = form.cleaned_data['since_date']
                 selected_modules = form.cleaned_data.get('modules', [])
                 
