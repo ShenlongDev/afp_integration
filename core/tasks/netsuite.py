@@ -80,15 +80,15 @@ def sync_netsuite_data(integration_id):
     Dispatches a chain of NetSuite import tasks for a given integration.
     """
     task_chain = chain(
-        netsuite_import_accounts.s(integration_id),
-        netsuite_import_accounting_periods.s(integration_id),
-        netsuite_import_entity.s(integration_id),
-        netsuite_import_vendors.s(integration_id),
-        netsuite_import_subsidiary.s(integration_id),
-        netsuite_import_departments.s(integration_id),
-        netsuite_import_transactions.s(integration_id),
-        netsuite_import_transaction_lines.s(integration_id),
-        netsuite_import_transaction_accounting_lines.s(integration_id)
+        netsuite_import_accounts.si(integration_id),
+        netsuite_import_accounting_periods.si(integration_id),
+        netsuite_import_entity.si(integration_id),
+        netsuite_import_vendors.si(integration_id),
+        netsuite_import_subsidiary.si(integration_id),
+        netsuite_import_departments.si(integration_id),
+        netsuite_import_transactions.si(integration_id),
+        netsuite_import_transaction_lines.si(integration_id),
+        netsuite_import_transaction_accounting_lines.si(integration_id)
     )
     task_chain.apply_async()
     logger.info(f"Dispatched NetSuite sync tasks for integration: {integration_id}")
