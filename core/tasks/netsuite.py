@@ -29,7 +29,7 @@ def netsuite_import_accounting_periods(integration_id):
 def netsuite_import_entity(integration_id):
     integration = Integration.objects.get(pk=integration_id)
     importer = NetSuiteImporter(integration)
-    importer.import_entity()
+    importer.import_entities()
     logger.info(f"NetSuite entity imported for integration: {integration}")
 
 @shared_task
