@@ -64,11 +64,11 @@ def xero_map_general_ledger_task(integration_id, since_str=None):
     logger.info(f"Xero general ledger mapped for integration id: {integration_id}")
 
 @shared_task
-def wait_10_seconds(integration_id):
+def wait_60_seconds(integration_id):
     """
-    Waits for 10 seconds before returning.
+    Waits for 60 seconds before returning.
     """
-    time.sleep(10)
+    time.sleep(60)
     return integration_id
 
 @shared_task
@@ -89,17 +89,17 @@ def sync_xero_data(since_str: str = None):
     for integration in eligible_integrations:
         task_chain = chain(
             xero_sync_accounts_task.si(integration.id, since_str),
-            wait_10_seconds.si(integration.id),
+            wait_60_seconds.si(integration.id),
             xero_import_journal_lines_task.si(integration.id, since_str),
-            wait_10_seconds.si(integration.id),
+            wait_60_seconds.si(integration.id),
             xero_import_contacts_task.si(integration.id, since_str),
-            wait_10_seconds.si(integration.id),
+            wait_60_seconds.si(integration.id),
             xero_import_invoices_task.si(integration.id, since_str),
-            wait_10_seconds.si(integration.id),
+            wait_60_seconds.si(integration.id),
             xero_import_bank_transactions_task.si(integration.id, since_str),
-            wait_10_seconds.si(integration.id),
+            wait_60_seconds.si(integration.id),
             xero_import_budgets_task.si(integration.id, since_str),
-            wait_10_seconds.si(integration.id),
+            wait_60_seconds.si(integration.id),
             xero_map_general_ledger_task.si(integration.id, since_str)
         )
         task_chain.apply_async()

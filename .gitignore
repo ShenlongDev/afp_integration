@@ -81,3 +81,11 @@ db.sqlite3-journal
 
 
 *.log
+
+# Celery
+celerybeat-schedule.dat
+celerybeat-schedule.dir
+celerybeat-schedule.bak
+celerybeat.pid
+celerybeat.log
+

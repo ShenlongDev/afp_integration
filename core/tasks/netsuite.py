@@ -76,12 +76,12 @@ def netsuite_import_transaction_accounting_lines(integration_id):
     logger.info(f"NetSuite transaction accounting lines imported for integration: {integration}")
 
 @shared_task
-def wait_10_seconds(integration_id):
+def wait_60_seconds(integration_id):
     """
     Waits for 10 seconds before returning.
     This task ensures at least a 10-second delay after the previous task.
     """
-    time.sleep(10)
+    time.sleep(60)
     return integration_id
 
 @shared_task
@@ -101,21 +101,21 @@ def sync_netsuite_data(integration_id):
     """
     task_chain = chain(
         netsuite_import_accounts.si(integration_id),
-        wait_10_seconds.si(integration_id),
+        wait_60_seconds.si(integration_id),
         netsuite_import_accounting_periods.si(integration_id),
-        wait_10_seconds.si(integration_id),
+        wait_60_seconds.si(integration_id),
         netsuite_import_entity.si(integration_id),
-        wait_10_seconds.si(integration_id),
+        wait_60_seconds.si(integration_id),
         netsuite_import_vendors.si(integration_id),
-        wait_10_seconds.si(integration_id),
+        wait_60_seconds.si(integration_id),
         netsuite_import_subsidiary.si(integration_id),
-        wait_10_seconds.si(integration_id),
+        wait_60_seconds.si(integration_id),
         netsuite_import_departments.si(integration_id),
-        wait_10_seconds.si(integration_id),
+        wait_60_seconds.si(integration_id),
         netsuite_import_transactions.si(integration_id),
-        wait_10_seconds.si(integration_id),
+        wait_60_seconds.si(integration_id),
         netsuite_import_transaction_lines.si(integration_id),
-        wait_10_seconds.si(integration_id),
+        wait_60_seconds.si(integration_id),
         netsuite_import_transaction_accounting_lines.si(integration_id),
         wait_and_reschedule.si(integration_id)
     )
