@@ -308,8 +308,8 @@ BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 
 CELERY_BEAT_SCHEDULE = {
-    'dispatcher-every-5-seconds': {
+    'dispatcher-every-200-seconds': {
         'task': 'core.tasks.general.dispatcher',
-        'schedule': 5.0,
+        'schedule': 200.0,
     },
 }
