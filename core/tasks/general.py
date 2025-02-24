@@ -60,6 +60,7 @@ def process_data_import_task(self, integration_id, integration_type, since_date_
     module_config = MODULES[integration_type]
     ImporterClass = module_config['client']
     print(f"ImporterClass: {ImporterClass}, integration: {integration}, since_date: {since_date}\n\n\n/n/n/n")
+    logger.info(f"ImporterClass: {ImporterClass}, integration: {integration}, since_date: {since_date}\n\n\n/n/n/n")
     importer = ImporterClass(integration, since_date)
     
     if selected_modules:
