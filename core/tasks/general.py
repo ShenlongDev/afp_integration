@@ -120,7 +120,6 @@ def dispatcher(self):
         hp_task = get_high_priority_task()
         if hp_task:
             logger.info("High priority task found: %s", hp_task)
-            # Dispatch the high-priority task (using a priority value if supported)
             process_data_import_task.apply_async(
                 args=[
                     hp_task.integration.id,
@@ -128,7 +127,7 @@ def dispatcher(self):
                     hp_task.since_date.strftime("%Y-%m-%d"),
                     hp_task.selected_modules
                 ],
-                priority=0  # Lower number means higher priority in many brokers
+                priority=0
             )
             hp_task.processed = True
             hp_task.save(update_fields=['processed'])
@@ -148,5 +147,4 @@ def dispatcher(self):
         log_task_event("dispatcher", "success",
                        f"Task completed successfully at {timezone.now()}")
     finally:
-        # Re-enqueue the dispatcher after a short delay to keep the loop going.
         dispatcher.apply_async(countdown=5)

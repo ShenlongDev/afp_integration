@@ -5,13 +5,11 @@ from django.urls import path
 from django.shortcuts import render, redirect
 from django.contrib import messages
 
-from core.tasks import (
-    xero_sync_accounts_task, 
-    netsuite_import_accounts,  
-)
+
+from integrations.models.models import HighPriorityTask
 
 class DataImportAdmin(admin.ModelAdmin):
-    change_list_template = "admin/data_import_changelist.html"  # custom template for the changelist
+    change_list_template = "admin/data_import_changelist.html"  
 
     def get_urls(self):
         urls = super().get_urls()
@@ -24,38 +22,23 @@ class DataImportAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             form = DataImportForm(request.POST)
             if form.is_valid():
+                integration = form.cleaned_data['integration']
                 integration_type = form.cleaned_data['integration_type']
-                organisation = form.cleaned_data['organisation']
-                integration = form.cleaned_data.get('integration')
                 since_date = form.cleaned_data['since_date']
-                modules = form.cleaned_data.get('modules')
-                since_str = since_date.strftime('%Y-%m-%d')
-
-                # For demonstration, we trigger a simple celery task.
-                # In a real scenario, you might dispatch one task per module or build a chain.
-                if integration_type.capitalize() == 'XERO':
-                    if integration:
-                        # Dispatch tasks for the selected integration
-                        xero_sync_accounts_task.delay(integration.id, since_str)
-                        # Dispatch other tasks (e.g., journal lines, contacts, etc.) as needed.
-                    else:
-                        # If no specific integration is selected, you might run for all Xero integrations.
-                        # For example, call a task that loops through integrations.
-                        from core.tasks import sync_xero_data
-                        sync_xero_data.delay(since_str)
-                    messages.success(request, "Xero import has been initiated.")
-                elif integration_type.capitalize() == 'NETSUITE':
-                    if integration:
-                        netsuite_import_accounts.delay(integration.id)
-                        # Similarly, dispatch additional tasks based on modules.
-                    else:
-                        # For all NetSuite integrations:
-                        from core.tasks import sync_netsuite_data
-                        sync_netsuite_data.delay(organisation.id)  # example parameter
-                    messages.success(request, "NetSuite import has been initiated.")
-                else:
-                    messages.error(request, "Unknown integration type.")
-
+                selected_modules = form.cleaned_data.get('modules', [])
+                
+                HighPriorityTask.objects.create(
+                    integration=integration,
+                    integration_type=integration_type,
+                    since_date=since_date,
+                    selected_modules=selected_modules,
+                    processed=False  
+                )
+                
+                messages.info(
+                    request,
+                    "High priority data import record has been created. It will be processed shortly."
+                )
                 return redirect("..")
         else:
             form = DataImportForm()
