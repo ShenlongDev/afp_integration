@@ -782,6 +782,9 @@ class NetSuiteImporter:
 
             def process_accounting_line(r):
                 try:
+                    if str(decimal_or_none(r.get("credit"))) == "3.75":
+                        logger.info(f"r: {r}")
+                        print(f"r: {r}")
                     last_modified = self.parse_datetime(r.get("lastmodifieddate"))
                     from integrations.models.netsuite.temp import NetSuiteTransactionAccountingLine1
                     NetSuiteTransactionAccountingLine1.objects.update_or_create(
