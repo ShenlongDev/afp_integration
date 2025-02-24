@@ -25,8 +25,14 @@ class SyncTableLogsAdmin(admin.ModelAdmin):
 class HighPriorityTaskAdmin(admin.ModelAdmin):
     list_display = ('integration', 'integration_type', 'since_date', 'selected_modules', 'processed')
     search_fields = ('integration__org__name', 'integration_type', 'since_date', 'selected_modules', 'processed')
-    # restrict to add the record directly from the admin site
+
     def has_add_permission(self, request):
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        return False
+    
+    def has_change_permission(self, request, obj=None):
         return False
 
 admin.site.register(Integration, IntegrationAdmin)
