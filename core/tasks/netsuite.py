@@ -4,6 +4,7 @@ Tasks for handling NetSuite integrations including data import and token refresh
 
 import logging
 from celery import shared_task, chain
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -75,20 +76,48 @@ def netsuite_import_transaction_accounting_lines(integration_id):
     logger.info(f"NetSuite transaction accounting lines imported for integration: {integration}")
 
 @shared_task
+def wait_10_seconds(integration_id):
+    """
+    Waits for 10 seconds before returning.
+    This task ensures at least a 10-second delay after the previous task.
+    """
+    time.sleep(10)
+    return integration_id
+
+@shared_task
+def wait_and_reschedule(integration_id):
+    """
+    Once the chain is complete, waits 10 seconds and then re-dispatches the entire sync
+    chain for continuous operation.
+    """
+    logger.info(f"Final wait complete for integration {integration_id}. Rescheduling next sync iteration...")
+    sync_netsuite_data.apply_async(args=[integration_id], countdown=10)
+
+@shared_task
 def sync_netsuite_data(integration_id):
     """
-    Dispatches a chain of NetSuite import tasks for a given integration.
+    Dispatches a chain of NetSuite import tasks for a given integration,
+    ensuring at least a 10-second delay after each task completion.
     """
     task_chain = chain(
         netsuite_import_accounts.si(integration_id),
+        wait_10_seconds.si(integration_id),
         netsuite_import_accounting_periods.si(integration_id),
+        wait_10_seconds.si(integration_id),
         netsuite_import_entity.si(integration_id),
+        wait_10_seconds.si(integration_id),
         netsuite_import_vendors.si(integration_id),
+        wait_10_seconds.si(integration_id),
         netsuite_import_subsidiary.si(integration_id),
+        wait_10_seconds.si(integration_id),
         netsuite_import_departments.si(integration_id),
+        wait_10_seconds.si(integration_id),
         netsuite_import_transactions.si(integration_id),
+        wait_10_seconds.si(integration_id),
         netsuite_import_transaction_lines.si(integration_id),
-        netsuite_import_transaction_accounting_lines.si(integration_id)
+        wait_10_seconds.si(integration_id),
+        netsuite_import_transaction_accounting_lines.si(integration_id),
+        wait_and_reschedule.si(integration_id)
     )
     task_chain.apply_async()
     logger.info(f"Dispatched NetSuite sync tasks for integration: {integration_id}")

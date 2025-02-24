@@ -5,6 +5,7 @@ Tasks for handling Xero integrations including syncing and data import.
 import logging
 from celery import shared_task, chain
 from datetime import datetime
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +64,18 @@ def xero_map_general_ledger_task(integration_id, since_str=None):
     logger.info(f"Xero general ledger mapped for integration id: {integration_id}")
 
 @shared_task
+def wait_10_seconds(integration_id):
+    """
+    Waits for 10 seconds before returning.
+    """
+    time.sleep(10)
+    return integration_id
+
+@shared_task
 def sync_xero_data(since_str: str = None):
     """
-    Finds all eligible Xero integrations and begins the sync chain for each.
+    Finds all eligible Xero integrations and dispatches a chain of sync tasks
+    for each, ensuring at least a 10-second delay between each task.
     """
     from integrations.services.utils import get_integrations_by_integration_type
     
@@ -77,4 +87,20 @@ def sync_xero_data(since_str: str = None):
         return
 
     for integration in eligible_integrations:
+        task_chain = chain(
+            xero_sync_accounts_task.si(integration.id, since_str),
+            wait_10_seconds.si(integration.id),
+            xero_import_journal_lines_task.si(integration.id, since_str),
+            wait_10_seconds.si(integration.id),
+            xero_import_contacts_task.si(integration.id, since_str),
+            wait_10_seconds.si(integration.id),
+            xero_import_invoices_task.si(integration.id, since_str),
+            wait_10_seconds.si(integration.id),
+            xero_import_bank_transactions_task.si(integration.id, since_str),
+            wait_10_seconds.si(integration.id),
+            xero_import_budgets_task.si(integration.id, since_str),
+            wait_10_seconds.si(integration.id),
+            xero_map_general_ledger_task.si(integration.id, since_str)
+        )
+        task_chain.apply_async()
         logger.info(f"Dispatched Xero sync tasks for integration: {integration}") 

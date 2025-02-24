@@ -371,7 +371,7 @@ class NetSuiteImporter:
         
         batch_size = 500
         total_imported = 0
-        min_id = "0"  # This will be updated after each batch
+        min_id = 0  # Use numeric zero.
         marker = None
 
         while True:
@@ -441,11 +441,11 @@ class NetSuiteImporter:
                             {marker_clause}
                         ORDER BY 
                             ID ASC
-                        FETCH NEXT {batch_size} ROWS ONLY
+                        FETCH FIRST {batch_size} ROWS ONLY
                     """
 
                     rows = list(self.client.execute_suiteql(query))
-                    print(f"fetched {len(rows)} transaction records at {min_id}")
+                    print(f"fetched {len(rows)} transaction records at min_id {min_id}")
                     if not rows:
                         break
                     
@@ -517,7 +517,7 @@ class NetSuiteImporter:
 
                     BatchUtils.process_in_batches(rows, process_transaction, batch_size=batch_size)
                     
-                    # Update marker and the min_id for the next batch
+                    # Update marker and the min_id for the next batch.
                     last_row = rows[-1]
                     new_marker_date_raw = last_row.get("LASTMODIFIEDDATE")
                     new_marker_id = last_row.get("ID")
@@ -528,8 +528,11 @@ class NetSuiteImporter:
                     else:
                         new_marker_date_str = "1970-01-01 00:00:00"
                     
+                    # If no valid new_marker_id, then exit loop.
+                    if new_marker_id is None:
+                        break
+                    
                     marker = (new_marker_date_str, new_marker_id)
-                    # <-- Update min_id using the last record's ID so subsequent queries pick up where we left off.
                     min_id = new_marker_id
                     total_imported += len(rows)
                     
@@ -550,6 +553,7 @@ class NetSuiteImporter:
 
         logger.info(f"Imported Transactions: {total_imported} records processed.")
 
+    
     # ------------------------------------------------------------
     # 8) Transform General Ledger (from transformed transactions)
     # ------------------------------------------------------------
