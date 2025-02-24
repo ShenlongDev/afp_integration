@@ -21,7 +21,6 @@ def release_global_lock():
     """
     cache.delete(GLOBAL_TASK_LOCK_KEY)
 
-# Log task events (assumes TaskLog model exists)
 from core.models import TaskLog 
 
 def log_task_event(task_name, status, detail):
