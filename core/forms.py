@@ -59,28 +59,28 @@ class DataImportForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Always update the integration_type choices from MODULES
+
+        # Always update integration_type choices from MODULES.
         integration_choices = get_integration_type_choices()
         self.fields['integration_type'].choices = integration_choices
 
-        # Set a default integration type if none is provided
-        integration_type = self.data.get('integration_type') or self.initial.get('integration_type')
+        # Get raw integration_type from POST data or initial data.
+        raw_integration_type = (
+            self.data.get('integration_type') or self.initial.get('integration_type') or ''
+        )
+        # Immediately ensure it is lower-case.
+        integration_type = raw_integration_type.lower() if raw_integration_type else ''
+
+        # If no integration type is provided, use the first available choice.
         if not integration_type and integration_choices:
-            integration_type = integration_choices[0][0]
+            integration_type = integration_choices[0][0].lower()
             self.initial['integration_type'] = integration_type
 
-        # Update the modules field based on the integration_type.
-        if integration_type:
-            self.fields['modules'].choices = get_module_choices(integration_type)
-        else:
-            self.fields['modules'].choices = []
-
-        # NEW: Limit the organisations to only the ones eligible for the selected integration type.
+        # Use the normalized integration_type consistently.
+        self.fields['modules'].choices = get_module_choices(integration_type)
         self.fields['organisation'].queryset = get_organisations_by_integration_type(integration_type)
-        
-        # Optionally, if you have a field to choose a specific integration,
-        # update its queryset based on the selected organisation.
+
+        # (Optional) If you have a dependent integration field, update its queryset.
         if 'organisation' in self.data:
             try:
                 org_id = int(self.data.get('organisation'))
@@ -93,20 +93,39 @@ class DataImportForm(forms.Form):
             if 'integration' in self.fields:
                 self.fields['integration'].queryset = Integration.objects.filter(org=org)
 
+    def clean_integration_type(self):
+        integration_type = self.cleaned_data.get('integration_type', '')
+        # Convert to lowercase for consistent comparison
+        integration_type = integration_type.lower() if integration_type else ''
+        
+        # Check if integration_type exists in MODULES after normalization
+        if not integration_type:
+            raise forms.ValidationError("Integration type is required.")
+            
+        if integration_type not in MODULES:
+            # Get list of valid types for error message
+            valid_types = ", ".join(MODULES.keys())
+            raise forms.ValidationError(
+                f"'{integration_type}' is not a valid integration type. "
+                f"Valid types are: {valid_types}"
+            )
+            
+        return integration_type
+
+
     def clean(self):
         cleaned_data = super().clean()
         organisation = cleaned_data.get('organisation')
         integration_type = cleaned_data.get('integration_type')
 
         if organisation and integration_type:
-            # Get the appropriate credential fields based on integration type
+            # Determine the required credential fields based on the integration type.
             cred_fields = {
                 'xero': ('xero_client_id', 'xero_client_secret'),
                 'netsuite': ('netsuite_client_id', 'netsuite_client_secret'),
             }
-            
             id_field, secret_field = cred_fields.get(integration_type, (None, None))
-            
+
             if id_field and secret_field:
                 integration = Integration.objects.filter(
                     org=organisation,
@@ -115,13 +134,14 @@ class DataImportForm(forms.Form):
                         f'{secret_field}__isnull': False
                     }
                 ).first()
-                
+
                 if not integration:
                     raise ValidationError(
-                        f"No {integration_type.capitalize()} integration found with valid credentials for this organisation."
+                        f"No {integration_type.capitalize()} integration found with valid credentials for "
+                        f"this organisation."
                     )
-                
-                # Store the integration in cleaned_data for use in the view
+
+                # Store the integration for later use.
                 cleaned_data['integration'] = integration
 
         return cleaned_data
@@ -137,26 +157,21 @@ class DataImportForm(forms.Form):
         selected_modules = self.cleaned_data.get('modules', [])
 
         try:
-            # Get the appropriate importer class and methods from MODULES
+            # Get importer class and methods.
             module_config = MODULES[integration_type]
             ImporterClass = module_config['client']
-            
-            # Instantiate the importer with the integration and since_date
             importer = ImporterClass(integration, since_date)
-            
+
             if selected_modules:
-                # Process only selected modules
                 for module in selected_modules:
                     import_func = module_config['import_methods'].get(module)
                     if import_func:
                         import_func(importer)
             else:
-                # If no modules selected and full_import is available, use it
                 full_import = module_config.get('full_import')
                 if full_import:
                     full_import(importer)
                 else:
-                    # If no full_import available, process all modules
                     for import_func in module_config['import_methods'].values():
                         import_func(importer)
 

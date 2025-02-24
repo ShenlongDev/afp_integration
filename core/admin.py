@@ -33,7 +33,7 @@ class DataImportAdmin(admin.ModelAdmin):
 
                 # For demonstration, we trigger a simple celery task.
                 # In a real scenario, you might dispatch one task per module or build a chain.
-                if integration_type == 'XERO':
+                if integration_type.capitalize() == 'XERO':
                     if integration:
                         # Dispatch tasks for the selected integration
                         xero_sync_accounts_task.delay(integration.id, since_str)
@@ -44,7 +44,7 @@ class DataImportAdmin(admin.ModelAdmin):
                         from core.tasks import sync_xero_data
                         sync_xero_data.delay(since_str)
                     messages.success(request, "Xero import has been initiated.")
-                elif integration_type == 'NETSUITE':
+                elif integration_type.capitalize() == 'NETSUITE':
                     if integration:
                         netsuite_import_accounts.delay(integration.id)
                         # Similarly, dispatch additional tasks based on modules.

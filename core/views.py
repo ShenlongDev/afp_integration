@@ -29,14 +29,14 @@ def import_data_view(request):
                 integration_type=integration_type,
                 since_date=since_date,
                 selected_modules=selected_modules,
-                processed=False  # This flag ensures it's available for the dispatcher.
+                processed=False 
             )
             
             messages.info(
                 request,
                 "High priority data import record has been created. It will be processed shortly."
             )
-            return redirect('admin:import-data')
+            return redirect('core:import-data')
     else:
         form = DataImportForm()
     
@@ -45,7 +45,7 @@ def import_data_view(request):
 
 
 @csrf_exempt
-def import_data_view(request):
+def import_data_view_(request):
     """
     Toggle the kill switch on or off.
     This view requires a secret token (provided as ?token=...) to be passed.
