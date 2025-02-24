@@ -2,7 +2,8 @@ from django.contrib import admin
 from integrations.models.models import (
     Integration,
     IntegrationAccessToken,
-    SyncTableLogs
+    SyncTableLogs,
+    HighPriorityTask
 )
 
 
@@ -21,6 +22,12 @@ class SyncTableLogsAdmin(admin.ModelAdmin):
     search_fields = ('module_name', 'integration__org__name', 'organization__name', 'organization')
 
 
+class HighPriorityTaskAdmin(admin.ModelAdmin):
+    list_display = ('integration', 'integration_type', 'since_date', 'selected_modules', 'processed')
+    search_fields = ('integration__org__name', 'integration_type', 'since_date', 'selected_modules', 'processed')
+
+
 admin.site.register(Integration, IntegrationAdmin)
 admin.site.register(IntegrationAccessToken, IntegrationAccessTokenAdmin)
 admin.site.register(SyncTableLogs, SyncTableLogsAdmin) 
+admin.site.register(HighPriorityTask, HighPriorityTaskAdmin)
