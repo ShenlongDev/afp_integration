@@ -349,14 +349,12 @@ class NetSuiteImporter:
     # 7) Import Transactions (using keyset pagination and date filtering)
     # ------------------------------------------------------------
     def import_transactions(self, last_import_date: Optional[str] = None):
-        logger.info(
-            "Importing NetSuite Transactions " +
-            ("incrementally..." if (last_import_date or self.since_date) else "(full import)...")
-        )
+        logger.info("Importing NetSuite Transactions " +
+                    ("incrementally..." if (last_import_date or self.since_date) else "(full import)..."))
         
         batch_size = 500
         total_imported = 0
-        min_id = 0  # Use numeric zero.
+        min_id = "0"
         marker = None
 
         while True:
@@ -426,16 +424,15 @@ class NetSuiteImporter:
                             {marker_clause}
                         ORDER BY 
                             ID ASC
-                        FETCH FIRST {batch_size} ROWS ONLY
+                        FETCH NEXT {batch_size} ROWS ONLY
                     """
 
                     rows = list(self.client.execute_suiteql(query))
-                    print(f"fetched {len(rows)} transaction records at min_id {min_id}")
                     if not rows:
                         break
                     
                     logger.info(f"Fetched {len(rows)} transaction records (min_id: {min_id}).")
-
+                    print(f"Fetched {len(rows)} transaction records (min_id: {min_id}).")
                     def process_transaction(r):
                         txn_id = r.get("ID")
                         if not txn_id:
@@ -447,7 +444,7 @@ class NetSuiteImporter:
                             from integrations.models.netsuite.temp import NetSuiteTransactions1
                             NetSuiteTransactions1.objects.update_or_create(
                                 transactionid=str(txn_id),
-                                tenant_id=self.tenant_id,
+                                tenant_id=self.org.id,
                                 defaults={
                                     "abbrevtype": r.get("abbrevtype"),
                                     "approvalstatus": r.get("approvalstatus"),
@@ -500,12 +497,14 @@ class NetSuiteImporter:
                         except Exception as e:
                             logger.error(f"Error importing transaction row: {e}", exc_info=True)
 
+                    # Process the batch using BatchUtils
                     BatchUtils.process_in_batches(rows, process_transaction, batch_size=batch_size)
                     
-                    # Update marker and the min_id for the next batch.
+                    # Update marker based on the last row in the batch
                     last_row = rows[-1]
-                    new_marker_date_raw = last_row.get("LASTMODIFIEDDATE")
-                    new_marker_id = last_row.get("ID")
+                    min_id = last_row.get("id")
+                    new_marker_date_raw = last_row.get("lastmodifieddate")
+                    new_marker_id = last_row.get("id")
                     
                     if new_marker_date_raw:
                         new_marker_date = self.parse_datetime(new_marker_date_raw)
@@ -513,20 +512,16 @@ class NetSuiteImporter:
                     else:
                         new_marker_date_str = "1970-01-01 00:00:00"
                     
-                    # If no valid new_marker_id, then exit loop.
-                    if new_marker_id is None:
-                        break
-                    
                     marker = (new_marker_date_str, new_marker_id)
-                    min_id = new_marker_id
                     total_imported += len(rows)
                     
-                    logger.info(
-                        f"Processed batch. New marker: LASTMODIFIEDDATE={new_marker_date_str}, ID={new_marker_id}. "
-                        f"Total imported: {total_imported}"
-                    )
+                    logger.info(f"Processed batch. New marker: LASTMODIFIEDDATE={new_marker_date_str}, ID={new_marker_id}. Total imported: {total_imported}")
                     
-                    self.log_import_event(module_name="netsuite_transactions", fetched_records=total_imported)
+                    # Log import event within the same transaction
+                    self.log_import_event(
+                        module_name="netsuite_transactions",
+                        fetched_records=total_imported
+                    )
                     
                     if len(rows) < batch_size:
                         break
