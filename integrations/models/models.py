@@ -51,8 +51,8 @@ class IntegrationAccessToken(models.Model):
     token = models.TextField()
     refresh_token = models.TextField(null=True, blank=True)
     
-    expires_at = models.DateTimeField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
         return (

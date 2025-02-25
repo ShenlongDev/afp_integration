@@ -15,6 +15,12 @@ class IntegrationAdmin(admin.ModelAdmin):
 class IntegrationAccessTokenAdmin(admin.ModelAdmin):
     list_display = ('integration', 'integration_type', 'expires_at', 'created_at')
     search_fields = ('integration__org__name', 'integration_type', 'token', 'refresh_token', 'expires_at', 'created_at')
+    
+    def has_change_permission(self, request, obj=None):
+        return False
+    
+    def has_add_permission(self, request):
+        return False
 
 
 class SyncTableLogsAdmin(admin.ModelAdmin):
