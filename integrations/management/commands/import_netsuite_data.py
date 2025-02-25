@@ -106,7 +106,7 @@ class Command(BaseCommand):
                         integration,
                         since_date=since_date_formatted,
                         until_date=until_date_formatted
-                    )
+                    )   
 
                     import_methods = {
                         'vendors': lambda: importer.import_vendors(load_type="drop_and_reload"),

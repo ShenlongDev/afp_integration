@@ -353,197 +353,154 @@ class NetSuiteImporter:
                     ("incrementally..." if (last_import_date or self.since_date) else "(full import)..."))
         
         batch_size = 500
-        bulk_create_size = 1000
         total_imported = 0
-        min_id = "0"
-        marker = None
-
-        from integrations.models.netsuite.temp import NetSuiteTransactions1
-
+        min_id = 0
+        
+        # Determine the start date and build the date filter clause.
+        start_date = last_import_date or self.since_date
+        date_filter_clause = self.build_date_clause("LASTMODIFIEDDATE", start_date, None)
+        print(f"date_filter_clause: {date_filter_clause}")
         while True:
+            from django.db import close_old_connections
             close_old_connections()
             
-            try:
-                with transaction.atomic():
-                    marker_clause = ""
-                    if marker and marker[1] is not None:
-                        marker_clause = (
-                            f"AND (LASTMODIFIEDDATE > TO_DATE('{marker[0]}', 'YYYY-MM-DD HH24:MI:SS') OR "
-                            f"(LASTMODIFIEDDATE = TO_DATE('{marker[0]}', 'YYYY-MM-DD HH24:MI:SS') AND ID > {marker[1]}))"
-                        )
-
-                    query = f"""
-                        SELECT 
-                            Transaction.ID,
-                            Transaction.TranID,
-                            Transaction.TranDate,
-                            BUILTIN.DF(Transaction.PostingPeriod) AS PostingPeriod,
-                            Transaction.Memo,
-                            Transaction.Posting,
-                            BUILTIN.DF(Transaction.Status) AS Status,
-                            BUILTIN.DF(Transaction.CreatedBy) AS CreatedBy,
-                            BUILTIN.DF(Transaction.Subsidiary) AS Subsidiary,
-                            BUILTIN.DF(Transaction.Entity) AS Entity,
-                            Transaction.Type as type,
-                            Transaction.CreatedDate as createddate,
-                            BUILTIN.DF(Transaction.Currency) AS currency,
-                            Transaction.AbbrevType as abbrevtype,
-                            BUILTIN.DF(Transaction.ApprovalStatus) AS approvalstatus,
-                            BUILTIN.DF(Transaction.BalSegStatus) AS balsegstatus,
-                            Transaction.BillingStatus as billingstatus,
-                            Transaction.CloseDate as closedate,
-                            Transaction.CustomType as customtype,
-                            Transaction.DaysOpen as daysopen,
-                            Transaction.DaysOverdueSearch as daysoverduesearch,
-                            Transaction.DueDate as duedate,
-                            Transaction.ExchangeRate as exchangerate,
-                            Transaction.ExternalId as externalid,
-                            Transaction.ForeignAmountPaid as foreignamountpaid,
-                            Transaction.ForeignAmountUnpaid as foreignamountunpaid,
-                            Transaction.ForeignTotal as foreigntotal,
-                            Transaction.IsFinChrg as isfinchrg,
-                            Transaction.IsReversal as isreversal,
-                            BUILTIN.DF(Transaction.LastModifiedBy) AS lastmodifiedby,
-                            Transaction.LastModifiedDate as lastmodifieddate,
-                            Transaction.Nexus as nexus,
-                            Transaction.Number as number,
-                            Transaction.OrdPicked as ordpicked,
-                            Transaction.PaymentHold as paymenthold,
-                            Transaction.PrintedPickingTicket as printedpickingticket,
-                            Transaction.RecordType as recordtype,
-                            Transaction.Source as source,
-                            Transaction.ToBePrinted as tobeprinted,
-                            Transaction.TranDate as trandate,
-                            Transaction.TranDisplayName as trandisplayname,
-                            Transaction.TranId as tranid,
-                            Transaction.TransactionNumber as transactionnumber,
-                            Transaction.Void as void,
-                            Transaction.Voided as voided,
-                            BUILTIN.DF(Transaction.Terms) AS terms
-                        FROM 
-                            Transaction 
-                        WHERE 
-                            ID > {min_id}
-                            {marker_clause}
-                        ORDER BY 
-                            ID ASC
-                        FETCH NEXT {batch_size} ROWS ONLY
-                    """
-
-                    rows = list(self.client.execute_suiteql(query))
-                    if not rows:
-                        break
-                    
-                    logger.info(f"Fetched {len(rows)} transaction records (min_id: {min_id}).")
-                    print(f"Fetched {len(rows)} transaction records (min_id: {min_id}).")
-                    
-                    # Accumulate model instances for bulk insertion.
-                    transactions_to_create = []
-                    for r in rows:
-                        txn_id = r.get("id")
-                        if not txn_id:
-                            continue
-                        last_mod = self.parse_datetime(r.get("lastmodifieddate"))
-                        if not last_mod:
-                            continue
-                        try:
-                            instance = NetSuiteTransactions1(
-                                transactionid=str(txn_id),
-                                tenant_id=self.org.id,
-                                abbrevtype=r.get("abbrevtype"),
-                                approvalstatus=r.get("approvalstatus"),
-                                balsegstatus=r.get("balsegstatus"),
-                                billingstatus=r.get("billingstatus"),
-                                closedate=self.parse_date(r.get("closedate")),
-                                createdby=r.get("createdBy"),
-                                createddate=self.parse_date(r.get("createddate")),
-                                currency=r.get("currency"),
-                                customtype=r.get("customtype"),
-                                daysopen=r.get("daysopen"),
-                                daysoverduesearch=r.get("daysoverduesearch"),
-                                duedate=self.parse_date(r.get("duedate")),
-                                entity=r.get("Entity"),
-                                exchangerate=decimal_or_none(r.get("exchangerate")),
-                                externalid=r.get("externalid"),
-                                foreignamountpaid=decimal_or_none(r.get("foreignamountpaid")),
-                                foreignamountunpaid=decimal_or_none(r.get("foreignamountunpaid")),
-                                foreigntotal=decimal_or_none(r.get("foreigntotal")),
-                                number=decimal_or_none(r.get("number")),
-                                isfinchrg=r.get("isfinchrg"),
-                                isreversal=r.get("isreversal"),
-                                lastmodifiedby=r.get("lastmodifiedby"),
-                                lastmodifieddate=last_mod,
-                                nexus=r.get("nexus"),
-                                ordpicked=r.get("ordpicked"),
-                                paymenthold=r.get("paymenthold"),
-                                posting=r.get("posting"),
-                                postingperiod=r.get("postingperiod"),
-                                printedpickingticket=r.get("printedpickingticket"),
-                                recordtype=r.get("recordtype"),
-                                source=r.get("source"),
-                                status=r.get("status"),
-                                terms=r.get("terms"),
-                                tobeprinted=r.get("tobeprinted"),
-                                trandate=self.parse_date(r.get("trandate")),
-                                trandisplayname=r.get("trandisplayname"),
-                                tranid=r.get("tranid"),
-                                transactionnumber=r.get("transactionnumber"),
-                                type=r.get("type"),
-                                userevenuearrangement=r.get("userevenuearrangement"),
-                                visibletocustomer=r.get("visibletocustomer"),
-                                void_field=r.get("void"),
-                                voided=r.get("voided"),
-                                memo=r.get("memo"),
-                                record_date=last_mod,
-                                consolidation_key=self.integration.netsuite_account_id,
-                            )
-                            transactions_to_create.append(instance)
-                        except Exception as e:
-                            logger.error(f"Error processing transaction row {txn_id}: {e}", exc_info=True)
-
-                    if transactions_to_create:
-                        # Bulk create in chunks of bulk_create_size.
-                        NetSuiteTransactions1.objects.bulk_create(
-                            transactions_to_create, 
-                            batch_size=bulk_create_size, 
-                            ignore_conflicts=True
-                        )
-                        total_imported += len(transactions_to_create)
-
-                    # Update marker based on the last row in the batch.
-                    last_row = rows[-1]
-                    new_marker_date_raw = last_row.get("lastmodifieddate")
-                    new_marker_id = last_row.get("id")  # Ensure the correct key is used.
-
-                    if new_marker_date_raw:
-                        new_marker_date = self.parse_datetime(new_marker_date_raw)
-                        new_marker_date_str = new_marker_date.strftime("%Y-%m-%d %H:%M:%S") if new_marker_date else "1970-01-01 00:00:00"
-                    else:
-                        new_marker_date_str = "1970-01-01 00:00:00"
-                    
-                    marker = (new_marker_date_str, new_marker_id)
-                    min_id = new_marker_id
-                    
-                    logger.info(f"Processed batch. New marker: LASTMODIFIEDDATE={new_marker_date_str}, ID={new_marker_id}. Total imported: {total_imported}")
-                    
-                    # Log the import event within the same transaction.
-                    self.log_import_event(
-                        module_name="netsuite_transactions",
-                        fetched_records=total_imported
+            query = f"""
+                SELECT 
+                    Transaction.ID,
+                    Transaction.TranID,
+                    Transaction.TranDate,
+                    BUILTIN.DF(Transaction.PostingPeriod) AS PostingPeriod,
+                    Transaction.Memo,
+                    Transaction.Posting,
+                    BUILTIN.DF(Transaction.Status) AS Status,
+                    BUILTIN.DF(Transaction.CreatedBy) AS CreatedBy,
+                    BUILTIN.DF(Transaction.Subsidiary) AS Subsidiary,
+                    BUILTIN.DF(Transaction.Entity) AS Entity,
+                    Transaction.Type AS type,
+                    Transaction.CreatedDate AS createddate,
+                    BUILTIN.DF(Transaction.Currency) AS currency,
+                    Transaction.AbbrevType AS abbrevtype,
+                    BUILTIN.DF(Transaction.ApprovalStatus) AS approvalstatus,
+                    BUILTIN.DF(Transaction.BalSegStatus) AS balsegstatus,
+                    Transaction.BillingStatus AS billingstatus,
+                    Transaction.CloseDate AS closedate,
+                    Transaction.CustomType AS customtype,
+                    Transaction.DaysOpen AS daysopen,
+                    Transaction.DaysOverdueSearch AS daysoverduesearch,
+                    Transaction.DueDate AS duedate,
+                    Transaction.ExchangeRate AS exchangerate,
+                    Transaction.ExternalId AS externalid,
+                    Transaction.ForeignAmountPaid AS foreignamountpaid,
+                    Transaction.ForeignAmountUnpaid AS foreignamountunpaid,
+                    Transaction.ForeignTotal AS foreigntotal,
+                    Transaction.IsFinChrg AS isfinchrg,
+                    Transaction.IsReversal AS isreversal,
+                    BUILTIN.DF(Transaction.LastModifiedBy) AS lastmodifiedby,
+                    Transaction.LastModifiedDate AS lastmodifieddate,
+                    Transaction.Nexus AS nexus,
+                    Transaction.Number AS number,
+                    Transaction.OrdPicked AS ordpicked,
+                    Transaction.PaymentHold AS paymenthold,
+                    Transaction.PrintedPickingTicket AS printedpickingticket,
+                    Transaction.RecordType AS recordtype,
+                    Transaction.Source AS source,
+                    Transaction.ToBePrinted AS tobeprinted,
+                    Transaction.TranDate AS trandate,
+                    Transaction.TranDisplayName AS trandisplayname,
+                    Transaction.TranId AS tranid,
+                    Transaction.TransactionNumber AS transactionnumber,
+                    Transaction.Void AS void,
+                    Transaction.Voided AS voided,
+                    BUILTIN.DF(Transaction.Terms) AS terms
+                FROM 
+                    Transaction
+                WHERE 
+                    ID > {min_id}
+                    {date_filter_clause}
+                ORDER BY 
+                    ID ASC
+                FETCH NEXT {batch_size} ROWS ONLY
+            """
+            
+            rows = list(self.client.execute_suiteql(query))
+            print(f"fetched {len(rows)} transaction records, {min_id}")
+            if not rows:
+                break
+            def process_transaction(r):
+                txn_id = r.get("id")
+                if not txn_id:
+                    return
+                last_mod = self.parse_datetime(r.get("lastmodifieddate"))
+                if not last_mod:
+                    return
+                try:
+                    NetSuiteTransactions.objects.update_or_create(
+                        transactionid=str(txn_id),
+                        tenant_id=self.org.id,
+                        defaults={
+                                "abbrevtype": r.get("abbrevtype"),
+                                "approvalstatus": r.get("approvalstatus"),
+                                "balsegstatus": r.get("balsegstatus"),
+                                "billingstatus": r.get("billingstatus"),
+                                "closedate": self.parse_date(r.get("closedate")),
+                                "createdby": r.get("createdBy"),
+                                "createddate": self.parse_date(r.get("createddate")),
+                                "currency": r.get("currency"),
+                                "customtype": r.get("customtype"),
+                                "daysopen": r.get("daysopen"),
+                                "daysoverduesearch": r.get("daysoverduesearch"),
+                                "duedate": self.parse_date(r.get("duedate")),
+                                "entity": r.get("Entity"),
+                                "exchangerate": decimal_or_none(r.get("exchangerate")),
+                                "externalid": r.get("externalid"),
+                                "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
+                                "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
+                                "foreigntotal": decimal_or_none(r.get("foreigntotal")),
+                                "number": decimal_or_none(r.get("number")),
+                                "isfinchrg": r.get("isfinchrg"),
+                                "isreversal": r.get("isreversal"),
+                                "lastmodifiedby": r.get("lastmodifiedby"),
+                                "lastmodifieddate": last_mod,
+                                "nexus": r.get("nexus"),
+                                "ordpicked": r.get("ordpicked"),
+                                "paymenthold": r.get("paymenthold"),
+                                "posting": r.get("posting"),
+                                "postingperiod": r.get("postingperiod"),
+                                "printedpickingticket": r.get("printedpickingticket"),
+                                "recordtype": r.get("recordtype"),
+                                "source": r.get("source"),
+                                "status": r.get("status"),
+                                "terms": r.get("terms"),
+                                "tobeprinted": r.get("tobeprinted"),
+                                "trandate": self.parse_date(r.get("trandate")),
+                                "trandisplayname": r.get("trandisplayname"),
+                                "tranid": r.get("tranid"),
+                                "transactionnumber": r.get("transactionnumber"),
+                                "type": r.get("type"),
+                                "userevenuearrangement": r.get("userevenuearrangement"),
+                                "visibletocustomer": r.get("visibletocustomer"),
+                                "void_field": r.get("void"),
+                                "voided": r.get("voided"),
+                                "memo": r.get("memo"),
+                                "record_date": last_mod,
+                                "consolidation_key": self.integration.netsuite_account_id,                        }
                     )
-                    
-                    if len(rows) < batch_size:
-                        break
+                except Exception as e:
+                    logger.error(f"Error importing transaction row: {e}", exc_info=True)
 
-            except Exception as e:
-                logger.error(f"Error importing transactions batch: {e}", exc_info=True)
-                close_old_connections()
-                continue
-
-        logger.info(f"Imported Transactions: {total_imported} records processed.")
-
+            logger.info(f"Fetched {len(rows)} transaction records (min_id: {min_id}).")
+            BatchUtils.process_in_batches(rows, process_transaction, batch_size=batch_size)
+            total_imported += len(rows)
+            
+            # Set min_id for the next batch as the last row's ID.
+            min_id = rows[-1].get("id")
+            logger.info(f"Processed batch. New min_id: {min_id}, Total imported: {total_imported}.")
+            
+            if len(rows) < batch_size:
+                break
         
-    
+        logger.info(f"Completed importing transactions. Total imported: {total_imported}.")
+
     # ------------------------------------------------------------
     # 8) Transform General Ledger (from transformed transactions)
     # ------------------------------------------------------------
