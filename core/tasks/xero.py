@@ -74,8 +74,8 @@ def wait_60_seconds(integration_id):
 @shared_task
 def sync_xero_data(since_str: str = None):
     """
-    Finds all eligible Xero integrations and dispatches a chain of sync tasks
-    for each, ensuring at least a 10-second delay between each task.
+    Original task: Finds all eligible Xero integrations and dispatches a chain of sync tasks
+    for each.
     """
     from integrations.services.utils import get_integrations_by_integration_type
     
@@ -99,8 +99,29 @@ def sync_xero_data(since_str: str = None):
             xero_import_bank_transactions_task.si(integration.id, since_str),
             wait_60_seconds.si(integration.id),
             xero_import_budgets_task.si(integration.id, since_str),
-            # wait_60_seconds.si(integration.id),
-            # xero_map_general_ledger_task.si(integration.id, since_str)
         )
         task_chain.apply_async()
-        logger.info(f"Dispatched Xero sync tasks for integration: {integration}") 
+        logger.info(f"Dispatched Xero sync tasks for integration: {integration}")
+
+@shared_task
+def sync_single_xero_data(integration_id, since_str: str = None):
+    """
+    Sync tasks for a single Xero integration.
+    This chain executes all required sub-tasks sequentially and waits for completion.
+    """
+    since_str = since_str or datetime.now().strftime('%Y-%m-%d')
+    task_chain = chain(
+        xero_sync_accounts_task.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        xero_import_journal_lines_task.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        xero_import_contacts_task.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        xero_import_invoices_task.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        xero_import_bank_transactions_task.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        xero_import_budgets_task.si(integration_id, since_str),
+    )
+    result = task_chain.apply_async()
+    return result.get()  # Wait for chain to complete and return its result 

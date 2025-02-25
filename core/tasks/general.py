@@ -1,5 +1,5 @@
 import logging
-from celery import shared_task
+from celery import shared_task, chain
 from django.core.cache import cache
 from django.utils import timezone
 from datetime import datetime
@@ -46,7 +46,8 @@ def get_high_priority_task():
 @shared_task(bind=True, max_retries=3)
 def run_data_sync(self):
     """
-    Dispatches sync tasks for Netsuite and Xero integrations.
+    (Deprecated) Original integration‑level sync task.
+    Kept for high priority tasks if needed.
     """
     if not acquire_global_lock():
         logger.info("run_data_sync: Another top-level sync is in progress. Retrying in 10 seconds...")
@@ -72,13 +73,54 @@ def run_data_sync(self):
     finally:
         release_global_lock()
 
+@shared_task(bind=True, queue="org_sync")
+def sync_organization(self, organization_id):
+    """
+    Syncs all integrations for a given organization sequentially.
+    Uses a cache lock to prevent concurrent sync for the same organization.
+    This task is assigned to a dedicated Celery queue ("org_sync") where you
+    configure a concurrency of 3 (or more) so that only that many organizations are processed in parallel.
+    """
+    lock_key = f"org_sync_lock_{organization_id}"
+    if not cache.add(lock_key, "in_progress", 3600):
+        logger.info("Organization %s is already being processed. Skipping.", organization_id)
+        return
+    try:
+        from integrations.models.models import Integration
+        logger.info("Starting sync for organization %s", organization_id)
+        org_integrations = Integration.objects.filter(organization=organization_id).order_by('id')
+        for integration in org_integrations:
+            if integration.integration_type.lower() == "xero":
+                logger.info("Syncing Xero integration %s for organization %s", integration.id, organization_id)
+                from core.tasks.xero import sync_single_xero_data
+                result = sync_single_xero_data.apply_async(args=[integration.id])
+                result.get()  # Wait until the Xero sync chain completes before proceeding
+            elif integration.integration_type.lower() == "netsuite":
+                logger.info("Syncing NetSuite integration %s for organization %s", integration.id, organization_id)
+                from core.tasks.netsuite import sync_single_netsuite_data
+                result = sync_single_netsuite_data.apply_async(args=[integration.id])
+                result.get()  # Wait until the NetSuite sync chain completes before proceeding
+            else:
+                logger.warning("Unknown integration type %s for integration %s", integration.integration_type, integration.id)
+        logger.info("Completed sync for organization %s", organization_id)
+        log_task_event("sync_organization", "success", f"Organization {organization_id} sync completed at {timezone.now()}")
+    except Exception as exc:
+        logger.error("Error syncing organization %s: %s", organization_id, exc, exc_info=True)
+        log_task_event("sync_organization", "failed", f"Organization {organization_id} sync failed: {exc}")
+        raise exc
+    finally:
+        cache.delete(lock_key)
+
 @shared_task(bind=True, max_retries=3)
 def dispatcher(self):
     """
-    Continuously polls for high priority tasks and normal sync tasks.
-    If a high priority task is found, it processes that task inline;
-    otherwise, it dispatches the normal sync tasks.
-    This task re-enqueues itself every few seconds.
+    Continuously polls for high priority tasks and organization-level sync tasks.
+    If a high priority task is found, it is processed inline.
+    Otherwise, the dispatcher looks for organizations (based on the available integrations)
+    that are not already in progress (i.e. lacking the 'org_sync_lock') and dispatches a
+    sync_organization task.
+    
+    This task re-enqueues itself every 5 seconds.
     """
     try:
         hp_task = get_high_priority_task()
@@ -91,7 +133,6 @@ def dispatcher(self):
                 hp_task.selected_modules
             )
 
-            # --- Begin inline business logic previously in process_data_import_task ---
             from integrations.models.models import Integration
             try:
                 integration = Integration.objects.get(pk=hp_task.integration.id)
@@ -137,18 +178,20 @@ def dispatcher(self):
                     "process_data_import_task", "dispatched",
                     f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}"
                 )
-            # --- End inline business logic ---
-
-            # Mark the high priority task as processed regardless of outcome.
+            # Mark high priority task as processed.
             hp_task.processed = True
             hp_task.save(update_fields=['processed'])
         else:
-            logger.info("No high priority task. Running continuous data sync.")
-            run_data_sync.delay()
-            log_task_event(
-                "run_data_sync", "dispatched",
-                f"Continuous sync task dispatched at {timezone.now()}"
-            )
+            from integrations.models.models import Integration
+            # Get all distinct organization IDs from integrations.
+            org_ids = list(Integration.objects.values_list('organization', flat=True).distinct())
+            for org_id in org_ids:
+                lock_key = f"org_sync_lock_{org_id}"
+                if not cache.get(lock_key):
+                    from core.tasks.general import sync_organization
+                    sync_organization.apply_async(args=[org_id])
+                    logger.info("Dispatched sync for organization %s", org_id)
+            log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
     except Exception as exc:
         logger.error("Dispatcher encountered an error: %s", exc, exc_info=True)
         log_task_event("dispatcher", "failed", str(exc))
