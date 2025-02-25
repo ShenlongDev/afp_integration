@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 from integrations.models.models import Integration, IntegrationAccessToken
 from integrations.services.netsuite.auth import NetSuiteAuthService
-from integrations.services.netsuite.importer import NetSuiteImporter  # Adjust import as needed
+from integrations.services.netsuite.importer import NetSuiteImporter 
+
 
 @shared_task
 def netsuite_import_accounts(integration_id):

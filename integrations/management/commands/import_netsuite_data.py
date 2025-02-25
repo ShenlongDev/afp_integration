@@ -118,8 +118,8 @@ class Command(BaseCommand):
                         'departments': importer.import_departments,
                         'entities': importer.import_entities,
                         'accounting_periods': importer.import_accounting_periods,
-                        'general_ledger': importer.transform_general_ledger,
-                        'transformed_transactions': importer.transform_transactions,
+                        # 'general_ledger': importer.transform_general_ledger,
+                        # 'transformed_transactions': importer.transform_transactions,
                     }
 
                     if not components:

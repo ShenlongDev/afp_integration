@@ -82,11 +82,8 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 1) Import Vendors
     # ------------------------------------------------------------
-    def import_vendors(self, load_type="drop_and_reload"):
+    def import_vendors(self):
         logger.info("Importing NetSuite Vendors...")
-        if load_type == "drop_and_reload":
-            NetSuiteVendors.objects.filter(tenant_id=self.tenant_id).delete()
-
         date_clause = self.build_date_clause("LASTMODIFIEDDATE", self.since_date, self.until_date)
         query = f"SELECT * FROM Vendor WHERE 1=1 {date_clause}"
         rows = list(self.client.execute_suiteql(query))
@@ -100,7 +97,7 @@ class NetSuiteImporter:
                 NetSuiteVendors.objects.update_or_create(
                     vendor_id=vendor_id,
                     defaults={
-                        "tenant_id": self.tenant_id,
+                        "tenant_id": self.org.id,
                         "entity_id": r.get("entityid"),
                         "is_person": bool_from_str(r.get("isperson")),
                         "is_inactive": bool_from_str(r.get("isinactive")),
@@ -122,11 +119,8 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 2) Import Subsidiaries
     # ------------------------------------------------------------
-    def import_subsidiaries(self, load_type="drop_and_reload"):
+    def import_subsidiaries(self):
         logger.info("Importing NetSuite Subsidiaries...")
-        if load_type == "drop_and_reload":
-            NetSuiteSubsidiaries.objects.filter(tenant_id=self.tenant_id).delete()
-
         date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
         query = f"""
             SELECT id, name, fullname, legalname, iselimination, currency, country, lastmodifieddate
@@ -144,7 +138,7 @@ class NetSuiteImporter:
                 NetSuiteSubsidiaries.objects.update_or_create(
                     subsidiary_id=sub_id,
                     defaults={
-                        "tenant_id": self.tenant_id,
+                        "tenant_id": self.org.id,
                         "name": r.get("name"),
                         "name_nohi": r.get("namenohierarchy"),
                         "full_name": r.get("fullname"),
@@ -166,11 +160,8 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 3) Import Departments
     # ------------------------------------------------------------
-    def import_departments(self, load_type="drop_and_reload"):
+    def import_departments(self):
         logger.info("Importing NetSuite Departments...")
-        if load_type == "drop_and_reload":
-            NetSuiteDepartments.objects.filter(tenant_id=self.tenant_id).delete()
-
         query = "SELECT id, name, fullname, subsidiary, isinactive FROM department ORDER BY id"
         rows = list(self.client.execute_suiteql(query))
 
@@ -182,7 +173,7 @@ class NetSuiteImporter:
                 NetSuiteDepartments.objects.update_or_create(
                     department_id=dept_id,
                     defaults={
-                        "tenant_id": self.tenant_id,
+                        "tenant_id": self.org.id,
                         "name": r.get("name"),
                         "full_name": r.get("fullname"),
                         "subsidiary": r.get("subsidiary"),
@@ -200,11 +191,9 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 4) Import Entities
     # ------------------------------------------------------------
-    def import_entities(self, load_type="drop_and_reload"):
+    def import_entities(self):
         logger.info("Importing NetSuite Entities...")
-        if load_type == "drop_and_reload":
-            NetSuiteEntity.objects.filter(tenant_id=self.tenant_id).delete()
-
+        
         date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
         query = f"SELECT * FROM entity WHERE 1=1 {date_clause}"
         rows = list(self.client.execute_suiteql(query))
@@ -219,7 +208,7 @@ class NetSuiteImporter:
                     entity_id=ent_id,
                     id=r.get("id"),
                     defaults={
-                        "tenant_id": self.tenant_id,
+                        "tenant_id": self.org.id,
                         "entity_title": r.get("entitytitle"),
                         "type": r.get("type"),
                         "external_id": r.get("externalid"),
@@ -247,11 +236,9 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 5) Import Accounting Periods
     # ------------------------------------------------------------
-    def import_accounting_periods(self, load_type="drop_and_reload"):
+    def import_accounting_periods(self):
         logger.info("Importing NetSuite Accounting Periods...")
-        if load_type == "drop_and_reload":
-            NetSuiteAccountingPeriods.objects.filter(tenant_id=self.tenant_id).delete()
-
+        
         date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
         query = f"SELECT * FROM accountingperiod WHERE 1=1 {date_clause}"
         rows = list(self.client.execute_suiteql(query))
@@ -269,7 +256,7 @@ class NetSuiteImporter:
                 NetSuiteAccountingPeriods.objects.update_or_create(
                     period_id=period_id,
                     defaults={
-                        "tenant_id": self.tenant_id,
+                        "tenant_id": self.org.id,
                         "period_name": r.get("periodname"),
                         "start_date": start_date_obj,
                         "end_date": end_date_obj,
@@ -292,10 +279,7 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 6) Import Accounts (with pagination)
     # ------------------------------------------------------------
-    def import_accounts(self, load_type="drop_and_reload"):
-        logger.info("Importing NetSuite Accounts...")
-        if load_type == "drop_and_reload":
-            NetSuiteAccounts.objects.filter(tenant_id=self.tenant_id).delete()
+    def import_accounts(self):
 
         offset = 0
         limit = 1000
@@ -323,7 +307,7 @@ class NetSuiteImporter:
                     NetSuiteAccounts.objects.update_or_create(
                         account_id=account_id,
                         defaults={
-                            "tenant_id": self.tenant_id,
+                            "tenant_id": self.org.id,
                             "acctnumber": r.get("acctnumber"),
                             "accountsearchdisplaynamecopy": r.get("accountsearchdisplaynamecopy"),
                             "fullname": r.get("fullname"),
@@ -345,6 +329,7 @@ class NetSuiteImporter:
                             "subsidiary": r.get("subsidiary"),
                             "balance": decimal_or_none(r.get("balance")),
                             "record_date": self.now_ts,
+                            "consolidation_key": self.integration.netsuite_account_id,
                         }
                     )
                 except Exception as e:
