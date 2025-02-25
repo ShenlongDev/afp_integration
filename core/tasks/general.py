@@ -48,6 +48,7 @@ def process_data_import_task(self, integration_id, integration_type, since_date_
     """
     Processes data import for a given integration.
     """
+    logger.info(f"Processing data import task for integration ID:::: {integration_id}, integration type: {integration_type}, since date: {since_date_str}, selected modules: {selected_modules}\n\n\n/n/n/n")
     from integrations.models.models import Integration
     try:
         integration = Integration.objects.get(pk=integration_id)
@@ -113,10 +114,10 @@ def run_data_sync(self):
 @shared_task(bind=True, max_retries=3)
 def dispatcher(self):
     """
-    Continuously polls for high priority tasks and normal sync tasks.
-    If a high priority task is found, it dispatches that task; otherwise,
-    it dispatches the normal sync tasks.
-    This task re-enqueues itself every few seconds.
+        Continuously polls for high priority tasks and normal sync tasks.
+        If a high priority task is found, it dispatches that task; otherwise,
+        it dispatches the normal sync tasks.
+        This task re-enqueues itself every few seconds.
     """
     try:
         hp_task = get_high_priority_task()
@@ -125,7 +126,7 @@ def dispatcher(self):
                 "Dispatching high priority task: integration id: %s, integration type: %s, since_date: %s, modules: %s",
                 hp_task.integration.id,
                 hp_task.integration_type,
-                hp_task.since_date,
+                hp_task.since_date,         
                 hp_task.selected_modules
             )
             process_data_import_task.apply_async(
@@ -137,6 +138,7 @@ def dispatcher(self):
                 ],
                 priority=0
             )
+            logger.info(f"High priority task {hp_task.id} dispatched at {timezone.now()}\n\n\n/n/n/n")
             hp_task.processed = True
             hp_task.save(update_fields=['processed'])
             log_task_event("process_data_import_task", "dispatched",
