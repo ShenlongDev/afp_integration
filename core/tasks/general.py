@@ -43,45 +43,6 @@ def get_high_priority_task():
         logger.error("Error fetching high priority task: %s", exc, exc_info=True)
         return None
 
-@shared_task(bind=True, max_retries=5)
-def process_data_import_task(self, integration_id, integration_type, since_date_str, selected_modules):
-    """
-    Processes data import for a given integration.
-    """
-    logger.info(f"Processing data import task for integration ID:::: {integration_id}, integration type: {integration_type}, since date: {since_date_str}, selected modules: {selected_modules}\n\n\n/n/n/n")
-    from integrations.models.models import Integration
-    try:
-        integration = Integration.objects.get(pk=integration_id)
-    except Integration.DoesNotExist:
-        logger.error(f"Integration with ID {integration_id} does not exist.")
-        return
-    since_date = datetime.strptime(since_date_str, "%Y-%m-%d") if since_date_str else None
-    
-    from integrations.modules import MODULES
-    module_config = MODULES[integration_type]
-    ImporterClass = module_config['client']
-    print(f"ImporterClass: {ImporterClass}, integration: {integration}, since_date: {since_date}\n\n\n/n/n/n")
-    logger.info(f"ImporterClass: {ImporterClass}, integration: {integration}, since_date: {since_date}\n\n\n/n/n/n")
-    importer = ImporterClass(integration, since_date)
-    
-    if selected_modules:
-        for module in selected_modules:
-            import_func = module_config['import_methods'].get(module)
-            if import_func:
-                logger.info(f"Importing {module} for integration ID {integration_id}")
-                import_func(importer)
-            else:
-                logger.warning(f"Unknown module {module} for integration ID {integration_id}")
-    else:
-        full_import = module_config.get('full_import')
-        if full_import:
-            logger.info(f"Starting full import for integration ID {integration_id}")
-            full_import(importer)
-        else:
-            for import_func in module_config['import_methods'].values():
-                import_func(importer)
-    logger.info(f"Data import for integration {integration_id} completed successfully.")
-
 @shared_task(bind=True, max_retries=3)
 def run_data_sync(self):
     """
@@ -114,10 +75,10 @@ def run_data_sync(self):
 @shared_task(bind=True, max_retries=3)
 def dispatcher(self):
     """
-        Continuously polls for high priority tasks and normal sync tasks.
-        If a high priority task is found, it dispatches that task; otherwise,
-        it dispatches the normal sync tasks.
-        This task re-enqueues itself every few seconds.
+    Continuously polls for high priority tasks and normal sync tasks.
+    If a high priority task is found, it processes that task inline;
+    otherwise, it dispatches the normal sync tasks.
+    This task re-enqueues itself every few seconds.
     """
     try:
         hp_task = get_high_priority_task()
@@ -126,35 +87,74 @@ def dispatcher(self):
                 "Dispatching high priority task: integration id: %s, integration type: %s, since_date: %s, modules: %s",
                 hp_task.integration.id,
                 hp_task.integration_type,
-                hp_task.since_date,         
+                hp_task.since_date,
                 hp_task.selected_modules
             )
-            process_data_import_task.apply_async(
-                args=[
-                    hp_task.integration.id,
-                    hp_task.integration_type,
-                    hp_task.since_date.strftime("%Y-%m-%d"),
-                    hp_task.selected_modules
-                ],
-                priority=0
-            )
-            logger.info(f"High priority task {hp_task.id} dispatched at {timezone.now()}\n\n\n/n/n/n")
+
+            # --- Begin inline business logic previously in process_data_import_task ---
+            from integrations.models.models import Integration
+            try:
+                integration = Integration.objects.get(pk=hp_task.integration.id)
+            except Integration.DoesNotExist:
+                logger.error("Integration with ID %s does not exist.", hp_task.integration.id)
+                hp_task.processed = True
+                hp_task.save(update_fields=['processed'])
+                log_task_event(
+                    "process_data_import_task", "failed",
+                    f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}"
+                )
+            else:
+                # Parse the since_date. (Assuming hp_task.since_date is a date/datetime object.)
+                since_date = (
+                    datetime.strptime(hp_task.since_date.strftime("%Y-%m-%d"), "%Y-%m-%d")
+                    if hp_task.since_date else None
+                )
+
+                from integrations.modules import MODULES
+                module_config = MODULES[hp_task.integration_type]
+                ImporterClass = module_config['client']
+                logger.info("ImporterClass: %s, integration: %s, since_date: %s", ImporterClass, integration, since_date)
+                importer = ImporterClass(integration, since_date)
+
+                if hp_task.selected_modules:
+                    for module in hp_task.selected_modules:
+                        import_func = module_config['import_methods'].get(module)
+                        if import_func:
+                            logger.info("Importing %s for integration ID %s", module, hp_task.integration.id)
+                            import_func(importer)
+                        else:
+                            logger.warning("Unknown module %s for integration ID %s", module, hp_task.integration.id)
+                else:
+                    full_import = module_config.get('full_import')
+                    if full_import:
+                        logger.info("Starting full import for integration ID %s", hp_task.integration.id)
+                        full_import(importer)
+                    else:
+                        for import_func in module_config['import_methods'].values():
+                            import_func(importer)
+                logger.info("Data import for integration %s completed successfully.", hp_task.integration.id)
+                log_task_event(
+                    "process_data_import_task", "dispatched",
+                    f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}"
+                )
+            # --- End inline business logic ---
+
+            # Mark the high priority task as processed regardless of outcome.
             hp_task.processed = True
             hp_task.save(update_fields=['processed'])
-            log_task_event("process_data_import_task", "dispatched",
-                           f"High priority task {hp_task.id} dispatched at {timezone.now()}")
         else:
             logger.info("No high priority task. Running continuous data sync.")
             run_data_sync.delay()
-            log_task_event("run_data_sync", "dispatched",
-                           f"Continuous sync task dispatched at {timezone.now()}")
+            log_task_event(
+                "run_data_sync", "dispatched",
+                f"Continuous sync task dispatched at {timezone.now()}"
+            )
     except Exception as exc:
         logger.error("Dispatcher encountered an error: %s", exc, exc_info=True)
         log_task_event("dispatcher", "failed", str(exc))
         raise self.retry(exc=exc, countdown=10)
     else:
         logger.info("Dispatcher completed successfully.")
-        log_task_event("dispatcher", "success",
-                       f"Task completed successfully at {timezone.now()}")
+        log_task_event("dispatcher", "success", f"Task completed successfully at {timezone.now()}")
     finally:
         dispatcher.apply_async(countdown=5)

@@ -359,7 +359,6 @@ class NetSuiteImporter:
         # Determine the start date and build the date filter clause.
         start_date = last_import_date or self.since_date
         date_filter_clause = self.build_date_clause("LASTMODIFIEDDATE", start_date, None)
-        print(f"date_filter_clause: {date_filter_clause}")
         while True:
             from django.db import close_old_connections
             close_old_connections()
@@ -423,7 +422,6 @@ class NetSuiteImporter:
             """
             
             rows = list(self.client.execute_suiteql(query))
-            print(f"fetched {len(rows)} transaction records, {min_id}")
             if not rows:
                 break
             def process_transaction(r):
