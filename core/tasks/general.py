@@ -150,7 +150,6 @@ def dispatcher(self):
                     from core.tasks.general import sync_organization
                     logger.warning(f"Dispatching sync for organization {org_id}")
                     sync_organization.apply_async(args=[org_id])
-                    logger.info("Dispatched sync for organization %s", org_id)
             log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
         else:
             logger.info("Non-business hours: Processing high priority tasks only.")
