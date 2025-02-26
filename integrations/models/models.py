@@ -6,7 +6,7 @@ INTEGRATION_TYPE_CHOICES = (
     ("XERO", "Xero"),
     ("NETSUITE", "NetSuite"),
     ("TOAST", "Toast"),
-)
+)   
 
 
 class Integration(models.Model):

@@ -82,6 +82,11 @@ def get_organisations_by_integration_type(integration_type):
             integrations__netsuite_client_id__isnull=False,
             integrations__netsuite_client_secret__isnull=False
         ).distinct()
+    elif integration_type.lower() == 'toast':
+        return Organisation.objects.filter(
+            integrations__toast_client_id__isnull=False,
+            integrations__toast_client_secret__isnull=False
+        ).distinct()
 
     return Organisation.objects.none()
 

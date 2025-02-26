@@ -24,6 +24,8 @@ def get_module_choices(integration_type):
     For a given integration type (e.g., 'xero' or 'netsuite'),
     return a list of module/component choices based on available import methods.
     """
+    print(integration_type)
+    print(MODULES)
     if integration_type in MODULES:
         import_methods = MODULES[integration_type].get("import_methods", {})
         # Create a tuple for each module key with a more user-friendly label.
@@ -40,13 +42,13 @@ class DataImportForm(forms.Form):
         label="Organisation"
     )
     since_date = forms.DateField(
-        initial="2010-01-01",
+        initial="2020-01-01",
         widget=forms.SelectDateWidget(
             attrs={
                 'class': 'date-select',
                 'style': 'width: 100%; display: inline-block; margin-right: 1%;'
             },
-            years=range(2022, datetime.now().year + 1)
+            years=range(2000, datetime.now().year + 1)
         ),
         label="Import Data Since"
     )
@@ -123,9 +125,10 @@ class DataImportForm(forms.Form):
             cred_fields = {
                 'xero': ('xero_client_id', 'xero_client_secret'),
                 'netsuite': ('netsuite_client_id', 'netsuite_client_secret'),
+                'toast': ('toast_client_id', 'toast_client_secret'),
             }
             id_field, secret_field = cred_fields.get(integration_type, (None, None))
-
+            print(id_field, secret_field)
             if id_field and secret_field:
                 integration = Integration.objects.filter(
                     org=organisation,
