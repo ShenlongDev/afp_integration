@@ -41,7 +41,7 @@ class XeroDataImporter:
         self.since_date = since_date
         self.client_id = integration.xero_client_id
         self.client_secret = integration.xero_client_secret
-        self.tenant_id = integration.org.id
+        self.tenant_id = str(integration.org.id)
         
     def get_paginated_results(self, url: str, result_key: str, extra_params: dict = None) -> list:
         results = []
