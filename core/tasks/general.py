@@ -88,6 +88,7 @@ def sync_organization(self, organization_id):
     try:
         from integrations.models.models import Integration
         logger.info("Starting sync for organization %s", organization_id)
+        logger.warning(f"Syncing organization {organization_id}")
         org_integrations = Integration.objects.filter(org=organization_id).order_by('id')
         for integration in org_integrations:
             integration_type = integration.integration_type.lower()
@@ -102,6 +103,7 @@ def sync_organization(self, organization_id):
                 result = sync_single_netsuite_data.apply_async(args=[integration.id])
                 result.get()  # Wait until the NetSuite sync chain completes before proceeding
             elif integration_type == "toast":
+                logger.warning(f"Syncing Toast integration {integration.id} for organization {organization_id}")
                 logger.info("Syncing Toast integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.toast import sync_toast_data
                 result = sync_toast_data.apply_async(args=[integration.id])
@@ -146,6 +148,7 @@ def dispatcher(self):
                 lock_key = f"org_sync_lock_{org_id}"
                 if not cache.get(lock_key):
                     from core.tasks.general import sync_organization
+                    logger.warning(f"Dispatching sync for organization {org_id}")
                     sync_organization.apply_async(args=[org_id])
                     logger.info("Dispatched sync for organization %s", org_id)
             log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
