@@ -143,7 +143,6 @@ class XeroDataImporter:
         token = self.get_valid_xero_token()
         headers = {
             "Authorization": f"Bearer {token}",
-            "xero-tenant-id": self.tenant_id,
             "Accept": "application/json"
         }
         if self.since_date:
@@ -403,7 +402,6 @@ class XeroDataImporter:
         url = "https://api.xero.com/api.xro/2.0/BankTransactions"
         headers = {
             "Authorization": f"Bearer {self.get_valid_xero_token()}",
-            "xero-tenant-id": self.tenant_id,
             "Accept": "application/json"
         }
         if self.since_date:
