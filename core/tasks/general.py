@@ -88,7 +88,7 @@ def sync_organization(self, organization_id):
     try:
         from integrations.models.models import Integration
         logger.info("Starting sync for organization %s", organization_id)
-        org_integrations = Integration.objects.filter(organization=organization_id).order_by('id')
+        org_integrations = Integration.objects.filter(org=organization_id).order_by('id')
         for integration in org_integrations:
             if integration.integration_type.lower() == "xero":
                 logger.info("Syncing Xero integration %s for organization %s", integration.id, organization_id)
@@ -135,7 +135,7 @@ def dispatcher(self):
             logger.info("Business hours active (8am-6pm UTC): Processing organization sync tasks; skipping high priority tasks.")
             # Process organization sync tasks
             from integrations.models.models import Integration
-            org_ids = list(Integration.objects.values_list('organization', flat=True).distinct())
+            org_ids = list(Integration.objects.values_list('org', flat=True).distinct())
             for org_id in org_ids:
                 lock_key = f"org_sync_lock_{org_id}"
                 if not cache.get(lock_key):
