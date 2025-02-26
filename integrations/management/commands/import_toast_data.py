@@ -28,7 +28,6 @@ class Command(BaseCommand):
             help='Optional end date (YYYY-MM-DD) to import orders until',
             default=None
         )
-
     def handle(self, *args, **options):
         integration_id = options.get('integration_id')
         since_date_str = options.get('since')
@@ -43,14 +42,13 @@ class Command(BaseCommand):
         else:
             since_date = datetime.combine(date.today(), datetime.min.time())
 
+        until_date = None
         if until_date_str:
             try:
                 until_date = datetime.strptime(until_date_str, "%Y-%m-%d")
             except ValueError:
                 self.stdout.write(self.style.ERROR(f"Invalid --until date format: {until_date_str}"))
                 return
-        else:
-            until_date = timezone.now()
 
         integrations = []
         if integration_id:

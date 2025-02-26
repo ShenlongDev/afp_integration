@@ -1,27 +1,29 @@
 """
 This file provides mappings for integration modules and their import methods.
 
-Each integration type (e.g., 'xero' and 'netsuite') is represented as a dictionary with:
+Each integration type (e.g., 'xero', 'netsuite', and now 'toast') is represented as a dictionary with:
 - 'client': The client/importer class.
-- 'import_methods': A dictionary mapping component names to functions, which take an instantiated 
-   importer object as parameter and call the corresponding method.
+- 'import_methods': A dictionary mapping component names to functions. Each function takes an instantiated 
+  importer object as a parameter and calls the corresponding method.
 - 'full_import' (optional): A function to perform a full import using the importer.
 
 Usage:
     from integrations.modules import MODULES
 
-    # Retrieve Xero integration client and methods mapping
-    xero_module = MODULES["xero"]
-    XeroImporter = xero_module["client"]
-    importer = XeroImporter(integration, since_date)
-    # Dynamically call an import method, e.g., for accounts:
-    import_func = xero_module["import_methods"].get("accounts")
+    # Retrieve an integration client and its methods mapping, for example Toast:
+    toast_module = MODULES["toast"]
+    ToastImporter = toast_module["client"]
+    importer = ToastImporter(integration)
+    import_func = toast_module["import_methods"].get("orders")
     if import_func:
         import_func(importer)
 """
 
 from integrations.services.xero.xero_client import XeroDataImporter
 from integrations.services.netsuite.importer import NetSuiteImporter
+from integrations.services.toast.client import ToastIntegrationService
+from django.utils import timezone
+from datetime import timedelta
 
 # Xero integration helper functions
 def xero_sync_xero_chart_of_accounts(importer):
@@ -51,8 +53,7 @@ def xero_import_xero_data(importer):
 
 # NetSuite integration helper functions
 def netsuite_import_vendors(importer):
-    # Note: vendors import requires a special load type argument
-    return importer.import_vendors(load_type="drop_and_reload")
+    return importer.import_vendors()
 
 def netsuite_import_accounts(importer):
     return importer.import_accounts()
@@ -84,6 +85,16 @@ def netsuite_transform_general_ledger(importer):
 def netsuite_transform_transactions(importer):
     return importer.transform_transactions()
 
+# Toast integration helper function
+def toast_import_orders(importer):
+    """
+    Imports orders from Toast using the client's import_orders method.
+    By default, it imports orders from the last 24 hours. Adjust this as needed.
+    """
+    start_date = timezone.now() - timedelta(days=1)
+    end_date = timezone.now()
+    return importer.import_orders(start_date, end_date)
+
 
 MODULES = {
     "xero": {
@@ -114,5 +125,11 @@ MODULES = {
             "general_ledger": netsuite_transform_general_ledger,
             "transformed_transactions": netsuite_transform_transactions,
         }
+    },
+    "toast": {
+        "client": ToastIntegrationService,
+        "import_methods": {
+            "orders": toast_import_orders,
+        },
     },
 }

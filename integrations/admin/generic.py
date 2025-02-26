@@ -9,18 +9,12 @@ from integrations.models.models import (
 
 class IntegrationAdmin(admin.ModelAdmin):
     list_display = ('org', 'created_at', 'updated_at')
-    search_fields = ('org__name', 'xero_client_id', 'xero_client_secret', 'xero_tenant_id', 'created_at', 'updated_at')
+    search_fields = ('org__name', 'xero_client_id', 'xero_client_secret', 'created_at', 'updated_at')
 
 
 class IntegrationAccessTokenAdmin(admin.ModelAdmin):
     list_display = ('integration', 'integration_type', 'expires_at', 'created_at')
     search_fields = ('integration__org__name', 'integration_type', 'token', 'refresh_token', 'expires_at', 'created_at')
-    
-    def has_change_permission(self, request, obj=None):
-        return False
-    
-    def has_add_permission(self, request):
-        return False
 
 
 class SyncTableLogsAdmin(admin.ModelAdmin):

@@ -90,16 +90,22 @@ def sync_organization(self, organization_id):
         logger.info("Starting sync for organization %s", organization_id)
         org_integrations = Integration.objects.filter(org=organization_id).order_by('id')
         for integration in org_integrations:
-            if integration.integration_type.lower() == "xero":
+            integration_type = integration.integration_type.lower()
+            if integration_type == "xero":
                 logger.info("Syncing Xero integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.xero import sync_single_xero_data
                 result = sync_single_xero_data.apply_async(args=[integration.id])
                 result.get()  # Wait until the Xero sync chain completes before proceeding
-            elif integration.integration_type.lower() == "netsuite":
+            elif integration_type == "netsuite":
                 logger.info("Syncing NetSuite integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.netsuite import sync_single_netsuite_data
                 result = sync_single_netsuite_data.apply_async(args=[integration.id])
                 result.get()  # Wait until the NetSuite sync chain completes before proceeding
+            elif integration_type == "toast":
+                logger.info("Syncing Toast integration %s for organization %s", integration.id, organization_id)
+                from core.tasks.toast import sync_toast_data
+                result = sync_toast_data.apply_async(args=[integration.id])
+                result.get()  # Wait until the Toast sync completes before proceeding
             else:
                 logger.warning("Unknown integration type %s for integration %s", integration.integration_type, integration.id)
         logger.info("Completed sync for organization %s", organization_id)
@@ -166,7 +172,7 @@ def dispatcher(self):
                         f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}"
                     )
                 else:
-                    # Parse the since_date. (Assumes hp_task.since_date is a date/datetime object.)
+                    # Parse the since_date only if needed.
                     since_date = (
                         datetime.strptime(hp_task.since_date.strftime("%Y-%m-%d"), "%Y-%m-%d")
                         if hp_task.since_date else None
@@ -175,8 +181,12 @@ def dispatcher(self):
                     from integrations.modules import MODULES
                     module_config = MODULES[hp_task.integration_type]
                     ImporterClass = module_config['client']
-                    logger.info("ImporterClass: %s, integration: %s, since_date: %s", ImporterClass, integration, since_date)
-                    importer = ImporterClass(integration, since_date)
+                    logger.info("ImporterClass: %s, integration: %s, since_date: %s",
+                                ImporterClass, integration, since_date)
+                    if hp_task.integration_type.lower() == "toast":
+                        importer = ImporterClass(integration)
+                    else:
+                        importer = ImporterClass(integration, since_date)
 
                     if hp_task.selected_modules:
                         for module in hp_task.selected_modules:

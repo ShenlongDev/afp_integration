@@ -21,13 +21,13 @@ class ToastAuthService:
         payload = {
             "clientId": self.client_id,
             "clientSecret": self.client_secret,
-            "hostname": self.hostname
+            "userAccessType": "TOAST_MACHINE_CLIENT"
         }
         try:
             response = requests.post(url, json=payload)
             response.raise_for_status()
             data = response.json()
-            self.token = data.get("accessToken")
+            self.token = data.get("token")["accessToken"]
             if not self.token:
                 logger.error("No access token received from Toast.")
                 raise Exception("Toast authentication failed: No token")
