@@ -88,7 +88,7 @@ def sync_organization(self, organization_id):
     try:
         from integrations.models.models import Integration
         logger.info("Starting sync for organization %s", organization_id)
-        org_integrations = Integration.objects.filter(org=organization_id).order_by('id')
+        org_integrations = Integration.objects.filter(organization=organization_id).order_by('id')
         for integration in org_integrations:
             if integration.integration_type.lower() == "xero":
                 logger.info("Syncing Xero integration %s for organization %s", integration.id, organization_id)
@@ -114,77 +114,28 @@ def sync_organization(self, organization_id):
 @shared_task(bind=True, max_retries=3)
 def dispatcher(self):
     """
-    Continuously polls for high priority tasks and organization-level sync tasks.
-    If a high priority task is found, it is processed inline.
-    Otherwise, the dispatcher looks for organizations (based on the available integrations)
-    that are not already in progress (i.e. lacking the 'org_sync_lock') and dispatches a
-    sync_organization task.
+    Continuously polls for high priority tasks and organization sync tasks.
+    The processing depends on the current UTC time:
+    
+    - Between 8am and 6pm UTC:
+      Only organization-level sync tasks are dispatched.
+      High Priority tasks are skipped during these hours.
+    
+    - Outside 8am to 6pm UTC:
+      Only High Priority tasks are processed.
     
     This task re-enqueues itself every 5 seconds.
     """
     try:
-        hp_task = get_high_priority_task()
-        if hp_task:
-            logger.info(
-                "Dispatching high priority task: integration id: %s, integration type: %s, since_date: %s, modules: %s",
-                hp_task.integration.id,
-                hp_task.integration_type,
-                hp_task.since_date,
-                hp_task.selected_modules
-            )
+        current_time = timezone.now() 
+        current_hour = current_time.hour
+        business_hours = 8 <= current_hour < 18
 
+        if business_hours:
+            logger.info("Business hours active (8am-6pm UTC): Processing organization sync tasks; skipping high priority tasks.")
+            # Process organization sync tasks
             from integrations.models.models import Integration
-            try:
-                integration = Integration.objects.get(pk=hp_task.integration.id)
-            except Integration.DoesNotExist:
-                logger.error("Integration with ID %s does not exist.", hp_task.integration.id)
-                hp_task.processed = True
-                hp_task.save(update_fields=['processed'])
-                log_task_event(
-                    "process_data_import_task", "failed",
-                    f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}"
-                )
-            else:
-                # Parse the since_date. (Assuming hp_task.since_date is a date/datetime object.)
-                since_date = (
-                    datetime.strptime(hp_task.since_date.strftime("%Y-%m-%d"), "%Y-%m-%d")
-                    if hp_task.since_date else None
-                )
-
-                from integrations.modules import MODULES
-                module_config = MODULES[hp_task.integration_type]
-                ImporterClass = module_config['client']
-                logger.info("ImporterClass: %s, integration: %s, since_date: %s", ImporterClass, integration, since_date)
-                importer = ImporterClass(integration, since_date)
-
-                if hp_task.selected_modules:
-                    for module in hp_task.selected_modules:
-                        import_func = module_config['import_methods'].get(module)
-                        if import_func:
-                            logger.info("Importing %s for integration ID %s", module, hp_task.integration.id)
-                            import_func(importer)
-                        else:
-                            logger.warning("Unknown module %s for integration ID %s", module, hp_task.integration.id)
-                else:
-                    full_import = module_config.get('full_import')
-                    if full_import:
-                        logger.info("Starting full import for integration ID %s", hp_task.integration.id)
-                        full_import(importer)
-                    else:
-                        for import_func in module_config['import_methods'].values():
-                            import_func(importer)
-                logger.info("Data import for integration %s completed successfully.", hp_task.integration.id)
-                log_task_event(
-                    "process_data_import_task", "dispatched",
-                    f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}"
-                )
-            # Mark high priority task as processed.
-            hp_task.processed = True
-            hp_task.save(update_fields=['processed'])
-        else:
-            from integrations.models.models import Integration
-            # Get all distinct organization IDs from integrations.
-            org_ids = list(Integration.objects.values_list('org', flat=True).distinct())
+            org_ids = list(Integration.objects.values_list('organization', flat=True).distinct())
             for org_id in org_ids:
                 lock_key = f"org_sync_lock_{org_id}"
                 if not cache.get(lock_key):
@@ -192,6 +143,67 @@ def dispatcher(self):
                     sync_organization.apply_async(args=[org_id])
                     logger.info("Dispatched sync for organization %s", org_id)
             log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
+        else:
+            logger.info("Non-business hours: Processing high priority tasks only.")
+            hp_task = get_high_priority_task()
+            if hp_task:
+                logger.info(
+                    "Dispatching high priority task: integration id: %s, integration type: %s, since_date: %s, modules: %s",
+                    hp_task.integration.id,
+                    hp_task.integration_type,
+                    hp_task.since_date,
+                    hp_task.selected_modules
+                )
+                from integrations.models.models import Integration
+                try:
+                    integration = Integration.objects.get(pk=hp_task.integration.id)
+                except Integration.DoesNotExist:
+                    logger.error("Integration with ID %s does not exist.", hp_task.integration.id)
+                    hp_task.processed = True
+                    hp_task.save(update_fields=['processed'])
+                    log_task_event(
+                        "process_data_import_task", "failed",
+                        f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}"
+                    )
+                else:
+                    # Parse the since_date. (Assumes hp_task.since_date is a date/datetime object.)
+                    since_date = (
+                        datetime.strptime(hp_task.since_date.strftime("%Y-%m-%d"), "%Y-%m-%d")
+                        if hp_task.since_date else None
+                    )
+
+                    from integrations.modules import MODULES
+                    module_config = MODULES[hp_task.integration_type]
+                    ImporterClass = module_config['client']
+                    logger.info("ImporterClass: %s, integration: %s, since_date: %s", ImporterClass, integration, since_date)
+                    importer = ImporterClass(integration, since_date)
+
+                    if hp_task.selected_modules:
+                        for module in hp_task.selected_modules:
+                            import_func = module_config['import_methods'].get(module)
+                            if import_func:
+                                logger.info("Importing %s for integration ID %s", module, hp_task.integration.id)
+                                import_func(importer)
+                            else:
+                                logger.warning("Unknown module %s for integration ID %s", module, hp_task.integration.id)
+                    else:
+                        full_import = module_config.get('full_import')
+                        if full_import:
+                            logger.info("Starting full import for integration ID %s", hp_task.integration.id)
+                            full_import(importer)
+                        else:
+                            for import_func in module_config['import_methods'].values():
+                                import_func(importer)
+                    logger.info("Data import for integration %s completed successfully.", hp_task.integration.id)
+                    log_task_event(
+                        "process_data_import_task", "dispatched",
+                        f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}"
+                    )
+                # Mark high priority task as processed.
+                hp_task.processed = True
+                hp_task.save(update_fields=['processed'])
+            else:
+                logger.info("No high priority tasks found.")
     except Exception as exc:
         logger.error("Dispatcher encountered an error: %s", exc, exc_info=True)
         log_task_event("dispatcher", "failed", str(exc))

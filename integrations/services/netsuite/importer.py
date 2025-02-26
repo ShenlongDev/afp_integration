@@ -606,11 +606,11 @@ class NetSuiteImporter:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
                     from integrations.models.netsuite.temp import NetSuiteTransactionLine1
                     NetSuiteTransactionLine1.objects.update_or_create(
-                        unique_key=unique_key,  # Using consolidation_key plus counter as our unique field
+                        unique_key=unique_key,
                         defaults={
                             "transaction_line_id": r.get("id"),
-                            "company_name": self.org_name,
-                            "is_billable": r.get("isbillable") == 'T',  # Convert 'T'/'F' to boolean
+                            "tenant_id": self.org.id,
+                            "is_billable": r.get("isbillable") == 'T', 
                             "is_closed": r.get("isclosed") == 'T',
                             "is_cogs": r.get("iscogs") == 'T',
                             "is_custom_gl_line": r.get("iscustomglline") == 'T',
