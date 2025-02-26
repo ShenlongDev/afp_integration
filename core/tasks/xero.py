@@ -66,9 +66,9 @@ def xero_import_budgets_task(integration_id, since_str=None):
 @shared_task
 def wait_60_seconds(integration_id):
     """
-    Waits for 60 seconds before returning.
+    Waits for 20 seconds before returning.
     """
-    time.sleep(60)
+    time.sleep(20)
     return integration_id
 
 @shared_task

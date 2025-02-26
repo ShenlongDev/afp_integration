@@ -79,10 +79,10 @@ def netsuite_import_transaction_accounting_lines(integration_id):
 @shared_task
 def wait_60_seconds(integration_id):
     """
-    Waits for 60 seconds before returning.
-    This task ensures at least a 60-second delay after the previous task.
+    Waits for 20 seconds before returning.
+    This task ensures at least a 20-second delay after the previous task.
     """
-    time.sleep(60)
+    time.sleep(20)
     return integration_id
 
 @shared_task
