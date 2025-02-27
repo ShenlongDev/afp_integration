@@ -94,7 +94,6 @@ class ToastIntegrationService:
         capturing all fields from the API response.
         """
         for order_data in orders:
-            print(order_data)
             order_guid = order_data.get("guid")
             try:
                 with transaction.atomic():
