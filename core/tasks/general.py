@@ -83,14 +83,14 @@ def sync_organization(self, organization_id):
     does not block the rest.
     """
     lock_key = f"org_sync_lock_{organization_id}"
-    if not cache.add(lock_key, "in_progress", 3600):
+    if not cache.add(lock_key, "in_progress", 600):
         logger.info("Organization %s is already being processed. Skipping.", organization_id)
         return
 
     try:
         from integrations.models.models import Integration
         logger.info("Starting sync for organization %s", organization_id)
-        org_integrations = Integration.objects.filter(org=organization_id).order_by('id')
+        org_integrations = Integration.objects.filter(org=organization_id).order_by('-id')
         for integration in org_integrations:
             integration_type = integration.integration_type.lower()
             if integration_type == "xero":
@@ -133,13 +133,11 @@ def dispatcher(self):
         if business_hours:
             logger.info("Business hours active (8am-6pm UTC): Processing organization sync tasks; skipping high priority tasks.")
             from integrations.models.models import Integration
-            org_ids = list(Integration.objects.values_list('org', flat=True).distinct())
+            org_ids = list(Integration.objects.values_list('org', flat=True).distinct().order_by('-org'))
             for org_id in org_ids:
-                lock_key = f"org_sync_lock_{org_id}"
-                if not cache.get(lock_key):
-                    from core.tasks.general import sync_organization
-                    logger.info(f"Dispatching sync for organization {org_id}")
-                    sync_organization.apply_async(args=[org_id])
+                from core.tasks.general import sync_organization
+                logger.info(f"Dispatching sync for organization {org_id}")
+                sync_organization.apply_async(args=[org_id])
             log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
         else:
             logger.info("Non-business hours: Processing high priority tasks only.")
