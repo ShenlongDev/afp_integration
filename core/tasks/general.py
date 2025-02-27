@@ -93,7 +93,16 @@ def sync_organization(self, organization_id):
         org_integrations = Integration.objects.filter(org=organization_id).order_by('-id')
         for integration in org_integrations:
             logger.warning("Starting sync for integration %s", integration.id)
-            integration_type = integration.integration_type.lower()
+            # Determine integration type based on which credentials are populated.
+            if integration.toast_client_id and integration.toast_client_secret and integration.toast_api_url:
+                integration_type = "toast"
+            elif integration.xero_client_id and integration.xero_client_secret:
+                integration_type = "xero"
+            elif integration.netsuite_client_id and integration.netsuite_client_secret:
+                integration_type = "netsuite"
+            else:
+                integration_type = "unknown"
+
             if integration_type == "xero":
                 logger.info("Dispatching Xero sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.xero import sync_single_xero_data
@@ -105,9 +114,10 @@ def sync_organization(self, organization_id):
             elif integration_type == "toast":
                 logger.info("Dispatching Toast sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.toast import sync_toast_data
+                # Explicitly route toast tasks to the same queue.
                 sync_toast_data.apply_async(args=[integration.id], queue="org_sync")
             else:
-                logger.warning("Unknown integration type %s for integration %s", integration.integration_type, integration.id)
+                logger.warning("Unknown integration type for integration %s", integration.id)
         logger.info("Completed dispatching sync for organization %s", organization_id)
         log_task_event("sync_organization", "success", f"Organization {organization_id} sync dispatch completed at {timezone.now()}")
     except Exception as exc:
@@ -116,6 +126,7 @@ def sync_organization(self, organization_id):
         raise exc
     finally:
         cache.delete(lock_key)
+
 
 
 @shared_task(bind=True, max_retries=3)
