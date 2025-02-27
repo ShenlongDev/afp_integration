@@ -25,7 +25,7 @@ gunicorn config.wsgi:application --bind 127.0.0.1:8000 --timeout 300 --workers 2
 
 # Gracefully stop and restart Celery Workers
 echo "Gracefully stopping Celery workers..."
-celery multi stopwait worker1 worker2 worker3
+celery multi stopwait worker1 worker2 worker3 --timeout=30
 
 echo "Starting Celery workers..."
 celery multi start worker1 worker2 worker3 -A config -Q org_sync,celery -c 3 -l info
