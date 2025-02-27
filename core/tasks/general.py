@@ -89,7 +89,7 @@ def sync_organization(self, organization_id):
 
     try:
         from integrations.models.models import Integration
-        logger.info("Starting sync for organization %s", organization_id)
+        logger.info("Starting sync for organization %s", organization_id, f"having integration type: {integration.integration_type.lower()}")
         org_integrations = Integration.objects.filter(org=organization_id).order_by('-id')
         for integration in org_integrations:
             integration_type = integration.integration_type.lower()
@@ -104,7 +104,7 @@ def sync_organization(self, organization_id):
             elif integration_type == "toast":
                 logger.info("Dispatching Toast sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.toast import sync_toast_data
-                sync_toast_data.apply_async(args=[integration.id])
+                sync_toast_data.apply_async(args=[integration.id], queue="org_sync")
             else:
                 logger.warning("Unknown integration type %s for integration %s", integration.integration_type, integration.id)
         logger.info("Completed dispatching sync for organization %s", organization_id)

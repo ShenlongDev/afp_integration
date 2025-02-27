@@ -6,6 +6,7 @@ import logging
 from celery import shared_task, chain
 from datetime import datetime
 import time
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +15,15 @@ from integrations.services.xero.xero_client import XeroDataImporter
 
 def get_xero_importer(integration_id, since_str=None):
     """
-    Helper to instantiate XeroDataImporter for a given integration.
-    Optionally accepts a since date string in YYYY-MM-DD format.
+    Instantiate and return XeroDataImporter.
+    If since_str is not provided, compute it at execution time 
+    using the current timezone-aware time.
     """
     integration = Integration.objects.get(pk=integration_id)
-    since_date = datetime.strptime(since_str, '%Y-%m-%d') if since_str else None
+    # If not provided, compute today's date at task execution time.
+    if since_str is None:
+         since_str = timezone.now().strftime('%Y-%m-%d')
+    since_date = datetime.strptime(since_str, '%Y-%m-%d')
     return XeroDataImporter(integration, since_date)
 
 @shared_task
@@ -74,12 +79,12 @@ def wait_60_seconds(integration_id):
 @shared_task
 def sync_xero_data(since_str: str = None):
     """
-    Original task: Finds all eligible Xero integrations and dispatches a chain of sync tasks
-    for each.
+    Finds all eligible Xero integrations and dispatches a chain of sync tasks
+    for each. The since_str, if not provided, will be determined at the
+    execution time of each individual task.
     """
     from integrations.services.utils import get_integrations_by_integration_type
     
-    since_str = since_str or datetime.now().strftime('%Y-%m-%d')
     eligible_integrations = get_integrations_by_integration_type("xero")
     
     if not eligible_integrations.exists():
@@ -107,9 +112,9 @@ def sync_xero_data(since_str: str = None):
 def sync_single_xero_data(integration_id, since_str: str = None):
     """
     Sync tasks for a single Xero integration.
-    This chain executes all required sub-tasks sequentially and waits for completion.
+    This sequential chain executes all required sub-tasks.
+    The since_str, if not provided, will be determined by each task at runtime.
     """
-    since_str = since_str or datetime.now().strftime('%Y-%m-%d')
     task_chain = chain(
         xero_sync_accounts_task.si(integration_id, since_str),
         wait_60_seconds.si(integration_id),
