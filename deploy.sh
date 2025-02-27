@@ -59,7 +59,6 @@ fuser -k 5555/tcp
 rm -f /tmp/flower.pid
 
 echo "Starting Flower..."
-/var/www/WS-Insights/venv/bin/flower -A config --port=5555 \
-  --broker_api=http://guest:guest@localhost:15672/api/ --daemon
+/var/www/WS-Insights/venv/bin/celery -A config flower --daemon
 
 echo "Deployment completed successfully!"
