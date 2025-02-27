@@ -26,17 +26,18 @@ gunicorn config.wsgi:application --bind 127.0.0.1:8000 --timeout 300 --workers 2
 # Gracefully stop Celery workers with a timeout, and if it fails, force kill.
 echo "Stopping Celery workers..."
 pkill -f "celery -A config worker"
-sleep 5  # Allow graceful shutdown and cleanup
+sleep 5  # Allow graceful shutdown
 
-# Clean up stale pid files for Celery workers
-echo "Cleaning up stale Celery worker pidfiles..."
+# Clean up stale pidfiles if required
 rm -f /var/run/celery/*.pid
 
 echo "Starting normal Celery worker..."
-celery -A config worker -Q org_sync,celery -c 3 -l info --detach
+celery -A config worker -n normal_worker@%h -Q org_sync,celery -c 3 -l info \
+  --logfile=/var/log/celery/worker.log --detach
 
 echo "Starting high priority Celery worker..."
-celery -A config worker -Q high_priority -c 1 -l info --detach
+celery -A config worker -n high_priority_worker@%h -Q high_priority -c 1 -l info \
+  --logfile=/var/log/celery/worker_high_priority.log --detach
 
 # Restart Celery Beat
 echo "Stopping Celery Beat..."
@@ -44,12 +45,12 @@ pkill -f "celery beat -A config"
 echo "Cleaning up Celery Beat pidfile..."
 rm -f /tmp/celerybeat.pid
 echo "Starting Celery Beat..."
-celery -A config beat -l info --pidfile=/tmp/celerybeat.pid --detach
+celery -A config beat -l info --pidfile=/tmp/celerybeat.pid --logfile=/var/log/celery/beat.log --detach
 
 # Restart Flower
 echo "Stopping Flower..."
 pkill -f "flower -A config"
-sleep 3  # Allow some time for shutdown
+sleep 3  # Allow Flower to stop completely
 
 # Optionally kill any process using port 5555
 fuser -k 5555/tcp
@@ -58,6 +59,7 @@ fuser -k 5555/tcp
 rm -f /tmp/flower.pid
 
 echo "Starting Flower..."
-/var/www/WS-Insights/venv/bin/celery -A config flower --daemon
+/var/www/WS-Insights/venv/bin/flower -A config --port=5555 \
+  --broker_api=http://guest:guest@localhost:15672/api/ --daemon
 
 echo "Deployment completed successfully!"
