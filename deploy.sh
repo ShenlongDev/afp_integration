@@ -40,6 +40,6 @@ celery -A config beat -l info --pidfile=/tmp/celerybeat.pid --detach
 echo "Stopping Flower..."
 pkill -f "flower -A config"
 echo "Starting Flower..."
-/var/www/WS-Insights/venv/bin/flower -A config --port=5555
+/var/www/WS-Insights/venv/bin/celery -A config flower --port=5555
 
 echo "Deployment completed successfully!"
