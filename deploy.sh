@@ -24,18 +24,19 @@ echo "Starting Gunicorn..."
 gunicorn config.wsgi:application --bind 127.0.0.1:8000 --timeout 300 --workers 2 --daemon
 
 # Gracefully stop Celery workers with a timeout, and if it fails, force kill.
-echo "Gracefully stopping Celery workers..."
-if ! timeout 30 celery multi stopwait worker1 worker2 worker3 --timeout=20; then
-    echo "Graceful shutdown timed out; force killing workers..."
-    celery multi kill worker1 worker2 worker3
-fi
+echo "Stopping Celery workers..."
+pkill -f "celery -A config worker"
+sleep 5  # Allow graceful shutdown and cleanup
 
 # Clean up stale pid files for Celery workers
 echo "Cleaning up stale Celery worker pidfiles..."
 rm -f /var/run/celery/*.pid
 
-echo "Starting Celery workers..."
-celery multi start worker1 worker2 worker3 -A config -Q org_sync,celery -c 3 -l info
+echo "Starting normal Celery worker..."
+celery -A config worker -Q org_sync,celery -c 3 -l info --detach
+
+echo "Starting high priority Celery worker..."
+celery -A config worker -Q high_priority -c 1 -l info --detach
 
 # Restart Celery Beat
 echo "Stopping Celery Beat..."

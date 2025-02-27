@@ -209,45 +209,53 @@ JAZZMIN_SETTINGS = {
 
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
+# Define a log directory within your project (or any location you prefer)
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
+
+# Create the log directory if it doesn't exist
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style': '{',
-            'datefmt': '%Y-%m-%d %H:%M:%S',
+            'format': '%(levelname)s %(asctime)s [%(name)s] %(message)s',
+        },
+        'simple': {
+            'format': '%(levelname)s [%(name)s] %(message)s',
         },
     },
     'handlers': {
-        'console': {
-            'level': 'INFO', 
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
         'file': {
             'level': 'INFO',
             'class': 'logging.FileHandler',
-            'filename': os.getenv('DJANGO_LOG_FILE'),
+            'filename': os.path.join(LOG_DIR, 'django.log'),
+            'formatter': 'verbose',
+        },
+        'error_file': {
+            'level': 'ERROR',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(LOG_DIR, 'django_error.log'),
             'formatter': 'verbose',
         },
     },
     'loggers': {
         'django': {
-            'handlers': ['console', 'file'],
-            'level': 'WARNING',  # Only WARNING and above for Django modules
+            'handlers': ['file'],
+            'level': 'INFO',
             'propagate': True,
         },
-        'django.db.backends': {
-            'handlers': ['console', 'file'],
-            'level': 'WARNING',  # Hide SQL debug logs
-            'propagate': False,
-        },
-        # You can leave your custom logger at INFO:
-        'netsuite': {
-            'handlers': ['console', 'file'],
+        'celery': {
+            'handlers': ['file'],
             'level': 'INFO',
-            'propagate': False,
+            'propagate': True,
+        },
+        'core': {
+            'handlers': ['file'],
+            'level': 'INFO',
+            'propagate': True,
         },
     },
 }
