@@ -10,7 +10,7 @@ from integrations.models.toast.raw import (
 )
 
 class ToastSelectionAdmin(admin.ModelAdmin):
-    list_display = ('display_name', 'pre_discount_price', 'discount_total', 'net_sales', 'quantity', 'voided')
+    list_display = ('display_name', 'pre_discount_price', 'discount_total', 'void_business_date', 'quantity', 'voided')
     search_fields = ( 'display_name',)
 
 class ToastCheckAdmin(admin.ModelAdmin):

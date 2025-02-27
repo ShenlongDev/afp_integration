@@ -1,18 +1,47 @@
 from django.db import models
 from django.db.models import JSONField
-
+from decimal import Decimal
 
 class ToastOrder(models.Model):
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE, related_name="toast_orders")
     tenant_id = models.IntegerField(db_index=True)
     order_guid = models.CharField(max_length=255, unique=True, db_index=True)
     payload = JSONField(help_text="Raw order data from Toast")
-    order_net_sales = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    order_net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     import_id = models.IntegerField(help_text="Reference to the integration ID")
     ws_import_date = models.DateTimeField(auto_now_add=True, db_index=True)
     created_date = models.DateTimeField(null=True, blank=True, db_index=True)
     closed_date = models.DateTimeField(null=True, blank=True, db_index=True)
     modified_date = models.DateTimeField(null=True, blank=True, db_index=True)
+    updated_date = models.DateTimeField(null=True, blank=True)
+    # Additional fields captured from Toast response:
+    external_id = models.CharField(max_length=255, null=True, blank=True)
+    entity_type = models.CharField(max_length=100, null=True, blank=True)
+    revenue_center_guid = models.CharField(max_length=255, null=True, blank=True)
+    server_guid = models.CharField(max_length=255, null=True, blank=True)
+    created_in_test_mode = models.BooleanField(null=True, blank=True)
+    display_number = models.CharField(max_length=100, null=True, blank=True)
+    last_modified_device_id = models.CharField(max_length=100, null=True, blank=True)
+    source = models.CharField(max_length=100, null=True, blank=True)
+    void_date = models.DateTimeField(null=True, blank=True)
+    duration = models.IntegerField(null=True, blank=True)
+    business_date = models.IntegerField(null=True, blank=True)
+    paid_date = models.DateTimeField(null=True, blank=True)
+    restaurant_service_guid = models.CharField(max_length=255, null=True, blank=True)
+    excess_food = models.BooleanField(null=True, blank=True)
+    voided = models.BooleanField(null=True, blank=True)
+    estimated_fulfillment_date = models.DateTimeField(null=True, blank=True)
+    table_guid = models.CharField(max_length=255, null=True, blank=True)
+    required_prep_time = models.CharField(max_length=50, null=True, blank=True)
+    approval_status = models.CharField(max_length=50, null=True, blank=True)
+    delivery_info = JSONField(null=True, blank=True)
+    service_area_guid = models.CharField(max_length=255, null=True, blank=True)
+    curbside_pickup_info = JSONField(null=True, blank=True)
+    number_of_guests = models.IntegerField(null=True, blank=True)
+    dining_option = models.CharField(max_length=100, null=True, blank=True)
+    applied_packaging_info = JSONField(null=True, blank=True)
+    opened_date = models.DateTimeField(null=True, blank=True)
+    void_business_date = models.CharField(max_length=50, null=True, blank=True)
 
     def __str__(self):
         return f"ToastOrder {self.order_guid}"
@@ -27,20 +56,35 @@ class ToastOrder(models.Model):
             models.Index(fields=["modified_date"]),
         ]
 
-
 class ToastCheck(models.Model):
     order = models.ForeignKey(ToastOrder, on_delete=models.CASCADE, related_name="checks")
     tenant_id = models.IntegerField(db_index=True)
     check_guid = models.CharField(max_length=255, db_index=True)
-    display_number = models.CharField(max_length=50, null=True, blank=True)
-    net_sales = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    service_charge_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    discount_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    display_number = models.CharField(max_length=100, null=True, blank=True)
+    net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    service_charge_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    discount_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     opened_date = models.DateTimeField(null=True, blank=True, db_index=True)
     closed_date = models.DateTimeField(null=True, blank=True, db_index=True)
+    # Additional check-level fields:
+    external_id = models.CharField(max_length=255, null=True, blank=True)
+    entity_type = models.CharField(max_length=100, null=True, blank=True)
+    last_modified_device_id = models.CharField(max_length=100, null=True, blank=True)
+    void_date = models.DateTimeField(null=True, blank=True)
+    duration = models.IntegerField(null=True, blank=True)
+    opened_by = models.CharField(max_length=255, null=True, blank=True)
+    paid_date = models.DateTimeField(null=True, blank=True)
+    applied_loyalty_info = JSONField(null=True, blank=True)
+    voided = models.BooleanField(null=True, blank=True)
+    payment_status = models.CharField(max_length=100, null=True, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    tab_name = models.CharField(max_length=100, null=True, blank=True)
+    tax_exempt = models.BooleanField(null=True, blank=True)
+    tax_exemption_account = models.CharField(max_length=100, null=True, blank=True)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     def __str__(self):
-        return f"ToastCheck {self.check_guid}"
+        return f"ToastCheck {self.check_guid} (Order: {self.order.order_guid})"
 
     class Meta:
         indexes = [
@@ -51,20 +95,49 @@ class ToastCheck(models.Model):
             models.Index(fields=["closed_date"]),
         ]
 
-
 class ToastSelection(models.Model):
     toast_check = models.ForeignKey(ToastCheck, on_delete=models.CASCADE, related_name="selections")
     tenant_id = models.IntegerField(db_index=True)
     selection_guid = models.CharField(max_length=255, db_index=True)
     display_name = models.CharField(max_length=255)
-    pre_discount_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    discount_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    net_sales = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    pre_discount_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    discount_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
     voided = models.BooleanField(default=False, db_index=True)
+    # Additional selection-level fields:
+    external_id = models.CharField(max_length=255, null=True, blank=True)
+    entity_type = models.CharField(max_length=100, null=True, blank=True)
+    deferred = models.BooleanField(null=True, blank=True)
+    void_reason = JSONField(null=True, blank=True)
+    option_group = JSONField(null=True, blank=True)
+    modifiers = JSONField(null=True, blank=True)
+    seat_number = models.IntegerField(null=True, blank=True)
+    fulfillment_status = models.CharField(max_length=100, null=True, blank=True)
+    option_group_pricing_mode = models.CharField(max_length=100, null=True, blank=True)
+    gift_card_selection_info = JSONField(null=True, blank=True)
+    sales_category_guid = models.CharField(max_length=255, null=True, blank=True)
+    split_origin = models.CharField(max_length=255, null=True, blank=True)
+    selection_type = models.CharField(max_length=100, null=True, blank=True)
+    price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    applied_taxes = JSONField(null=True, blank=True)
+    stored_value_transaction_id = models.CharField(max_length=255, null=True, blank=True)
+    item_group = JSONField(null=True, blank=True)
+    item = JSONField(null=True, blank=True)
+    tax_inclusion = models.CharField(max_length=50, null=True, blank=True)
+    receipt_line_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    unit_of_measure = models.CharField(max_length=50, null=True, blank=True)
+    refund_details = JSONField(null=True, blank=True)
+    toast_gift_card = JSONField(null=True, blank=True)
+    tax = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    dining_option = models.CharField(max_length=100, null=True, blank=True)
+    void_business_date = models.CharField(max_length=50, null=True, blank=True)
+    created_date = models.DateTimeField(null=True, blank=True)
+    pre_modifier = JSONField(null=True, blank=True)
+    modified_date = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"ToastSelection {self.selection_guid}"
+        return f"ToastSelection {self.selection_guid} (Check: {self.toast_check.check_guid})"
 
     class Meta:
         indexes = [
