@@ -73,45 +73,42 @@ def run_data_sync(self):
     finally:
         release_global_lock()
 
+
 @shared_task(bind=True, queue="org_sync")
 def sync_organization(self, organization_id):
     """
-    Syncs all integrations for a given organization sequentially.
+    Syncs all integrations for a given organization.
     Uses a cache lock to prevent concurrent sync for the same organization.
-    This task is assigned to a dedicated Celery queue ("org_sync") where you
-    configure a concurrency of 3 (or more) so that only that many organizations are processed in parallel.
+    Each integration sync task is dispatched asynchronously so that a hanging task
+    does not block the rest.
     """
     lock_key = f"org_sync_lock_{organization_id}"
     if not cache.add(lock_key, "in_progress", 3600):
         logger.info("Organization %s is already being processed. Skipping.", organization_id)
         return
+
     try:
         from integrations.models.models import Integration
         logger.info("Starting sync for organization %s", organization_id)
-        logger.warning(f"Syncing organization {organization_id}")
         org_integrations = Integration.objects.filter(org=organization_id).order_by('id')
         for integration in org_integrations:
             integration_type = integration.integration_type.lower()
             if integration_type == "xero":
-                logger.info("Syncing Xero integration %s for organization %s", integration.id, organization_id)
+                logger.info("Dispatching Xero sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.xero import sync_single_xero_data
-                result = sync_single_xero_data.apply_async(args=[integration.id])
-                result.get()  # Wait until the Xero sync chain completes before proceeding
+                sync_single_xero_data.apply_async(args=[integration.id])
             elif integration_type == "netsuite":
-                logger.info("Syncing NetSuite integration %s for organization %s", integration.id, organization_id)
+                logger.info("Dispatching NetSuite sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.netsuite import sync_single_netsuite_data
-                result = sync_single_netsuite_data.apply_async(args=[integration.id])
-                result.get()  # Wait until the NetSuite sync chain completes before proceeding
+                sync_single_netsuite_data.apply_async(args=[integration.id])
             elif integration_type == "toast":
-                logger.warning(f"Syncing Toast integration {integration.id} for organization {organization_id}")
-                logger.info("Syncing Toast integration %s for organization %s", integration.id, organization_id)
+                logger.info("Dispatching Toast sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.toast import sync_toast_data
-                result = sync_toast_data.apply_async(args=[integration.id])
-                result.get()  # Wait until the Toast sync completes before proceeding
+                sync_toast_data.apply_async(args=[integration.id])
             else:
                 logger.warning("Unknown integration type %s for integration %s", integration.integration_type, integration.id)
-        logger.info("Completed sync for organization %s", organization_id)
-        log_task_event("sync_organization", "success", f"Organization {organization_id} sync completed at {timezone.now()}")
+        logger.info("Completed dispatching sync for organization %s", organization_id)
+        log_task_event("sync_organization", "success", f"Organization {organization_id} sync dispatch completed at {timezone.now()}")
     except Exception as exc:
         logger.error("Error syncing organization %s: %s", organization_id, exc, exc_info=True)
         log_task_event("sync_organization", "failed", f"Organization {organization_id} sync failed: {exc}")
@@ -119,19 +116,13 @@ def sync_organization(self, organization_id):
     finally:
         cache.delete(lock_key)
 
+
 @shared_task(bind=True, max_retries=3)
 def dispatcher(self):
     """
-    Continuously polls for high priority tasks and organization sync tasks.
-    The processing depends on the current UTC time:
-    
-    - Between 8am and 6pm UTC:
-      Only organization-level sync tasks are dispatched.
-      High Priority tasks are skipped during these hours.
-    
-    - Outside 8am to 6pm UTC:
-      Only High Priority tasks are processed.
-    
+    Polls continuously for high priority tasks and organization sync tasks.
+    During business hours (8am-6pm UTC), only organization-level sync tasks are dispatched.
+    Outside of these hours, only high priority tasks are processed.
     This task re-enqueues itself every 5 seconds.
     """
     try:
@@ -141,14 +132,13 @@ def dispatcher(self):
 
         if business_hours:
             logger.info("Business hours active (8am-6pm UTC): Processing organization sync tasks; skipping high priority tasks.")
-            # Process organization sync tasks
             from integrations.models.models import Integration
             org_ids = list(Integration.objects.values_list('org', flat=True).distinct())
             for org_id in org_ids:
                 lock_key = f"org_sync_lock_{org_id}"
                 if not cache.get(lock_key):
                     from core.tasks.general import sync_organization
-                    logger.warning(f"Dispatching sync for organization {org_id}")
+                    logger.info(f"Dispatching sync for organization {org_id}")
                     sync_organization.apply_async(args=[org_id])
             log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
         else:
@@ -169,17 +159,11 @@ def dispatcher(self):
                     logger.error("Integration with ID %s does not exist.", hp_task.integration.id)
                     hp_task.processed = True
                     hp_task.save(update_fields=['processed'])
-                    log_task_event(
-                        "process_data_import_task", "failed",
-                        f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}"
-                    )
+                    log_task_event("process_data_import_task", "failed",
+                                   f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}")
                 else:
-                    # Parse the since_date only if needed.
-                    since_date = (
-                        datetime.strptime(hp_task.since_date.strftime("%Y-%m-%d"), "%Y-%m-%d")
-                        if hp_task.since_date else None
-                    )
-
+                    since_date = (hp_task.since_date.strftime("%Y-%m-%d")
+                                  if hp_task.since_date else None)
                     from integrations.modules import MODULES
                     module_config = MODULES[hp_task.integration_type]
                     ImporterClass = module_config['client']
@@ -189,7 +173,6 @@ def dispatcher(self):
                         importer = ImporterClass(integration)
                     else:
                         importer = ImporterClass(integration, since_date)
-
                     if hp_task.selected_modules:
                         for module in hp_task.selected_modules:
                             import_func = module_config['import_methods'].get(module)
@@ -207,11 +190,8 @@ def dispatcher(self):
                             for import_func in module_config['import_methods'].values():
                                 import_func(importer)
                     logger.info("Data import for integration %s completed successfully.", hp_task.integration.id)
-                    log_task_event(
-                        "process_data_import_task", "dispatched",
-                        f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}"
-                    )
-                # Mark high priority task as processed.
+                    log_task_event("process_data_import_task", "dispatched",
+                                  f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}")
                 hp_task.processed = True
                 hp_task.save(update_fields=['processed'])
             else:
@@ -225,3 +205,4 @@ def dispatcher(self):
         log_task_event("dispatcher", "success", f"Task completed successfully at {timezone.now()}")
     finally:
         dispatcher.apply_async(countdown=5)
+
