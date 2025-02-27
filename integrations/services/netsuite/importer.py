@@ -56,6 +56,8 @@ class NetSuiteImporter:
         self.tenant_id = integration.org.id
         self.since_date = since_date or timezone.datetime.combine(date.today(), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S")
         self.until_date = until_date  # May be None
+        if since_date is None:
+            self.since_date = timezone.now().date()
 
     def log_import_event(self, module_name: str, fetched_records: int):
         SyncTableLogs.objects.create(

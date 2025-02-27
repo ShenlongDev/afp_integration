@@ -43,6 +43,9 @@ class XeroDataImporter:
         self.client_secret = integration.xero_client_secret
         self.tenant_id = str(integration.org.id)
         
+        if since_date is None:
+            self.since_date = timezone.now().date()
+        
     def get_paginated_results(self, url: str, result_key: str, extra_params: dict = None) -> list:
         results = []
         page = 1

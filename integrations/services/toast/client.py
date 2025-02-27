@@ -21,6 +21,7 @@ class ToastIntegrationService:
         self.client_secret = integration.toast_client_secret
         self.auth_service = ToastAuthService(self.hostname, self.client_id, self.client_secret)
         self.access_token = self.auth_service.login()
+        
 
     def get_restaurant_guid(self):
         url = f"{self.hostname}/partners/v1/restaurants"
@@ -49,6 +50,8 @@ class ToastIntegrationService:
         return date_obj.strftime("%Y-%m-%dT%H:%M:%S.000+0000")
 
     def import_orders(self, start_date, end_date):
+        if start_date is None:
+            start_date = timezone.now().date()
         start_date_str = self.format_date_for_toast(start_date)
         if not end_date:
             end_date = timezone.now()

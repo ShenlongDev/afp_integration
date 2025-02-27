@@ -89,9 +89,10 @@ def sync_organization(self, organization_id):
 
     try:
         from integrations.models.models import Integration
-        logger.info("Starting sync for organization %s", organization_id, f"having integration type: {integration.integration_type.lower()}")
+        logger.warning("Starting sync for organization %s", organization_id)
         org_integrations = Integration.objects.filter(org=organization_id).order_by('-id')
         for integration in org_integrations:
+            logger.warning("Starting sync for integration %s", integration.id)
             integration_type = integration.integration_type.lower()
             if integration_type == "xero":
                 logger.info("Dispatching Xero sync for integration %s for organization %s", integration.id, organization_id)
