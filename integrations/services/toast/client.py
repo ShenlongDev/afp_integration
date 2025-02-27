@@ -7,6 +7,7 @@ from django.utils.dateparse import parse_datetime
 from django.db import transaction
 from .auth import ToastAuthService
 from integrations.models.toast.raw import ToastOrder, ToastCheck, ToastSelection
+from integrations.models.models import SyncTableLogs
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ class ToastIntegrationService:
     """
     def __init__(self, integration):
         self.integration = integration
-        self.hostname = integration.toast_api_url  # e.g. "https://ws-api.toasttab.com"
+        self.hostname = integration.toast_api_url 
         self.client_id = integration.toast_client_id
         self.client_secret = integration.toast_client_secret
         self.auth_service = ToastAuthService(self.hostname, self.client_id, self.client_secret)
@@ -90,6 +91,17 @@ class ToastIntegrationService:
 
         self.process_orders(orders)
         return orders
+    
+    def log_import_event(self, module_name: str, fetched_records: int):
+        SyncTableLogs.objects.create(
+            module_name=module_name,
+            integration='TOAST',
+            organization=self.integration.org,
+            fetched_records=fetched_records,
+            last_updated_time=timezone.now(),
+            last_updated_date=timezone.now().date()
+        )
+
 
     def process_orders(self, orders):
         """
@@ -260,5 +272,6 @@ class ToastIntegrationService:
                         ToastSelection.objects.bulk_create(selection_instances, batch_size=5000)
                     order.order_net_sales = order_net_sales
                     order.save()
+                    self.log_import_event(module_name="toast_orders", fetched_records=len(orders))
             except Exception as e:
                 logger.error("Error processing order %s: %s", order_guid, e)
