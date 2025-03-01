@@ -3,12 +3,14 @@ import re
 import logging
 from datetime import timedelta, datetime
 from zoneinfo import ZoneInfo
-
 from django.utils import timezone
 from django.db import transaction
 from integrations.services.utils import BatchUtils
-
-from integrations.models.models import Integration, IntegrationAccessToken, SyncTableLogs
+from integrations.models.models import (
+    Integration, 
+    IntegrationAccessToken, 
+    SyncTableLogs
+)
 from integrations.models.xero.raw import (
     XeroAccountsRaw,
     XeroJournalsRaw,
@@ -23,7 +25,11 @@ from integrations.models.xero.transformations import (
     XeroInvoiceLineItems,
     XeroJournalLineTrackingCategories
 )
-from integrations.models.xero.analytics import XeroGeneralLedger, XeroGeneralLedger1, XeroGeneralLedger3
+from integrations.models.xero.analytics import (
+    XeroGeneralLedger, 
+    XeroGeneralLedger1, 
+    XeroGeneralLedger3
+)
 import time
 
 
