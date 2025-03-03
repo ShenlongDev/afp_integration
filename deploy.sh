@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "Pulling latest code..."
-git pull origin main
+git pull origin dev
 
 echo "Activating virtual environment..."
 source /var/www/WS-Insights/venv/bin/activate
