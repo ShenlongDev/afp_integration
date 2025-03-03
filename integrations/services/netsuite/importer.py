@@ -736,10 +736,11 @@ class NetSuiteImporter:
 
             def process_accounting_line(r):
                 try:
-                    if str(decimal_or_none(r.get("credit"))) == "3.75":
-                        logger.info(f"r: {r}")
+                    print(f"debit: {r.get('debit')}, account: {r.get('account')}")
                     last_modified = self.parse_datetime(r.get("lastmodifieddate"))
-                    print(f"last_modified: {last_modified}, transaction: {r.get('transaction')}, transactionline: {r.get('transactionline')}, memo: {r.get('memo')}, netamount: {r.get('netamount')}")
+                    if str(r.get("debit")) == "4.13" and str(r.get("account")) == "326":
+                        print(f"last_modified: {last_modified}, transaction: {r.get('transaction')}, transactionline: {r.get('transactionline')}, memo: {r.get('memo')}, netamount: {r.get('netamount')}")
+
                     from integrations.models.netsuite.temp import NetSuiteTransactionAccountingLine1
                     NetSuiteTransactionAccountingLine1.objects.update_or_create(
                         transaction=r.get("transaction").lower(),
