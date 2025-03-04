@@ -1406,9 +1406,9 @@ class XeroDataImporter:
         print("Importing Xero Budgets...")
         self.import_xero_budgets()
 
-        # 7. General Ledger
-        print("Mapping Xero General Ledger...")
-        self.map_xero_general_ledger()
+        # # 7. General Ledger
+        # print("Mapping Xero General Ledger...")
+        # self.map_xero_general_ledger()
 
         logger.info("Finished full Xero data import successfully.")
         
