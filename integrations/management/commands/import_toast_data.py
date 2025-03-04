@@ -72,6 +72,11 @@ class Command(BaseCommand):
             try:
                 service = ToastIntegrationService(integration)
                 orders = service.import_orders(since_date, until_date)
+                restaurant_info = service.import_restaurant_and_schedule_data()
+                self.stdout.write(self.style.SUCCESS(f"Imported restaurant info for integration ID {integration.id}"))
+                self.stdout.write(self.style.SUCCESS(f"Imported day schedules for integration ID {integration.id}"))
+                self.stdout.write(self.style.SUCCESS(f"Imported weekly schedule for integration ID {integration.id}"))
+                self.stdout.write(self.style.SUCCESS(f"Imported joined opening hours for integration ID {integration.id}"))
                 self.stdout.write(self.style.SUCCESS(f"Imported {len(orders)} orders for integration ID {integration.id}"))
             except Exception as e:
                 logger.error("Error importing Toast orders for integration ID %s: %s", integration.id, e, exc_info=True)
