@@ -293,6 +293,7 @@ class ToastIntegrationService:
         params = {
             "startDate": start_date_str,
             "endDate": end_date_str
+            # "businessDate": '20250302'
         }
 
         orders = []
@@ -329,14 +330,17 @@ class ToastIntegrationService:
         """
         Decomposes the Toast orders into the database tables (order, check, and selection)
         capturing all fields from the API response and calculating net sales.
-        
+
         New net sales calculation (per check):
-          final_check_net = (check.amount) + (check.taxAmount)
-                              + (sum of tip amounts from payments)
-                              + (sum of applied service charge amounts for entries where name is 
-                                 "Discretionary Service Charge")
+        final_check_net = (check.amount) + (check.taxAmount)
+                            + (sum of tip amounts from payments)
+                            + (sum of applied service charge amounts for entries where name is 
+                                "Discretionary Service Charge")
         
         The order's net sales is the sum of final_check_net for all checks.
+        
+        In addition, we now calculate total_sales_without_deduction (stored in order.toast_sales)
+        which is the sum of the raw check amounts (i.e. without adding taxes, tips, or service charges).
         """
         for order_data in orders:
             order_guid = order_data.get("guid")
@@ -345,7 +349,7 @@ class ToastIntegrationService:
                     order_defaults = {
                         "integration": self.integration,
                         "payload": order_data,
-                        "order_net_sales": Decimal("0.00"),
+                        "order_net_sales": Decimal("0.00"),  # will update below
                         "import_id": self.integration.id,
                         "ws_import_date": timezone.now(),
                         "created_date": parse_datetime(order_data.get("createdDate")) if order_data.get("createdDate") else None,
@@ -367,7 +371,7 @@ class ToastIntegrationService:
                         "excess_food": order_data.get("excessFood"),
                         "voided": order_data.get("voided"),
                         "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
-                        "table_guid": order_data.get("table", {}).get("guid"),
+                        "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}).get("guid") else None,
                         "required_prep_time": order_data.get("requiredPrepTime"),
                         "approval_status": order_data.get("approvalStatus"),
                         "delivery_info": order_data.get("deliveryInfo"),
@@ -384,11 +388,16 @@ class ToastIntegrationService:
                         tenant_id=self.integration.org.id,
                         defaults=order_defaults
                     )
+                    # Clear previous checks to avoid duplicates.
                     order.checks.all().delete()
 
                     total_order_net_sales = Decimal("0.00")
+                    total_sales_without_deduction = Decimal("0.00")  # new accumulator for raw total
                     for check_data in order_data.get("checks", []):
+                        # Calculate the raw check amount.
                         check_amount = Decimal(str(check_data.get("amount", "0.00")))
+                        total_sales_without_deduction += check_amount  # add raw amount for toast_sales
+
                         tax_amount = Decimal(str(check_data.get("taxAmount", "0.00")))
                         tip_total = sum(Decimal(str(p.get("tipAmount", "0.00"))) for p in check_data.get("payments", []))
                         discretionary_total = sum(
@@ -492,8 +501,12 @@ class ToastIntegrationService:
                                 selection.toast_check = check_record
                             ToastSelection.objects.bulk_create(selection_instances, batch_size=5000)
                     
+                    # Save both the calculated net sales and the raw (undeducted) sales.
                     order.order_net_sales = total_order_net_sales
+                    order.toast_sales = total_sales_without_deduction
                     order.save()
                     self.log_import_event(module_name="toast_orders", fetched_records=len(orders))
             except Exception as e:
                 logger.error("Error processing order %s: %s", order_guid, e)
+
+    
