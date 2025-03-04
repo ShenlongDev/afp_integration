@@ -343,8 +343,8 @@ class ToastIntegrationService:
         which is the sum of the raw check amounts (i.e. without adding taxes, tips, or service charges).
         """
         for order_data in orders:
-            order_guid = order_data.get("guid")
-            try:
+                order_guid = order_data.get("guid")
+            # try:
                 with transaction.atomic():
                     order_defaults = {
                         "integration": self.integration,
@@ -371,15 +371,15 @@ class ToastIntegrationService:
                         "excess_food": order_data.get("excessFood"),
                         "voided": order_data.get("voided"),
                         "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
-                        "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}).get("guid") else None,
+                        "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table") else None,
                         "required_prep_time": order_data.get("requiredPrepTime"),
                         "approval_status": order_data.get("approvalStatus"),
                         "delivery_info": order_data.get("deliveryInfo"),
-                        "service_area_guid": order_data.get("serviceArea", {}).get("guid"),
-                        "curbside_pickup_info": order_data.get("curbsidePickupInfo"),
-                        "number_of_guests": order_data.get("numberOfGuests"),
-                        "dining_option": order_data.get("diningOption"),
-                        "applied_packaging_info": order_data.get("appliedPackagingInfo"),
+                        "service_area_guid": order_data.get("serviceArea", {}).get("guid") if order_data.get("serviceArea") else None,
+                        "curbside_pickup_info": order_data.get("curbsidePickupInfo") if order_data.get("curbsidePickupInfo") else None,
+                        "number_of_guests": order_data.get("numberOfGuests") if order_data.get("numberOfGuests") else None,
+                        "dining_option": order_data.get("diningOption") if order_data.get("diningOption") else None,
+                        "applied_packaging_info": order_data.get("appliedPackagingInfo") if order_data.get("appliedPackagingInfo") else None,
                         "opened_date": parse_datetime(order_data.get("openedDate")) if order_data.get("openedDate") else None,
                         "void_business_date": order_data.get("voidBusinessDate")
                     }
@@ -506,7 +506,7 @@ class ToastIntegrationService:
                     order.toast_sales = total_sales_without_deduction
                     order.save()
                     self.log_import_event(module_name="toast_orders", fetched_records=len(orders))
-            except Exception as e:
-                logger.error("Error processing order %s: %s", order_guid, e)
+            # except Exception as e:
+            #     logger.error("Error processing order %s: %s", order_guid, e)
 
     
