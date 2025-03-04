@@ -107,6 +107,14 @@ class ToastIntegrationService:
         """
         Decomposes the Toast orders into the database tables (order, check, and selection)
         capturing all fields from the API response and calculating net sales.
+        
+        New net sales calculation (per check):
+        final_check_net = (check.amount) + (check.taxAmount) 
+                            + (sum of tip amounts from payments)
+                            + (sum of applied service charge amounts for entries where name is 
+                            "Discretionary Service Charge")
+        
+        The order’s net sales is the sum of final_check_net for all checks.
         """
         for order_data in orders:
             order_guid = order_data.get("guid")
@@ -116,7 +124,7 @@ class ToastIntegrationService:
                     order_defaults = {
                         "integration": self.integration,
                         "payload": order_data,
-                        "order_net_sales": Decimal("0.00"),  # Placeholder; will be updated after processing checks.
+                        "order_net_sales": Decimal("0.00"),  # Placeholder; will be updated later.
                         "import_id": self.integration.id,
                         "ws_import_date": timezone.now(),
                         "created_date": parse_datetime(order_data.get("createdDate")) if order_data.get("createdDate") else None,
@@ -149,18 +157,37 @@ class ToastIntegrationService:
                         "dining_option": order_data.get("diningOption"),
                         "applied_packaging_info": order_data.get("appliedPackagingInfo"),
                         "opened_date": parse_datetime(order_data.get("openedDate")) if order_data.get("openedDate") else None,
-                        "void_business_date": order_data.get("voidBusinessDate")  # Conversion as needed.
+                        "void_business_date": order_data.get("voidBusinessDate")
                     }
                     order, created = ToastOrder.objects.update_or_create(
                         order_guid=order_guid,
                         tenant_id=self.integration.org.id,
                         defaults=order_defaults
                     )
-                    order_net_sales = Decimal("0.00")
+                    # Clear existing related checks to avoid duplicates.
                     order.checks.all().delete()
 
+                    total_order_net_sales = Decimal("0.00")
                     for check_data in order_data.get("checks", []):
-                        # Build check-level defaults.
+                        # Get the check’s subtotal ("amount") and tax.
+                        check_amount = Decimal(str(check_data.get("amount", "0.00")))
+                        tax_amount = Decimal(str(check_data.get("taxAmount", "0.00")))
+                        
+                        # Sum tip amounts from payments.
+                        tip_total = sum(Decimal(str(p.get("tipAmount", "0.00"))) for p in check_data.get("payments", []))
+                        
+                        # Sum discretionary service charge amounts (only those with name "Discretionary Service Charge").
+                        discretionary_total = sum(
+                            Decimal(str(sc.get("chargeAmount", "0.00")))
+                            for sc in check_data.get("appliedServiceCharges", [])
+                            if sc.get("name", "").strip().lower() == "discretionary service charge"
+                        )
+                        
+                        # Calculate the final net sales for this check.
+                        final_check_net = check_amount + tax_amount + tip_total + discretionary_total
+                        total_order_net_sales += final_check_net
+
+                        # Build check-level defaults (store all received check-level details).
                         check_defaults = {
                             "external_id": check_data.get("externalId"),
                             "entity_type": check_data.get("entityType"),
@@ -178,13 +205,27 @@ class ToastIntegrationService:
                             "tax_exemption_account": check_data.get("taxExemptionAccount"),
                             "total_amount": check_data.get("totalAmount"),
                         }
-                        selection_net_total = Decimal("0.00")
+                        # Add computed totals and date fields.
+                        check_defaults.update({
+                            "display_number": check_data.get("displayNumber"),
+                            "net_sales": final_check_net,
+                            "service_charge_total": discretionary_total,
+                            "discount_total": sum(Decimal(str(d.get("nonTaxDiscountAmount", "0.00"))) for d in check_data.get("appliedDiscounts", [])),
+                            "opened_date": parse_datetime(check_data.get("openedDate")) if check_data.get("openedDate") else None,
+                            "closed_date": parse_datetime(check_data.get("closedDate")) if check_data.get("closedDate") else None,
+                        })
+                        check_record = ToastCheck.objects.create(
+                            tenant_id=self.integration.org.id,
+                            order=order,
+                            check_guid=check_data.get("guid"),
+                            **check_defaults
+                        )
+                        
+                        # Process and store individual selections (as before).
                         selection_instances = []
-
                         for selection_data in check_data.get("selections", []):
-                            if selection_data.get("voided") or selection_data.get("displayName", "").lower() == "gift card":
+                            if selection_data.get("voided") or selection_data.get("displayName", "").strip().lower() == "gift card":
                                 continue
-
                             pre_discount_price = Decimal(str(selection_data.get("preDiscountPrice", 0)))
                             discount_total = sum(
                                 Decimal(str(d.get("nonTaxDiscountAmount", 0)))
@@ -192,9 +233,7 @@ class ToastIntegrationService:
                             )
                             quantity = Decimal(str(selection_data.get("quantity", 1)))
                             selection_net = (pre_discount_price - discount_total) * quantity
-                            selection_net_total += selection_net
-
-                            # Build extra fields for the selection.
+                            
                             selection_defaults = {
                                 "external_id": selection_data.get("externalId"),
                                 "entity_type": selection_data.get("entityType"),
@@ -238,39 +277,13 @@ class ToastIntegrationService:
                                 **selection_defaults
                             )
                             selection_instances.append(selection_instance)
-
-                        service_charge_total = sum(
-                            Decimal(str(sc.get("chargeAmount", 0)))
-                            for sc in check_data.get("appliedServiceCharges", [])
-                            if not sc.get("gratuity", False)
-                        )
-                        check_discount_total = sum(
-                            Decimal(str(d.get("nonTaxDiscountAmount", 0)))
-                            for d in check_data.get("appliedDiscounts", [])
-                        )
-                        check_net_sales = selection_net_total + service_charge_total - check_discount_total
-                        order_net_sales += check_net_sales
-
-                        # Update check_defaults with computed totals.
-                        check_defaults.update({
-                            "display_number": check_data.get("displayNumber"),
-                            "net_sales": check_net_sales,
-                            "service_charge_total": service_charge_total,
-                            "discount_total": check_discount_total,
-                            "opened_date": parse_datetime(check_data.get("openedDate")) if check_data.get("openedDate") else None,
-                            "closed_date": parse_datetime(check_data.get("closedDate")) if check_data.get("closedDate") else None,
-                        })
-                        check_record = ToastCheck.objects.create(
-                            tenant_id=self.integration.org.id,
-                            order=order,
-                            check_guid=check_data.get("guid"),
-                            **check_defaults
-                        )
-                        for selection in selection_instances:
-                            selection.toast_check = check_record
-                        ToastSelection.objects.bulk_create(selection_instances, batch_size=5000)
-
-                    order.order_net_sales = order_net_sales
+                        
+                        if selection_instances:
+                            for selection in selection_instances:
+                                selection.toast_check = check_record
+                            ToastSelection.objects.bulk_create(selection_instances, batch_size=5000)
+                    
+                    order.order_net_sales = total_order_net_sales
                     order.save()
                     self.log_import_event(module_name="toast_orders", fetched_records=len(orders))
             except Exception as e:
