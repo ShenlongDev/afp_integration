@@ -182,17 +182,14 @@ class ToastIntegrationService:
                         selection_instances = []
 
                         for selection_data in check_data.get("selections", []):
-                            # Exclude selections that are voided or represent gift cards.
                             if selection_data.get("voided") or selection_data.get("displayName", "").lower() == "gift card":
                                 continue
 
                             pre_discount_price = Decimal(str(selection_data.get("preDiscountPrice", 0)))
-                            # Sum the nonTaxDiscountAmount for each applied discount.
                             discount_total = sum(
                                 Decimal(str(d.get("nonTaxDiscountAmount", 0)))
                                 for d in selection_data.get("appliedDiscounts", [])
                             )
-                            # Multiply by the quantity if needed.
                             quantity = Decimal(str(selection_data.get("quantity", 1)))
                             selection_net = (pre_discount_price - discount_total) * quantity
                             selection_net_total += selection_net
@@ -247,7 +244,6 @@ class ToastIntegrationService:
                             for sc in check_data.get("appliedServiceCharges", [])
                             if not sc.get("gratuity", False)
                         )
-                        # Sum the nonTaxDiscountAmount at check level.
                         check_discount_total = sum(
                             Decimal(str(d.get("nonTaxDiscountAmount", 0)))
                             for d in check_data.get("appliedDiscounts", [])

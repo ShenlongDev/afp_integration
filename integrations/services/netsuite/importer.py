@@ -418,6 +418,7 @@ class NetSuiteImporter:
                 WHERE 
                     ID > {min_id}
                     {date_filter_clause}
+                    AND ACCOUNT = '326'
                 ORDER BY 
                     ID ASC
                 FETCH NEXT {batch_size} ROWS ONLY
@@ -718,7 +719,7 @@ class NetSuiteImporter:
                     PROCESSEDBYREVCOMMIT
                 FROM TransactionAccountingLine
                 WHERE TRANSACTION > {min_id}
-                    {date_filter_clause}
+                    {date_filter_clause}                    
                 ORDER BY TRANSACTION ASC
                 FETCH NEXT {limit} ROWS ONLY
             """
