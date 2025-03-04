@@ -418,7 +418,6 @@ class NetSuiteImporter:
                 WHERE 
                     ID > {min_id}
                     {date_filter_clause}
-                    AND ACCOUNT = '326'
                 ORDER BY 
                     ID ASC
                 FETCH NEXT {batch_size} ROWS ONLY
@@ -686,9 +685,12 @@ class NetSuiteImporter:
         min_id = min_id or "0"
         limit = 500
         total_imported = 0
-        start_date = start_date or self.since_date or "2024-12-01"
-        end_date = end_date or "2025-02-18"
+        start_date = start_date or self.since_date
+        end_date = end_date
+        
+        # Initialize date_filter_clause as an empty string
         date_filter_clause = ""
+        
         if last_modified_after:
             date_filter_clause += f" AND LASTMODIFIEDDATE > TO_DATE('{last_modified_after}', 'YYYY-MM-DD HH24:MI:SS')"
         else:
