@@ -120,17 +120,15 @@ class ToastIntegrationService:
             order_guid = order_data.get("guid")
             try:
                 with transaction.atomic():
-                    # Build order-level defaults from the API response.
                     order_defaults = {
                         "integration": self.integration,
                         "payload": order_data,
-                        "order_net_sales": Decimal("0.00"),  # Placeholder; will be updated later.
+                        "order_net_sales": Decimal("0.00"),
                         "import_id": self.integration.id,
                         "ws_import_date": timezone.now(),
                         "created_date": parse_datetime(order_data.get("createdDate")) if order_data.get("createdDate") else None,
                         "closed_date": parse_datetime(order_data.get("closedDate")) if order_data.get("closedDate") else None,
                         "modified_date": parse_datetime(order_data.get("modifiedDate")) if order_data.get("modifiedDate") else None,
-                        # Additional fields from Toast response:
                         "external_id": order_data.get("externalId"),
                         "entity_type": order_data.get("entityType"),
                         "revenue_center_guid": order_data.get("revenueCenter", {}).get("guid"),
@@ -164,30 +162,24 @@ class ToastIntegrationService:
                         tenant_id=self.integration.org.id,
                         defaults=order_defaults
                     )
-                    # Clear existing related checks to avoid duplicates.
                     order.checks.all().delete()
 
                     total_order_net_sales = Decimal("0.00")
                     for check_data in order_data.get("checks", []):
-                        # Get the check’s subtotal ("amount") and tax.
                         check_amount = Decimal(str(check_data.get("amount", "0.00")))
                         tax_amount = Decimal(str(check_data.get("taxAmount", "0.00")))
                         
-                        # Sum tip amounts from payments.
                         tip_total = sum(Decimal(str(p.get("tipAmount", "0.00"))) for p in check_data.get("payments", []))
                         
-                        # Sum discretionary service charge amounts (only those with name "Discretionary Service Charge").
                         discretionary_total = sum(
                             Decimal(str(sc.get("chargeAmount", "0.00")))
                             for sc in check_data.get("appliedServiceCharges", [])
                             if sc.get("name", "").strip().lower() == "discretionary service charge"
                         )
                         
-                        # Calculate the final net sales for this check.
                         final_check_net = check_amount + tax_amount + tip_total + discretionary_total
                         total_order_net_sales += final_check_net
 
-                        # Build check-level defaults (store all received check-level details).
                         check_defaults = {
                             "external_id": check_data.get("externalId"),
                             "entity_type": check_data.get("entityType"),
