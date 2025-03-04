@@ -354,7 +354,6 @@ class XeroDataImporter:
     def import_xero_invoices(self):
         logger.info("Importing Xero Invoices...")
         invoices = self.get_invoices()
-        print(f"invoices: {len(invoices)}")
         now_ts = timezone.now()
 
         def process_invoice(inv):
@@ -439,7 +438,6 @@ class XeroDataImporter:
         transactions = self.get_bank_transactions()
 
         def process_transaction(bt):
-            print(f"bt: {bt}")
             bt_id = bt.get("BankTransactionID")
             if not bt_id:
                 logger.warning("Skipping bank transaction with no BankTransactionID.")
