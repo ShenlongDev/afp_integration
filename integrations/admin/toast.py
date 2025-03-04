@@ -19,9 +19,9 @@ class ToastCheckAdmin(admin.ModelAdmin):
     ordering = ('-opened_date',)
 
 class ToastOrderAdmin(admin.ModelAdmin):
-    list_display = ('order_guid', 'order_net_sales', 'import_id', 'ws_import_date')
+    list_display = ('order_guid', 'order_net_sales', 'import_id', 'opened_date')
     search_fields = ('order_guid',)
-    ordering = ('-ws_import_date',)
+    ordering = ('-opened_date',)
 
 class ToastGeneralLocationAdmin(admin.ModelAdmin):
     list_display = ('general_name', 'location_name', 'guid', 'archived')

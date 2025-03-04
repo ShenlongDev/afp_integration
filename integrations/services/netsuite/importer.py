@@ -418,6 +418,7 @@ class NetSuiteImporter:
                 WHERE 
                     ID > {min_id}
                     {date_filter_clause}
+                    AND ACCOUNT = '326'
                 ORDER BY 
                     ID ASC
                 FETCH NEXT {batch_size} ROWS ONLY
@@ -431,7 +432,6 @@ class NetSuiteImporter:
                 if not txn_id:
                     return
                 last_mod = self.parse_datetime(r.get("lastmodifieddate"))
-                print(f"last_mod: {last_mod}, txn_id: {txn_id}, memo: {r.get('memo')}")
                 if not last_mod:
                     return
                 try:
@@ -607,7 +607,6 @@ class NetSuiteImporter:
                 
                 try:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
-                    print(f"last_modified: {last_modified}, subsidiary: {r.get('subsidiary')}, transaction: {r.get('transaction')}, memo: {r.get('memo')}")
                     from integrations.models.netsuite.temp import NetSuiteTransactionLine1
                     NetSuiteTransactionLine1.objects.update_or_create(
                         unique_key=unique_key,
@@ -688,6 +687,7 @@ class NetSuiteImporter:
         limit = 500
         total_imported = 0
         start_date = start_date or self.since_date or "2024-12-01"
+        end_date = end_date or "2025-02-18"
         date_filter_clause = ""
         if last_modified_after:
             date_filter_clause += f" AND LASTMODIFIEDDATE > TO_DATE('{last_modified_after}', 'YYYY-MM-DD HH24:MI:SS')"
@@ -719,7 +719,7 @@ class NetSuiteImporter:
                     PROCESSEDBYREVCOMMIT
                 FROM TransactionAccountingLine
                 WHERE TRANSACTION > {min_id}
-                    {date_filter_clause}
+                    {date_filter_clause}                    
                 ORDER BY TRANSACTION ASC
                 FETCH NEXT {limit} ROWS ONLY
             """
