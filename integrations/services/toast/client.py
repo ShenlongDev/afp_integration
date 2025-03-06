@@ -360,7 +360,7 @@ class ToastIntegrationService:
                         "excess_food": order_data.get("excessFood"),
                         "voided": order_data.get("voided"),
                         "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
-                        "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}).get("guid") else None,
+                        "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}) else None,
                         "required_prep_time": order_data.get("requiredPrepTime"),
                         "approval_status": order_data.get("approvalStatus"),
                         "delivery_info": order_data.get("deliveryInfo"),
