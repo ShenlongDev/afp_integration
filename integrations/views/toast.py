@@ -17,7 +17,7 @@ class SalesSummaryAPIView(APIView):
         end_date = request.query_params.get('enddate')
         option = request.query_params.get('option')
 
-        # Validate parameters.
+        # Validate presence of parameters.
         if not start_date or not end_date or not option:
             return Response(
                 {"error": "startdate, enddate, and option parameters are required."},
@@ -37,6 +37,20 @@ class SalesSummaryAPIView(APIView):
         except ValueError:
             return Response(
                 {"error": "startdate and enddate must be numeric in the format YYYYMMDD."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Validate that the start date is not after the end date.
+        if start_date_int > end_date_int:
+            return Response(
+                {"error": "startdate should be less than or equal to enddate."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # (Optional) Validate that the dates are exactly in YYYYMMDD format (8 digits)
+        if len(start_date) != 8 or len(end_date) != 8:
+            return Response(
+                {"error": "startdate and enddate must be in the format YYYYMMDD."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
