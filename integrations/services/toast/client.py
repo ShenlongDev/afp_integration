@@ -65,6 +65,7 @@ class ToastIntegrationService:
         except Exception as e:
             logger.error("Error converting time string %s: %s", time_str, e)
             return None
+        
 
     def convert_int_to_time(self, hour_value):
         """
@@ -346,17 +347,17 @@ class ToastIntegrationService:
                         "modified_date": parse_datetime(order_data.get("modifiedDate")) if order_data.get("modifiedDate") else None,
                         "external_id": order_data.get("externalId"),
                         "entity_type": order_data.get("entityType"),
-                        "revenue_center_guid": order_data.get("revenueCenter", {}).get("guid"),
-                        "server_guid": order_data.get("server", {}).get("guid"),
+                        "revenue_center_guid": order_data.get("revenueCenter", {}).get("guid") if order_data.get("revenueCenter") else None,
+                        "server_guid": order_data.get("server", {}).get("guid") if order_data.get("server") else None,
                         "created_in_test_mode": order_data.get("createdInTestMode"),
                         "display_number": order_data.get("displayNumber"),
-                        "last_modified_device_id": order_data.get("lastModifiedDevice", {}).get("id"),
+                        "last_modified_device_id": order_data.get("lastModifiedDevice", {}).get("id") if order_data.get("lastModifiedDevice") else None,
                         "source": order_data.get("source"),
                         "void_date": parse_datetime(order_data.get("voidDate")) if order_data.get("voidDate") else None,
                         "duration": order_data.get("duration"),
                         "business_date": order_data.get("businessDate"),
                         "paid_date": parse_datetime(order_data.get("paidDate")) if order_data.get("paidDate") else None,
-                        "restaurant_service_guid": order_data.get("restaurantService", {}).get("guid"),
+                        "restaurant_service_guid": order_data.get("restaurantService", {}).get("guid") if order_data.get("restaurantService") else None,
                         "excess_food": order_data.get("excessFood"),
                         "voided": order_data.get("voided"),
                         "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
@@ -423,7 +424,7 @@ class ToastIntegrationService:
                         check_defaults = {
                             "external_id": check_data.get("externalId"),
                             "entity_type": check_data.get("entityType"),
-                            "last_modified_device_id": check_data.get("lastModifiedDevice", {}).get("id"),
+                            "last_modified_device_id": check_data.get("lastModifiedDevice", {}).get("id") if check_data.get("lastModifiedDevice") else None,
                             "void_date": parse_datetime(check_data.get("voidDate")) if check_data.get("voidDate") else None,
                             "duration": check_data.get("duration"),
                             "opened_by": check_data.get("openedBy"),
@@ -483,7 +484,7 @@ class ToastIntegrationService:
                                 "fulfillment_status": selection_data.get("fulfillmentStatus"),
                                 "option_group_pricing_mode": selection_data.get("optionGroupPricingMode"),
                                 "gift_card_selection_info": selection_data.get("giftCardSelectionInfo"),
-                                "sales_category_guid": selection_data.get("salesCategory", {}).get("guid"),
+                                "sales_category_guid": selection_data.get("salesCategory", {}).get("guid") if selection_data.get("salesCategory") else None,
                                 "split_origin": selection_data.get("splitOrigin"),
                                 "selection_type": selection_data.get("selectionType"),
                                 "price": selection_data.get("price"),
