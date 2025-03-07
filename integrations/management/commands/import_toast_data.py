@@ -70,8 +70,8 @@ class Command(BaseCommand):
         for integration in integrations:
             self.stdout.write(f"Processing Toast Integration ID: {integration.id}")
             try:
-                service = ToastIntegrationService(integration)
-                orders = service.import_orders(since_date, until_date)
+                service = ToastIntegrationService(integration, since_date, until_date)
+                orders = service.import_orders()
                 restaurant_info = service.import_restaurant_and_schedule_data()
                 self.stdout.write(self.style.SUCCESS(f"Imported restaurant info for integration ID {integration.id}"))
                 self.stdout.write(self.style.SUCCESS(f"Imported day schedules for integration ID {integration.id}"))

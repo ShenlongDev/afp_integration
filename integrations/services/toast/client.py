@@ -53,6 +53,17 @@ class ToastIntegrationService:
             return None
 
     def format_date_for_toast(self, date_obj):
+        if isinstance(date_obj, str):
+            try:
+                # Attempt to parse the string as an ISO8601 datetime.
+                date_obj_parsed = parse_datetime(date_obj)
+                if date_obj_parsed is None:
+                    # Fall back to parsing as a plain date (YYYY-MM-DD)
+                    date_obj_parsed = datetime.strptime(date_obj, "%Y-%m-%d")
+                date_obj = date_obj_parsed
+            except Exception as e:
+                logger.error("Error converting date string %s: %s", date_obj, e)
+                raise e
         return date_obj.strftime("%Y-%m-%dT%H:%M:%S.000+0000")
 
     def convert_to_time(self, time_str):
@@ -520,7 +531,7 @@ class ToastIntegrationService:
                                 }
                             )
 
-                    # Now, determine if refunds should be applied to this order’s totals.
+                    # Now, determine if refunds should be applied to this order's totals.
                     business_date = order_data.get("businessDate")
                     if refund_business_date and business_date and str(refund_business_date) == str(business_date):
                         total_revenue -= total_refund_amount
@@ -529,7 +540,7 @@ class ToastIntegrationService:
                         if total_net_sales < Decimal("0.00"):
                             total_net_sales = Decimal("0.00")
                     # Otherwise, if the refund business date does not match,
-                    # leave these day’s totals unchanged (refund will be recorded on its own day).
+                    # leave these day's totals unchanged (refund will be recorded on its own day).
 
                     order.toast_sales = total_revenue
                     order.order_net_sales = total_net_sales
