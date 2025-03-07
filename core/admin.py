@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Organisation, TaskLog, BusinessHours
+from .models import Organisation, TaskLog
 from core.forms import DataImportForm
 from django.urls import path
 from django.shortcuts import render, redirect
@@ -60,13 +60,5 @@ class TaskLogAdmin(admin.ModelAdmin):
     search_fields = ('task_name', 'status')
     list_filter = ('status',)
     
-
-class BusinessHoursAdmin(admin.ModelAdmin):
-    list_display = ('start', 'end')
-    search_fields = ('start', 'end')
-    list_filter = ('start', 'end')
-
-
 admin.site.register(Organisation, DataImportAdmin)
 admin.site.register(TaskLog)
-admin.site.register(BusinessHours, BusinessHoursAdmin)
