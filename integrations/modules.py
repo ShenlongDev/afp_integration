@@ -82,9 +82,6 @@ def netsuite_import_accounting_periods(importer):
 def netsuite_transform_general_ledger(importer):
     return importer.transform_general_ledger()
 
-def netsuite_transform_transactions(importer):
-    return importer.transform_transactions()
-
 # Toast integration helper function
 def toast_import_orders(importer):
     return importer.import_orders()
@@ -117,7 +114,6 @@ MODULES = {
             "entities": netsuite_import_entities,
             "accounting_periods": netsuite_import_accounting_periods,
             "general_ledger": netsuite_transform_general_ledger,
-            "transformed_transactions": netsuite_transform_transactions,
         }
     },
     "toast": {
