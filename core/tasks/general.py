@@ -156,9 +156,13 @@ def process_high_priority(self, hp_task_id):
     # Prepare since_date and importer
     since_date = (hp_task.since_date.strftime("%Y-%m-%d") if hp_task.since_date else None)
     module_config = MODULES[hp_task.integration_type]
-    logger.info("Module config: %s", module_config)
+    logger.info("Module config: %s", {
+        'client': module_config['client'].__name__,
+        'import_methods': {k: v.__name__ for k, v in module_config.get('import_methods', {}).items()},
+        'full_import': module_config.get('full_import').__name__ if module_config.get('full_import') else None
+    })
     ImporterClass = module_config["client"]
-    logger.info("Importer class: %s", ImporterClass)
+    logger.info("Importer class: %s", ImporterClass.__name__)
     logger.info("Processing High Priority task for integration: %s with since_date: %s",
                 integration, since_date)
     
@@ -173,7 +177,7 @@ def process_high_priority(self, hp_task_id):
     if hp_task.selected_modules:
         for module in hp_task.selected_modules:
             import_func = module_config["import_methods"].get(module)
-            logger.info("Import function: %s", import_func)
+            logger.info("Import function: %s", import_func.__name__)
             if import_func:
                 logger.info("Importing %s for integration ID %s", module, hp_task.integration.id)
                 import_func(importer)
