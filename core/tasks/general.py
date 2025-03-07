@@ -211,7 +211,7 @@ def dispatcher(self):
     try:
         current_time = timezone.now()
         current_hour = current_time.hour
-        business_hours = 8 <= current_hour < 18
+        business_hours = 12 <= current_hour < 18
 
         if business_hours:
             logger.info("Business hours active: Processing organization sync tasks only.")

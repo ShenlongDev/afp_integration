@@ -535,9 +535,11 @@ class ToastIntegrationService:
                     if refund_business_date:
                         order.refund_business_date = refund_business_date
                     order.save()
-                    self.log_import_event(module_name="toast_orders", fetched_records=len(orders))
             except Exception as e:
                 logger.error("Error processing order %s: %s", order_guid, e)
+
+        logger.info("Imported %s orders", len(orders))
+        self.log_import_event(module_name="toast_orders", fetched_records=len(orders))
 
 
 
