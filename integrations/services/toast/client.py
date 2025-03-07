@@ -19,13 +19,15 @@ class ToastIntegrationService:
     """
     Provides utility methods for interacting with the Toast API.
     """
-    def __init__(self, integration):
+    def __init__(self, integration, start_date=None, end_date=None):
         self.integration = integration
         self.hostname = integration.toast_api_url 
         self.client_id = integration.toast_client_id
         self.client_secret = integration.toast_client_secret
         self.auth_service = ToastAuthService(self.hostname, self.client_id, self.client_secret)
         self.access_token = self.auth_service.login()
+        self.start_date = start_date
+        self.end_date = end_date
 
     def get_restaurant_guid(self):
         url = f"{self.hostname}/partners/v1/restaurants"
@@ -274,13 +276,13 @@ class ToastIntegrationService:
             "joined_opening_hours": joined_obj,
         }
 
-    def import_orders(self, start_date, end_date):
-        if start_date is None:
-            start_date = timezone.now().date()
-        start_date_str = self.format_date_for_toast(start_date)
-        if not end_date:
-            end_date = timezone.now()
-        end_date_str = self.format_date_for_toast(end_date)
+    def import_orders(self):
+        if self.start_date is None:
+            self.start_date = timezone.now().date()
+        start_date_str = self.format_date_for_toast(self.start_date)
+        if not self.end_date:
+            self.end_date = timezone.now()
+        end_date_str = self.format_date_for_toast(self.end_date)
 
         restaurant_guid = self.get_restaurant_guid()
         if not restaurant_guid:

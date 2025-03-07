@@ -87,13 +87,7 @@ def netsuite_transform_transactions(importer):
 
 # Toast integration helper function
 def toast_import_orders(importer):
-    """
-    Imports orders from Toast using the client's import_orders method.
-    By default, it imports orders from the last 24 hours. Adjust this as needed.
-    """
-    start_date = timezone.now() - timedelta(days=1)
-    end_date = timezone.now()
-    return importer.import_orders(start_date, end_date)
+    return importer.import_orders()
 
 
 MODULES = {

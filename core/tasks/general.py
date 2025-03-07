@@ -166,13 +166,8 @@ def process_high_priority(self, hp_task_id):
     logger.info("Processing High Priority task for integration: %s with since_date: %s",
                 integration, since_date)
     
-    # Create importer instance
-    if hp_task.integration_type.lower() == "toast":
-        logger.info("Creating Toast importer instance")
-        importer = ImporterClass(integration)
-        logger.info("Toast importer instance created")
-    else:
-        importer = ImporterClass(integration, since_date)
+
+    importer = ImporterClass(integration, since_date)
     
     if hp_task.selected_modules:
         for module in hp_task.selected_modules:
