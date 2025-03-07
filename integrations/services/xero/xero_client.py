@@ -1,6 +1,7 @@
 import requests
 import re
 import logging
+import time  # Used for sleep on retry
 from datetime import timedelta, datetime
 from zoneinfo import ZoneInfo
 from django.utils import timezone
@@ -30,10 +31,31 @@ from integrations.models.xero.analytics import (
     XeroGeneralLedger1, 
     XeroGeneralLedger3
 )
-import time
-
 
 logger = logging.getLogger(__name__)
+
+# -------------------------------------------------------------------
+# NEW HELPER FUNCTION
+# -------------------------------------------------------------------
+def request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
+    """
+    Performs an HTTP request with the given method and parameters.
+    If a 429 (Too Many Requests) error is received, waits for 30 seconds and retries.
+    This function can be used for all API calls.
+    """
+    while True:
+        response = requests.request(method, url, **kwargs)
+        try:
+            response.raise_for_status()
+            return response
+        except requests.HTTPError as e:
+            if response.status_code == 429:
+                logger.warning(
+                    "429 Too Many Requests for url %s. Waiting 30 seconds before retrying.", url
+                )
+                time.sleep(30)
+            else:
+                raise
 
 
 class XeroDataImporter:
@@ -97,9 +119,8 @@ class XeroDataImporter:
             "scope": scopes,
         }
 
-        response = requests.post(token_url, data=data, auth=auth)
-        response.raise_for_status()
-
+        # Use our helper function to perform the POST request.
+        response = request_with_retry("post", token_url, data=data, auth=auth)
         token_data = response.json()
         access_token = token_data["access_token"]
         expires_in = token_data.get("expires_in", 1800)
@@ -174,8 +195,9 @@ class XeroDataImporter:
         logger.info("Syncing Xero Chart of Accounts...")
         headers = self.build_headers()
         url = "https://api.xero.com/api.xro/2.0/Accounts"
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+
+        # Use our retry helper instead of a direct requests.get call.
+        response = request_with_retry("get", url, headers=headers)
         accounts_data = response.json().get("Accounts", [])
         now_ts = timezone.now()
 
@@ -212,8 +234,9 @@ class XeroDataImporter:
         params = {}
         if offset is not None:
             params["offset"] = offset
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
+
+        # Use our retry helper for GET
+        response = request_with_retry("get", url, headers=headers, params=params)
         journals = response.json().get("Journals", [])
         return journals
 
@@ -421,8 +444,7 @@ class XeroDataImporter:
 
         while True:
             params = {"page": page}
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
+            response = request_with_retry("get", url, headers=headers, params=params)
             bank_transactions = response.json().get("BankTransactions", [])
             results.extend(bank_transactions)
             if len(bank_transactions) < page_size:
@@ -486,11 +508,10 @@ class XeroDataImporter:
             "Accept": "application/json"
         }
         try:
-            response = requests.get(url, headers=headers, params={
+            response = request_with_retry("get", url, headers=headers, params={
                 "DateFrom": "2024-01-01",
                 "DateTo": "2025-02-11"
             })
-            response.raise_for_status()
             return response.json().get("Budgets", [])
         except requests.exceptions.HTTPError as e:
             if response.status_code == 404:
