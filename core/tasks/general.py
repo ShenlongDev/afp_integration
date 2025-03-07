@@ -136,12 +136,15 @@ def process_high_priority(self, hp_task_id):
 
     try:
         hp_task = HighPriorityTask.objects.get(pk=hp_task_id)
+        logger.info("Processing High Priority task for integration: %s with since_date: %s",
+                    hp_task.integration.id, hp_task.since_date)
     except HighPriorityTask.DoesNotExist:
         logger.error("HighPriorityTask with ID %s does not exist", hp_task_id)
         return
     
     try:
         integration = Integration.objects.get(pk=hp_task.integration.id)
+        logger.info("Integration found: %s", integration.id)
     except Integration.DoesNotExist:
         logger.error("Integration with ID %s does not exist.", hp_task.integration.id)
         hp_task.processed = True
@@ -153,19 +156,24 @@ def process_high_priority(self, hp_task_id):
     # Prepare since_date and importer
     since_date = (hp_task.since_date.strftime("%Y-%m-%d") if hp_task.since_date else None)
     module_config = MODULES[hp_task.integration_type]
+    logger.info("Module config: %s", module_config)
     ImporterClass = module_config["client"]
+    logger.info("Importer class: %s", ImporterClass)
     logger.info("Processing High Priority task for integration: %s with since_date: %s",
                 integration, since_date)
     
     # Create importer instance
     if hp_task.integration_type.lower() == "toast":
+        logger.info("Creating Toast importer instance")
         importer = ImporterClass(integration)
+        logger.info("Toast importer instance created")
     else:
         importer = ImporterClass(integration, since_date)
     
     if hp_task.selected_modules:
         for module in hp_task.selected_modules:
             import_func = module_config["import_methods"].get(module)
+            logger.info("Import function: %s", import_func)
             if import_func:
                 logger.info("Importing %s for integration ID %s", module, hp_task.integration.id)
                 import_func(importer)
