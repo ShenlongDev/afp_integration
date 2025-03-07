@@ -44,7 +44,7 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None):
 
     logger.info("Syncing Toast orders for integration %s from %s to %s",
                 integration_id, start_date, end_date)
-    importer = ToastIntegrationService(integration)
-    orders = importer.import_orders(start_date, end_date)
+    importer = ToastIntegrationService(integration, start_date, end_date)
+    orders = importer.import_orders()
     logger.info("Toast sync completed for integration %s, %d orders processed.",
                 integration_id, len(orders)) 
