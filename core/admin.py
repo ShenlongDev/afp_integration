@@ -66,6 +66,7 @@ class BusinessHoursAdmin(admin.ModelAdmin):
     search_fields = ('start', 'end')
     list_filter = ('start', 'end')
 
+
 admin.site.register(Organisation, DataImportAdmin)
 admin.site.register(TaskLog)
 admin.site.register(BusinessHours, BusinessHoursAdmin)

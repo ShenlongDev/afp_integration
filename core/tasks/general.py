@@ -208,43 +208,30 @@ def dispatcher(self):
         current_time = timezone.now()
         current_hour = current_time.hour
 
-        # Fetch business hours configuration; use defaults if no record exists.
-        bh = BusinessHours.objects.first()
-        if bh:
-            start_hour = bh.start
-            end_hour = bh.end
-        else:
-            start_hour = 8
-            end_hour = 18
 
-        business_hours = start_hour <= current_hour < end_hour
-
-        if business_hours:
-            logger.info("Business hours active: Processing organization sync tasks only.")
-            from integrations.models.models import Integration
-            # Get distinct organization IDs.
-            org_ids = list(Integration.objects.values_list("org", flat=True).distinct().order_by("-org"))
-            max_org_sync = 3
-            active_count = get_active_org_sync_tasks()
-            logger.info(f"Currently active organization sync tasks: {active_count}")
-            # Loop through organizations and dispatch if we're under the limit.
-            for org_id in org_ids:
-                if get_active_org_sync_tasks() < max_org_sync:
-                    from core.tasks.general import sync_organization
-                    logger.info(f"Dispatching sync for organization {org_id}")
-                    sync_organization.apply_async(args=[org_id])
-                else:
-                    logger.info("Maximum concurrent organization sync tasks reached; will try dispatching later.")
-                    break
-            log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
-        else:
-            logger.info("Outside business hours: Processing high priority tasks.")
-            hp_task = get_high_priority_task()
-            if hp_task:
-                # Enqueue for the dedicated high priority worker
-                process_high_priority.apply_async(args=[hp_task.id], queue="high_priority")
+        from integrations.models.models import Integration
+        # Get distinct organization IDs.
+        org_ids = list(Integration.objects.values_list("org", flat=True).distinct().order_by("-org"))
+        max_org_sync = 3
+        active_count = get_active_org_sync_tasks()
+        logger.info(f"Currently active organization sync tasks: {active_count}")
+        # Loop through organizations and dispatch if we're under the limit.
+        for org_id in org_ids:
+            if get_active_org_sync_tasks() < max_org_sync:
+                from core.tasks.general import sync_organization
+                logger.info(f"Dispatching sync for organization {org_id}")
+                sync_organization.apply_async(args=[org_id])
             else:
-                logger.info("No high priority tasks found.")
+                logger.info("Maximum concurrent organization sync tasks reached; will try dispatching later.")
+                break
+        log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
+        
+        hp_task = get_high_priority_task()
+        if hp_task:
+            # Enqueue for the dedicated high priority worker
+            process_high_priority.apply_async(args=[hp_task.id], queue="high_priority")
+        else:
+            logger.info("No high priority tasks found.")
     except Exception as exc:
         logger.error("Dispatcher encountered an error: %s", exc, exc_info=True)
         log_task_event("dispatcher", "failed", str(exc))

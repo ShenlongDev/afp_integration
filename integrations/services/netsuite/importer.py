@@ -747,6 +747,7 @@ class NetSuiteImporter:
                     NetSuiteTransactionAccountingLine1.objects.update_or_create(
                         transaction=r.get("transaction").lower(),
                         transaction_line=r.get("transactionline").lower(),
+                        tenant_id=self.org.id,
                         defaults={
                             "links": r.get("links"),
                             "accountingbook": r.get("accountingbook").lower() if r.get("accountingbook") else None,
