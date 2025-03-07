@@ -16,3 +16,11 @@ class TaskLog(models.Model):
     
     def __str__(self):
         return f"{self.task_name} - {self.status}"
+
+
+class BusinessHours(models.Model):
+    start = models.PositiveSmallIntegerField(default=8)
+    end = models.PositiveSmallIntegerField(default=18)
+
+    def __str__(self):
+        return f"Business Hours: {self.start} to {self.end}"

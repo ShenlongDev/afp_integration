@@ -4,6 +4,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from datetime import datetime
 from config.celery import get_active_org_sync_tasks
+from core.models import BusinessHours
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +207,17 @@ def dispatcher(self):
     try:
         current_time = timezone.now()
         current_hour = current_time.hour
-        business_hours = 12 <= current_hour < 18
+
+        # Fetch business hours configuration; use defaults if no record exists.
+        bh = BusinessHours.objects.first()
+        if bh:
+            start_hour = bh.start
+            end_hour = bh.end
+        else:
+            start_hour = 8
+            end_hour = 18
+
+        business_hours = start_hour <= current_hour < end_hour
 
         if business_hours:
             logger.info("Business hours active: Processing organization sync tasks only.")
