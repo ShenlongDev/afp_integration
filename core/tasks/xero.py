@@ -128,5 +128,4 @@ def sync_single_xero_data(integration_id, since_str: str = None):
         wait_60_seconds.si(integration_id),
         xero_import_budgets_task.si(integration_id, since_str),
     )
-    result = task_chain.apply_async()
-    return result.get()  # Wait for chain to complete and return its result 
+    task_chain.apply_async() 
