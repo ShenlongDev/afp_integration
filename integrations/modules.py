@@ -97,7 +97,7 @@ MODULES = {
             "invoices": xero_import_xero_invoices,
             "bank_transactions": xero_import_xero_bank_transactions,
             "budgets": xero_import_xero_budgets,
-            "general_ledger": xero_map_xero_general_ledger,
+            # "general_ledger": xero_map_xero_general_ledger,
         },
         "full_import": xero_import_xero_data,
     },
@@ -113,7 +113,7 @@ MODULES = {
             "departments": netsuite_import_departments,
             "entities": netsuite_import_entities,
             "accounting_periods": netsuite_import_accounting_periods,
-            "general_ledger": netsuite_transform_general_ledger,
+            # "general_ledger": netsuite_transform_general_ledger,
         }
     },
     "toast": {

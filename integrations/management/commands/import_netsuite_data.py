@@ -109,7 +109,7 @@ class Command(BaseCommand):
                     )   
 
                     import_methods = {
-                        'vendors': lambda: importer.import_vendors(),
+                        'vendors': importer.import_vendors,
                         'accounts': importer.import_accounts,
                         'transactions': importer.import_transactions,
                         'transaction_accounting_lines': importer.import_transaction_accounting_lines,
