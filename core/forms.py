@@ -114,6 +114,11 @@ class DataImportForm(forms.Form):
             
         return integration_type
 
+    def clean_modules(self):
+        modules = self.cleaned_data.get("modules")
+        if not modules:
+            raise forms.ValidationError("Please select at least one module/component to import.")
+        return modules
 
     def clean(self):
         cleaned_data = super().clean()

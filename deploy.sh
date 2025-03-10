@@ -58,7 +58,9 @@ fuser -k 5555/tcp
 # Remove Flower PID file if one exists (adjust the path as needed)
 rm -f /tmp/flower.pid
 
-echo "Starting Flower..."
-/var/www/WS-Insights/venv/bin/celery -A config flower --daemon
+echo "Starting Flower in background..."
+# Use nohup and background (&) to run Flower detached.
+nohup /var/www/WS-Insights/venv/bin/celery -A config flower --port=5555 > /var/log/celery/flower.log 2>&1 &
+echo "Flower started."
 
 echo "Deployment completed successfully!"
