@@ -268,7 +268,7 @@ def dispatcher(self):
     Polls continuously for high priority tasks and organization sync tasks.
     Business hours logic has been removed so that both task types are processed at all times.
     This task re-enqueues itself every 5 seconds.
-    It will dispatch up to 3 organization sync tasks concurrently.
+    It will dispatch up to 3 organization sync   tasks concurrently.
     """
     try:                
         hp_task = get_high_priority_task()
