@@ -139,65 +139,125 @@ def process_high_priority(self, hp_task_id):
 
     try:
         hp_task = HighPriorityTask.objects.get(pk=hp_task_id)
-        logger.info("Processing High Priority task for integration: %s with since_date: %s",
-                    hp_task.integration.id, hp_task.since_date)
+        logger.info(
+            "Processing High Priority task for integration: %s with since_date: %s",
+            hp_task.integration.id,
+            hp_task.since_date,
+        )
     except HighPriorityTask.DoesNotExist:
         logger.error("HighPriorityTask with ID %s does not exist", hp_task_id)
         return
-    
+
     try:
         integration = Integration.objects.get(pk=hp_task.integration.id)
         logger.info("Integration found: %s", integration.id)
     except Integration.DoesNotExist:
         logger.error("Integration with ID %s does not exist.", hp_task.integration.id)
-        # Mark the task as processed even though it failed to find an integration.
         hp_task.processed = True
         hp_task.in_progress = False
         hp_task.save(update_fields=["processed", "in_progress"])
-        log_task_event("process_data_import_task", "failed",
-                        f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}")
+        log_task_event(
+            "process_data_import_task",
+            "failed",
+            f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}",
+        )
         return
 
     try:
         # Prepare since_date and importer
-        since_date = (hp_task.since_date.strftime("%Y-%m-%d") if hp_task.since_date else None)
+        since_date = (
+            hp_task.since_date.strftime("%Y-%m-%d")
+            if hp_task.since_date
+            else None
+        )
         module_config = MODULES[hp_task.integration_type]
         ImporterClass = module_config["client"]
-        logger.info("Processing High Priority task for integration: %s with since_date: %s",
-                    integration, since_date)
+        logger.info(
+            "Processing High Priority task for integration: %s with since_date: %s",
+            integration,
+            since_date,
+        )
 
         importer = ImporterClass(integration, since_date)
-        
+
+        # Process each module independently.
         if hp_task.selected_modules:
             for module in hp_task.selected_modules:
                 import_func = module_config["import_methods"].get(module)
                 if import_func:
-                    logger.info("Importing %s for integration ID %s", module, hp_task.integration.id)
-                    import_func(importer)
+                    try:
+                        logger.info(
+                            "Importing %s for integration ID %s",
+                            module,
+                            hp_task.integration.id,
+                        )
+                        import_func(importer)
+                    except Exception as module_exception:
+                        logger.error(
+                            "Error processing module %s for integration %s: %s",
+                            module,
+                            hp_task.integration.id,
+                            module_exception,
+                            exc_info=True,
+                        )
+                        # Optionally, record the failure for the module separately.
                 else:
-                    logger.warning("Unknown module %s for integration ID %s", module, hp_task.integration.id)
+                    logger.warning(
+                        "Unknown module %s for integration ID %s",
+                        module,
+                        hp_task.integration.id,
+                    )
         else:
             full_import = module_config.get("full_import")
             if full_import:
-                logger.info("Starting full import for integration ID %s", hp_task.integration.id)
-                full_import(importer)
+                try:
+                    logger.info(
+                        "Starting full import for integration ID %s",
+                        hp_task.integration.id,
+                    )
+                    full_import(importer)
+                except Exception as full_exception:
+                    logger.error(
+                        "Error in full import for integration %s: %s",
+                        hp_task.integration.id,
+                        full_exception,
+                        exc_info=True,
+                    )
             else:
                 for import_func in module_config["import_methods"].values():
-                    import_func(importer)
-
-        logger.info("Data import for integration %s completed successfully.", hp_task.integration.id)
-        log_task_event("process_data_import_task", "dispatched",
-                        f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}")
-        # Now mark the task as processed.
+                    try:
+                        import_func(importer)
+                    except Exception as func_exception:
+                        logger.error(
+                            "Error processing module %s for integration %s: %s",
+                            import_func.__name__,
+                            hp_task.integration.id,
+                            func_exception,
+                            exc_info=True,
+                        )
+        logger.info(
+            "Data import for integration %s completed (with possible module errors).",
+            hp_task.integration.id,
+        )
+        log_task_event(
+            "process_data_import_task",
+            "dispatched",
+            f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}",
+        )
+        # Mark the task as processed even if some modules failed.
         hp_task.processed = True
     except Exception as e:
-        logger.error("Error processing high priority task %s: %s", hp_task_id, e, exc_info=True)
-        # Optionally, clear the in_progress flag so the task can be retried.
+        logger.error(
+            "General error processing high priority task %s: %s",
+            hp_task_id,
+            e,
+            exc_info=True,
+        )
         hp_task.in_progress = False
         hp_task.save(update_fields=["in_progress"])
-        raise  # or handle the exception as per your retry strategy
-    else:
-        # Reset in_progress flag on success
+        raise
+    finally:
+        # Always clear the in_progress flag.
         hp_task.in_progress = False
         hp_task.save(update_fields=["processed", "in_progress"])
 
@@ -245,5 +305,4 @@ def dispatcher(self):
     finally:
         # Re-enqueue dispatcher after a brief wait.
         dispatcher.apply_async(countdown=5)
-
 
