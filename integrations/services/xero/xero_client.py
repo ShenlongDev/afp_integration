@@ -175,19 +175,21 @@ class XeroDataImporter:
             "Authorization": f"Bearer {token}",
             "Accept": "application/json"
         }
+        
+        # If since_date is provided, convert it to a datetime object if needed.
         if self.since_date:
-            # If since_date is a string, try to parse it (assuming format "%Y-%m-%d")
+            date_obj = None
             if isinstance(self.since_date, str):
                 try:
-                    parsed_date = datetime.strptime(self.since_date, "%Y-%m-%d").date()
+                    # Assuming the string is in the format "YYYY-MM-DD"
+                    date_obj = datetime.strptime(self.since_date, "%Y-%m-%d")
                 except Exception as e:
                     logger.error("Error parsing self.since_date '%s': %s", self.since_date, e, exc_info=True)
-                    parsed_date = None
             else:
-                parsed_date = self.since_date
-
-            if parsed_date:
-                headers["If-Modified-Since"] = parsed_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+                date_obj = self.since_date
+            
+            if date_obj:
+                headers["If-Modified-Since"] = date_obj.strftime("%a, %d %b %Y %H:%M:%S GMT")
         if offset is not None:
             logger.debug(f"build_headers called with offset: {offset}")
         return headers
