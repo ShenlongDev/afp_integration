@@ -62,10 +62,10 @@ class NetSuiteTransformedTransactionAdmin(admin.ModelAdmin):
 # Register Netsuite related models
 admin.site.register(NetSuiteVendors, NetSuiteVendorsAdmin)
 admin.site.register(NetSuiteAccounts, NetSuiteAccountsAdmin)
-admin.site.register(NetSuiteTransactions, NetSuiteTransactionsAdmin)
+# admin.site.register(NetSuiteTransactions, NetSuiteTransactionsAdmin)
 admin.site.register(NetSuiteSubsidiaries, NetSuiteSubsidiariesAdmin)
 admin.site.register(NetSuiteDepartments, NetSuiteDepartmentsAdmin)
-admin.site.register(NetSuiteGeneralLedger, NetSuiteGeneralLedgerAdmin)
+# admin.site.register(NetSuiteGeneralLedger, NetSuiteGeneralLedgerAdmin)
 admin.site.register(NetSuiteJournals, NetSuiteJournalsAdmin)
 admin.site.register(NetSuiteEntity, NetSuiteEntityAdmin)
 admin.site.register(NetSuiteAccountingPeriods, NetSuiteAccountingPeriodsAdmin)

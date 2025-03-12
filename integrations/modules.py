@@ -82,18 +82,9 @@ def netsuite_import_accounting_periods(importer):
 def netsuite_transform_general_ledger(importer):
     return importer.transform_general_ledger()
 
-def netsuite_transform_transactions(importer):
-    return importer.transform_transactions()
-
 # Toast integration helper function
 def toast_import_orders(importer):
-    """
-    Imports orders from Toast using the client's import_orders method.
-    By default, it imports orders from the last 24 hours. Adjust this as needed.
-    """
-    start_date = timezone.now() - timedelta(days=1)
-    end_date = timezone.now()
-    return importer.import_orders(start_date, end_date)
+    return importer.import_orders()
 
 
 MODULES = {
@@ -106,7 +97,7 @@ MODULES = {
             "invoices": xero_import_xero_invoices,
             "bank_transactions": xero_import_xero_bank_transactions,
             "budgets": xero_import_xero_budgets,
-            "general_ledger": xero_map_xero_general_ledger,
+            # "general_ledger": xero_map_xero_general_ledger,
         },
         "full_import": xero_import_xero_data,
     },
@@ -122,8 +113,7 @@ MODULES = {
             "departments": netsuite_import_departments,
             "entities": netsuite_import_entities,
             "accounting_periods": netsuite_import_accounting_periods,
-            "general_ledger": netsuite_transform_general_ledger,
-            "transformed_transactions": netsuite_transform_transactions,
+            # "general_ledger": netsuite_transform_general_ledger,
         }
     },
     "toast": {

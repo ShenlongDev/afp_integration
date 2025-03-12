@@ -1,6 +1,7 @@
 import requests
 import re
 import logging
+import time  # Used for sleep on retry
 from datetime import timedelta, datetime
 from zoneinfo import ZoneInfo
 from django.utils import timezone
@@ -30,10 +31,31 @@ from integrations.models.xero.analytics import (
     XeroGeneralLedger1, 
     XeroGeneralLedger3
 )
-import time
-
 
 logger = logging.getLogger(__name__)
+
+# -------------------------------------------------------------------
+# NEW HELPER FUNCTION
+# -------------------------------------------------------------------
+def request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
+    """
+    Performs an HTTP request with the given method and parameters.
+    If a 429 (Too Many Requests) error is received, waits for 30 seconds and retries.
+    This function can be used for all API calls.
+    """
+    while True:
+        response = requests.request(method, url, **kwargs)
+        try:
+            response.raise_for_status()
+            return response
+        except requests.HTTPError as e:
+            if response.status_code == 429:
+                logger.warning(
+                    "429 Too Many Requests for url %s. Waiting 30 seconds before retrying.", url
+                )
+                time.sleep(30)
+            else:
+                raise
 
 
 class XeroDataImporter:
@@ -97,9 +119,8 @@ class XeroDataImporter:
             "scope": scopes,
         }
 
-        response = requests.post(token_url, data=data, auth=auth)
-        response.raise_for_status()
-
+        # Use our helper function to perform the POST request.
+        response = request_with_retry("post", token_url, data=data, auth=auth)
         token_data = response.json()
         access_token = token_data["access_token"]
         expires_in = token_data.get("expires_in", 1800)
@@ -154,8 +175,21 @@ class XeroDataImporter:
             "Authorization": f"Bearer {token}",
             "Accept": "application/json"
         }
+        
+        # If since_date is provided, convert it to a datetime object if needed.
         if self.since_date:
-            headers["If-Modified-Since"] = self.since_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+            date_obj = None
+            if isinstance(self.since_date, str):
+                try:
+                    # Assuming the string is in the format "YYYY-MM-DD"
+                    date_obj = datetime.strptime(self.since_date, "%Y-%m-%d")
+                except Exception as e:
+                    logger.error("Error parsing self.since_date '%s': %s", self.since_date, e, exc_info=True)
+            else:
+                date_obj = self.since_date
+            
+            if date_obj:
+                headers["If-Modified-Since"] = date_obj.strftime("%a, %d %b %Y %H:%M:%S GMT")
         if offset is not None:
             logger.debug(f"build_headers called with offset: {offset}")
         return headers
@@ -174,8 +208,9 @@ class XeroDataImporter:
         logger.info("Syncing Xero Chart of Accounts...")
         headers = self.build_headers()
         url = "https://api.xero.com/api.xro/2.0/Accounts"
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+
+        # Use our retry helper instead of a direct requests.get call.
+        response = request_with_retry("get", url, headers=headers)
         accounts_data = response.json().get("Accounts", [])
         now_ts = timezone.now()
 
@@ -212,8 +247,9 @@ class XeroDataImporter:
         params = {}
         if offset is not None:
             params["offset"] = offset
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
+
+        # Use our retry helper for GET
+        response = request_with_retry("get", url, headers=headers, params=params)
         journals = response.json().get("Journals", [])
         return journals
 
@@ -354,7 +390,6 @@ class XeroDataImporter:
     def import_xero_invoices(self):
         logger.info("Importing Xero Invoices...")
         invoices = self.get_invoices()
-        print(f"invoices: {len(invoices)}")
         now_ts = timezone.now()
 
         def process_invoice(inv):
@@ -422,8 +457,7 @@ class XeroDataImporter:
 
         while True:
             params = {"page": page}
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
+            response = request_with_retry("get", url, headers=headers, params=params)
             bank_transactions = response.json().get("BankTransactions", [])
             results.extend(bank_transactions)
             if len(bank_transactions) < page_size:
@@ -439,7 +473,6 @@ class XeroDataImporter:
         transactions = self.get_bank_transactions()
 
         def process_transaction(bt):
-            print(f"bt: {bt}")
             bt_id = bt.get("BankTransactionID")
             if not bt_id:
                 logger.warning("Skipping bank transaction with no BankTransactionID.")
@@ -488,11 +521,10 @@ class XeroDataImporter:
             "Accept": "application/json"
         }
         try:
-            response = requests.get(url, headers=headers, params={
+            response = request_with_retry("get", url, headers=headers, params={
                 "DateFrom": "2024-01-01",
                 "DateTo": "2025-02-11"
             })
-            response.raise_for_status()
             return response.json().get("Budgets", [])
         except requests.exceptions.HTTPError as e:
             if response.status_code == 404:
@@ -1408,9 +1440,9 @@ class XeroDataImporter:
         print("Importing Xero Budgets...")
         self.import_xero_budgets()
 
-        # 7. General Ledger
-        print("Mapping Xero General Ledger...")
-        self.map_xero_general_ledger()
+        # # 7. General Ledger
+        # print("Mapping Xero General Ledger...")
+        # self.map_xero_general_ledger()
 
         logger.info("Finished full Xero data import successfully.")
         

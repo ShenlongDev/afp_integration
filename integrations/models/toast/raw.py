@@ -15,6 +15,8 @@ class ToastOrder(models.Model):
     modified_date = models.DateTimeField(null=True, blank=True, db_index=True)
     updated_date = models.DateTimeField(null=True, blank=True)
     toast_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_refunds = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    refund_business_date = models.IntegerField(null=True, blank=True)
     # Additional fields captured from Toast response:
     external_id = models.CharField(max_length=255, null=True, blank=True)
     entity_type = models.CharField(max_length=100, null=True, blank=True)
@@ -65,6 +67,7 @@ class ToastCheck(models.Model):
     net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     service_charge_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     discount_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    check_refund = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     opened_date = models.DateTimeField(null=True, blank=True, db_index=True)
     closed_date = models.DateTimeField(null=True, blank=True, db_index=True)
     # Additional check-level fields:
@@ -96,9 +99,11 @@ class ToastCheck(models.Model):
             models.Index(fields=["closed_date"]),
         ]
 
+
 class ToastSelection(models.Model):
     toast_check = models.ForeignKey(ToastCheck, on_delete=models.CASCADE, related_name="selections")
     tenant_id = models.IntegerField(db_index=True)
+    order_guid = models.CharField(max_length=255, db_index=True, null=True, blank=True)
     selection_guid = models.CharField(max_length=255, db_index=True)
     display_name = models.CharField(max_length=255)
     pre_discount_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))

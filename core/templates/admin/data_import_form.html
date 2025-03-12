@@ -72,6 +72,27 @@
     .since-date-container select {
       width: 100%;
     }
+    /* Error styles */
+    .error-summary {
+      background: #fdd;
+      border: 1px solid red;
+      padding: 10px;
+      margin-bottom: 20px;
+      width: 100%;
+      border-radius: 4px;
+    }
+    .error-summary p {
+      margin: 0 0 5px 0;
+      font-weight: bold;
+    }
+    .error-summary ul {
+      margin: 0;
+      padding-left: 20px;
+      list-style-type: disc;
+    }
+    .error-summary li {
+      color: red;
+    }
     @media (max-width: 768px) {
       .data-import-container {
         width: 95%;
@@ -99,6 +120,21 @@
 {% block content %}
   <div class="data-import-container">
     <h1>Import Data</h1>
+    {% if form.errors %}
+      <div class="error-summary">
+         <p>Please fix the following errors:</p>
+         <ul>
+           {% for field in form %}
+             {% for error in field.errors %}
+               <li><strong>{{ field.label }}:</strong> {{ error }}</li>
+             {% endfor %}
+           {% endfor %}
+           {% for error in form.non_field_errors %}
+             <li>{{ error }}</li>
+           {% endfor %}
+         </ul>
+      </div>
+    {% endif %}
     <form class="data-import-form" method="post">
       {% csrf_token %}
       <p>

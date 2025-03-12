@@ -151,8 +151,7 @@ def sync_single_netsuite_data(integration_id, since_str: str = None):
         wait_60_seconds.si(integration_id),
         netsuite_import_transaction_accounting_lines.si(integration_id, since_str),
     )
-    result = task_chain.apply_async()
-    return result.get()  # Wait for chain to complete and return result
+    task_chain.apply_async()
 
 @shared_task
 def refresh_netsuite_token_task():

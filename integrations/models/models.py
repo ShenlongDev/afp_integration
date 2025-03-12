@@ -83,8 +83,9 @@ class HighPriorityTask(models.Model):
     since_date = models.DateField()
     selected_modules = models.JSONField(default=list, blank=True)
     processed = models.BooleanField(default=False)
+    in_progress = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"HighPriorityTask for Integration: {self.integration_id}"
+        return f"HighPriorityTask {self.id}"
     
