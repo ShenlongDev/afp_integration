@@ -522,6 +522,7 @@ class ToastIntegrationService:
                                 toast_check=check_obj,
                                 tenant_id=self.integration.org.id,
                                 defaults={
+                                    "order_guid": order_guid,
                                     "display_name": selection_data.get("displayName"),
                                     "pre_discount_price": pre_discount_price,
                                     "discount_total": discount_total,

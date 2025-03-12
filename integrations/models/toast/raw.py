@@ -103,6 +103,7 @@ class ToastCheck(models.Model):
 class ToastSelection(models.Model):
     toast_check = models.ForeignKey(ToastCheck, on_delete=models.CASCADE, related_name="selections")
     tenant_id = models.IntegerField(db_index=True)
+    order_guid = models.CharField(max_length=255, db_index=True, null=True, blank=True)
     selection_guid = models.CharField(max_length=255, db_index=True)
     display_name = models.CharField(max_length=255)
     pre_discount_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
