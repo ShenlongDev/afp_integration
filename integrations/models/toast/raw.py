@@ -19,7 +19,6 @@ class ToastOrder(models.Model):
     refund_business_date = models.IntegerField(null=True, blank=True)
     tip = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     service_charges = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
-    # Additional fields captured from Toast response:
     external_id = models.CharField(max_length=255, null=True, blank=True)
     entity_type = models.CharField(max_length=100, null=True, blank=True)
     revenue_center_guid = models.CharField(max_length=255, null=True, blank=True)
