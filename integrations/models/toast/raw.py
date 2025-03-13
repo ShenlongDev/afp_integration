@@ -17,7 +17,8 @@ class ToastOrder(models.Model):
     toast_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     total_refunds = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     refund_business_date = models.IntegerField(null=True, blank=True)
-    # Additional fields captured from Toast response:
+    tip = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    service_charges = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     external_id = models.CharField(max_length=255, null=True, blank=True)
     entity_type = models.CharField(max_length=100, null=True, blank=True)
     revenue_center_guid = models.CharField(max_length=255, null=True, blank=True)
@@ -33,6 +34,7 @@ class ToastOrder(models.Model):
     restaurant_service_guid = models.CharField(max_length=255, null=True, blank=True)
     excess_food = models.BooleanField(null=True, blank=True)
     voided = models.BooleanField(null=True, blank=True)
+    deleted = models.BooleanField(null=True, blank=True)
     estimated_fulfillment_date = models.DateTimeField(null=True, blank=True)
     table_guid = models.CharField(max_length=255, null=True, blank=True)
     required_prep_time = models.CharField(max_length=50, null=True, blank=True)
@@ -111,9 +113,6 @@ class ToastSelection(models.Model):
     net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
     voided = models.BooleanField(default=False, db_index=True)
-    deleted = models.BooleanField(default=False, db_index=True)
-    tip = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
-    service_charges = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     # Additional selection-level fields:
     external_id = models.CharField(max_length=255, null=True, blank=True)
     entity_type = models.CharField(max_length=100, null=True, blank=True)

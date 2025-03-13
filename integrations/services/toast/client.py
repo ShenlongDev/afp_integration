@@ -343,8 +343,8 @@ class ToastIntegrationService:
     def process_orders(self, orders):
         for order_data in orders:
             order_guid = order_data.get("guid")
-            # Skip the order if it is voided, deleted, or marked as a refund.
-            if order_data.get("voided") or order_data.get("deleted") or order_data.get("refund"):
+            # Skip the order if it is marked as a refund.
+            if order_data.get("refund"):
                 continue
 
             try:
@@ -372,7 +372,10 @@ class ToastIntegrationService:
                         "paid_date": parse_datetime(order_data.get("paidDate")) if order_data.get("paidDate") else None,
                         "restaurant_service_guid": order_data.get("restaurantService", {}).get("guid") if order_data.get("restaurantService") else None,
                         "excess_food": order_data.get("excessFood"),
+                        # Store voided orders instead of skipping them.
                         "voided": order_data.get("voided"),
+                        # New: Store deleted orders by reading the value (default to False if missing).
+                        "deleted": order_data.get("deleted", False),
                         "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
                         "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}) else None,
                         "required_prep_time": order_data.get("requiredPrepTime"),
