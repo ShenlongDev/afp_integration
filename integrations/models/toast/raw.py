@@ -34,6 +34,7 @@ class ToastOrder(models.Model):
     restaurant_service_guid = models.CharField(max_length=255, null=True, blank=True)
     excess_food = models.BooleanField(null=True, blank=True)
     voided = models.BooleanField(null=True, blank=True)
+    deleted = models.BooleanField(null=True, blank=True)
     estimated_fulfillment_date = models.DateTimeField(null=True, blank=True)
     table_guid = models.CharField(max_length=255, null=True, blank=True)
     required_prep_time = models.CharField(max_length=50, null=True, blank=True)
