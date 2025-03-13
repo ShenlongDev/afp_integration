@@ -111,6 +111,9 @@ class ToastSelection(models.Model):
     net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
     voided = models.BooleanField(default=False, db_index=True)
+    deleted = models.BooleanField(default=False, db_index=True)
+    tip = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    service_charges = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     # Additional selection-level fields:
     external_id = models.CharField(max_length=255, null=True, blank=True)
     entity_type = models.CharField(max_length=100, null=True, blank=True)

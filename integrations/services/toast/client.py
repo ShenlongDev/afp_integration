@@ -396,6 +396,8 @@ class ToastIntegrationService:
                     total_revenue = Decimal("0.00")     # This will become toast_sales
                     total_net_sales = Decimal("0.00")     # This will become order_net_sales
                     total_refund_amount = Decimal("0.00")
+                    total_tip_total = Decimal("0.00")     # New accumulator for tips
+                    total_service_charge_total = Decimal("0.00")  # New accumulator for service charges
                     refund_business_date = None
 
                     # Process each check in the order.
@@ -416,6 +418,10 @@ class ToastIntegrationService:
                             Decimal(str(sc.get("chargeAmount", "0.00")))
                             for sc in check_data.get("appliedServiceCharges", [])
                         )
+                        # Accumulate tip and service charge totals for the order.
+                        total_tip_total += tip_total
+                        total_service_charge_total += service_charge_total
+
                         # For revenue, add everything.
                         check_revenue = check_subtotal + tax_amount + tip_total + service_charge_total
                         total_revenue += check_revenue
@@ -543,6 +549,9 @@ class ToastIntegrationService:
                     # Otherwise, if the refund business date does not match,
                     # leave these day's totals unchanged (refund will be recorded on its own day).
 
+                    # Save the accumulated tip and service charge totals on the order level.
+                    order.tip = total_tip_total
+                    order.service_charges = total_service_charge_total
                     order.toast_sales = total_revenue
                     order.order_net_sales = total_net_sales
                     order.total_refunds = total_refund_amount
