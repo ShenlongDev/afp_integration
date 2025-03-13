@@ -207,7 +207,7 @@ JAZZMIN_SETTINGS = {
 }
 
 
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+ENVIRONMENT = os.getenv('ENVIRONMENT')
 
 # Define a log directory within your project (or any location you prefer)
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
@@ -307,8 +307,8 @@ STATICFILES_DIRS = [
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000000
 
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND')
 CELERY_SECRET_TOKEN = 'default'
 BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
