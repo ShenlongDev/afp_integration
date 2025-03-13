@@ -2,6 +2,7 @@ import requests
 from django.utils import timezone
 from datetime import timedelta
 from urllib.parse import urlencode
+from django.conf import settings
 
 from integrations.models.models import Integration, IntegrationAccessToken
 
@@ -37,7 +38,7 @@ class NetSuiteAuthService:
         self.token_url = f"https://{account_id}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token"
 
         # Must match exactly what is configured in NetSuite’s OAuth2 application settings.
-        self.redirect_uri = "http://localhost:8000/integrations/auth/callback/"
+        self.redirect_uri = "{BACKEND_URL}/integrations/auth/callback/"
 
 
         # Usually "rest_webservices" for NetSuite REST APIs

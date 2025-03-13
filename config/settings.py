@@ -141,6 +141,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+BACKEND_URL = os.getenv('BACKEND_URL')
 
 JAZZMIN_SETTINGS = {
     "site_title": "WS Admin",  
