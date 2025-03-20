@@ -424,6 +424,7 @@ class NetSuiteImporter:
             """
             
             rows = list(self.client.execute_suiteql(query))
+            print(f"{len(rows)}, {min_id}")
             if not rows:
                 break
             def process_transaction(r):

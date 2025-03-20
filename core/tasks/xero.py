@@ -62,11 +62,11 @@ def xero_import_budgets_task(integration_id, since_str=None):
     importer.import_xero_budgets()
     logger.info(f"Xero budgets imported for integration id: {integration_id}")
 
-# @shared_task
-# def xero_map_general_ledger_task(integration_id, since_str=None):
-#     importer = get_xero_importer(integration_id, since_str)
-#     importer.map_xero_general_ledger()
-#     logger.info(f"Xero general ledger mapped for integration id: {integration_id}")
+@shared_task
+def xero_map_general_ledger_task(integration_id, since_str=None):
+    importer = get_xero_importer(integration_id, since_str)
+    importer.map_xero_general_ledger_2()
+    logger.info(f"Xero general ledger mapped for integration id: {integration_id}")
 
 @shared_task
 def wait_60_seconds(integration_id):
@@ -104,6 +104,8 @@ def sync_xero_data(since_str: str = None):
             xero_import_bank_transactions_task.si(integration.id, since_str),
             wait_60_seconds.si(integration.id),
             xero_import_budgets_task.si(integration.id, since_str),
+            wait_60_seconds.si(integration.id),
+            xero_map_general_ledger_task.si(integration.id, since_str),
         )
         task_chain.apply_async()
         logger.info(f"Dispatched Xero sync tasks for integration: {integration}")
@@ -127,5 +129,7 @@ def sync_single_xero_data(integration_id, since_str: str = None):
         xero_import_bank_transactions_task.si(integration_id, since_str),
         wait_60_seconds.si(integration_id),
         xero_import_budgets_task.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        xero_map_general_ledger_task.si(integration_id, since_str),
     )
     task_chain.apply_async() 
