@@ -351,20 +351,21 @@ class NetSuiteImporter:
     # 7) Import Transactions (using keyset pagination and date filtering)
     # ------------------------------------------------------------
     def import_transactions(self, last_import_date: Optional[str] = None):
-        logger.info("Importing NetSuite Transactions " +
-                    ("incrementally..." if (last_import_date or self.since_date) else "(full import)..."))
+        logger.info(
+            "Importing NetSuite Transactions "
+            + ("incrementally..." if (last_import_date or self.since_date) else "(full import)...")
+        )
         
         batch_size = 500
         total_imported = 0
         min_id = 0
-        
-        # Determine the start date and build the date filter clause.
+
+        # Determine the start date and build the date filter clause
         start_date = last_import_date or self.since_date
         date_filter_clause = self.build_date_clause("LASTMODIFIEDDATE", start_date, None)
+        
         while True:
-            from django.db import close_old_connections
-            close_old_connections()
-            
+            # Build query for the next batch
             query = f"""
                 SELECT 
                     Transaction.ID,
@@ -424,78 +425,75 @@ class NetSuiteImporter:
             """
             
             rows = list(self.client.execute_suiteql(query))
-            print(f"{len(rows)}, {min_id}")
             if not rows:
                 break
-            def process_transaction(r):
+            
+            for r in rows:
                 txn_id = r.get("id")
                 if not txn_id:
-                    return
+                    continue
+
                 last_mod = self.parse_datetime(r.get("lastmodifieddate"))
                 if not last_mod:
-                    return
+                    continue
+
                 try:
                     NetSuiteTransactions.objects.update_or_create(
                         transactionid=str(txn_id),
                         tenant_id=self.org.id,
                         defaults={
-                                "abbrevtype": r.get("abbrevtype"),
-                                "approvalstatus": r.get("approvalstatus"),
-                                "balsegstatus": r.get("balsegstatus"),
-                                "billingstatus": r.get("billingstatus"),
-                                "closedate": self.parse_date(r.get("closedate")),
-                                "createdby": r.get("createdBy"),
-                                "createddate": self.parse_date(r.get("createddate")),
-                                "currency": r.get("currency"),
-                                "customtype": r.get("customtype"),
-                                "daysopen": r.get("daysopen"),
-                                "daysoverduesearch": r.get("daysoverduesearch"),
-                                "duedate": self.parse_date(r.get("duedate")),
-                                "entity": r.get("Entity"),
-                                "exchangerate": decimal_or_none(r.get("exchangerate")),
-                                "externalid": r.get("externalid"),
-                                "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
-                                "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
-                                "foreigntotal": decimal_or_none(r.get("foreigntotal")),
-                                "number": decimal_or_none(r.get("number")),
-                                "isfinchrg": r.get("isfinchrg"),
-                                "isreversal": r.get("isreversal"),
-                                "lastmodifiedby": r.get("lastmodifiedby"),
-                                "lastmodifieddate": last_mod,
-                                "nexus": r.get("nexus"),
-                                "ordpicked": r.get("ordpicked"),
-                                "paymenthold": r.get("paymenthold"),
-                                "posting": r.get("posting"),
-                                "postingperiod": r.get("postingperiod"),
-                                "printedpickingticket": r.get("printedpickingticket"),
-                                "recordtype": r.get("recordtype"),
-                                "source": r.get("source"),
-                                "status": r.get("status"),
-                                "terms": r.get("terms"),
-                                "tobeprinted": r.get("tobeprinted"),
-                                "trandate": self.parse_date(r.get("trandate")),
-                                "trandisplayname": r.get("trandisplayname"),
-                                "tranid": r.get("tranid"),
-                                "transactionnumber": r.get("transactionnumber"),
-                                "type": r.get("type"),
-                                "userevenuearrangement": r.get("userevenuearrangement"),
-                                "visibletocustomer": r.get("visibletocustomer"),
-                                "void_field": r.get("void"),
-                                "voided": r.get("voided"),
-                                "memo": r.get("memo"),
-                                "record_date": last_mod,
-                                "consolidation_key": self.integration.netsuite_account_id,                        }
+                            "abbrevtype": r.get("abbrevtype"),
+                            "approvalstatus": r.get("approvalstatus"),
+                            "balsegstatus": r.get("balsegstatus"),
+                            "billingstatus": r.get("billingstatus"),
+                            "closedate": self.parse_date(r.get("closedate")),
+                            "createdby": r.get("createdBy"),
+                            "createddate": self.parse_date(r.get("createddate")),
+                            "currency": r.get("currency"),
+                            "customtype": r.get("customtype"),
+                            "daysopen": r.get("daysopen"),
+                            "daysoverduesearch": r.get("daysoverduesearch"),
+                            "duedate": self.parse_date(r.get("duedate")),
+                            "entity": r.get("Entity"),
+                            "exchangerate": decimal_or_none(r.get("exchangerate")),
+                            "externalid": r.get("externalid"),
+                            "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
+                            "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
+                            "foreigntotal": decimal_or_none(r.get("foreigntotal")),
+                            "number": decimal_or_none(r.get("number")),
+                            "isfinchrg": r.get("isfinchrg"),
+                            "isreversal": r.get("isreversal"),
+                            "lastmodifiedby": r.get("lastmodifiedby"),
+                            "lastmodifieddate": last_mod,
+                            "nexus": r.get("nexus"),
+                            "ordpicked": r.get("ordpicked"),
+                            "paymenthold": r.get("paymenthold"),
+                            "posting": r.get("posting"),
+                            "postingperiod": r.get("postingperiod"),
+                            "printedpickingticket": r.get("printedpickingticket"),
+                            "recordtype": r.get("recordtype"),
+                            "source": r.get("source"),
+                            "status": r.get("status"),
+                            "terms": r.get("terms"),
+                            "tobeprinted": r.get("tobeprinted"),
+                            "trandate": self.parse_date(r.get("trandate")),
+                            "trandisplayname": r.get("trandisplayname"),
+                            "tranid": r.get("tranid"),
+                            "transactionnumber": r.get("transactionnumber"),
+                            "type": r.get("type"),
+                            "visibletocustomer": r.get("visibletocustomer"),
+                            "void_field": r.get("void"),
+                            "voided": r.get("voided"),
+                            "memo": r.get("memo"),
+                            "record_date": last_mod,
+                            "consolidation_key": self.integration.netsuite_account_id,
+                        }
                     )
                 except Exception as e:
                     logger.error(f"Error importing transaction row: {e}", exc_info=True)
-
-            logger.info(f"Fetched {len(rows)} transaction records (min_id: {min_id}).")
-            BatchUtils.process_in_batches(rows, process_transaction, batch_size=batch_size)
-            total_imported += len(rows)
             
-            # Set min_id for the next batch as the last row's ID.
+            total_imported += len(rows)
             min_id = rows[-1].get("id")
-            logger.info(f"Processed batch. New min_id: {min_id}, Total imported: {total_imported}.")
             
             if len(rows) < batch_size:
                 break
