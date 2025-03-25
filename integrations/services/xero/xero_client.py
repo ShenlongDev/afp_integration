@@ -514,7 +514,6 @@ class XeroDataImporter:
 
 
     def get_budget_period_balances(self, budget_id: str):
-        print(f"budget_id::: {budget_id}")
         url = f"https://api.xero.com/api.xro/2.0/Budgets/{budget_id}"
         headers = {
             "Authorization": f"Bearer {self.get_valid_xero_token()}",
@@ -530,10 +529,10 @@ class XeroDataImporter:
             date_to = timezone.now().date().strftime("%Y-%m-%d")
             
             response = request_with_retry("get", url, headers=headers, params={
-                "DateFrom": date_from,
-                "DateTo": date_to
+                "DateFrom": "2020-01-01",
+                "DateTo": "2025-10-01"
             })
-            print(date_from, date_to)
+            print(date_from, date_to, len(response.json().get("Budgets", [])))
             return response.json().get("Budgets", [])
 
         except requests.exceptions.HTTPError as e:
@@ -567,7 +566,6 @@ class XeroDataImporter:
                     "source_system": "XERO"
                 }
             )
-            print(f"budget_id: {budget_id}")
             bp_response = self.get_budget_period_balances(budget_id)
             if not bp_response:
                 logger.warning(f"No period balances found for budget_id: {budget_id}")
