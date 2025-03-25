@@ -515,9 +515,7 @@ class XeroDataImporter:
 
 
     def get_budget_period_balances(self, budget_id: str):
-        print(f"budget_id: {budget_id}")
-        url = f"https://api.xero.com/api.xro/2.0/Budgets/68658513-9354-415d-ae7f-a25d84fcdd0c"
-        print(f"url: {url}")
+        url = f"https://api.xero.com/api.xro/2.0/Budgets/{budget_id}"
         headers = {
             "Authorization": f"Bearer {self.get_valid_xero_token()}",
             "Accept": "application/json"
@@ -559,9 +557,6 @@ class XeroDataImporter:
                     "source_system": "XERO"
                 }
             )
-            print(budget.get("Description"))
-            if budget.get("Description") == "Fulham":
-                print(f"budget: {budget}")
             bp_response = self.get_budget_period_balances(budget_id)
             if not bp_response:
                 logger.warning(f"No period balances found for budget_id: {budget_id}")
