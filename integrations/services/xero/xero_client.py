@@ -2,7 +2,7 @@ import requests
 import re
 import logging
 import time  # Used for sleep on retry
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, date
 from zoneinfo import ZoneInfo
 from django.utils import timezone
 from django.db import transaction
@@ -84,7 +84,6 @@ class XeroDataImporter:
             params.update({"page": page})
             headers = self.build_headers()
             response = requests.get(url, headers=headers, params=params)
-
             # Handle rate limit (HTTP 429)
             if response.status_code == 429:
                 retry_after = int(response.headers.get("Retry-After", 60))
@@ -515,17 +514,28 @@ class XeroDataImporter:
 
 
     def get_budget_period_balances(self, budget_id: str):
+        print(f"budget_id::: {budget_id}")
         url = f"https://api.xero.com/api.xro/2.0/Budgets/{budget_id}"
         headers = {
             "Authorization": f"Bearer {self.get_valid_xero_token()}",
             "Accept": "application/json"
         }
         try:
+            # Convert since_date to string format if it's a date object
+            date_from = self.since_date
+            if isinstance(date_from, (datetime, date)):
+                date_from = date_from.strftime("%Y-%m-%d")
+            
+            # Use today's date for DateTo
+            date_to = timezone.now().date().strftime("%Y-%m-%d")
+            
             response = request_with_retry("get", url, headers=headers, params={
-                "DateFrom": "2024-01-01",
-                "DateTo": "2025-02-11"
+                "DateFrom": date_from,
+                "DateTo": date_to
             })
+            print(date_from, date_to)
             return response.json().get("Budgets", [])
+
         except requests.exceptions.HTTPError as e:
             if response.status_code == 404:
                 return []
@@ -557,6 +567,7 @@ class XeroDataImporter:
                     "source_system": "XERO"
                 }
             )
+            print(f"budget_id: {budget_id}")
             bp_response = self.get_budget_period_balances(budget_id)
             if not bp_response:
                 logger.warning(f"No period balances found for budget_id: {budget_id}")

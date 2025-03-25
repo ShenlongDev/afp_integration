@@ -1,5 +1,5 @@
 import requests
-import jwt  # PyJWT library: pip install PyJWT
+import jwt 
 from django.utils import timezone
 from datetime import timedelta
 from django.conf import settings
