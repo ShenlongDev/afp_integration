@@ -514,6 +514,7 @@ class XeroDataImporter:
 
 
     def get_budget_period_balances(self, budget_id: str):
+        print(f"budget_id::: {budget_id}")
         url = f"https://api.xero.com/api.xro/2.0/Budgets/{budget_id}"
         headers = {
             "Authorization": f"Bearer {self.get_valid_xero_token()}",
@@ -532,14 +533,10 @@ class XeroDataImporter:
                 "DateFrom": "2020-01-01",
                 "DateTo": "2025-10-01"
             })
-            print(date_from, date_to, len(response.json().get("Budgets", [])))
             return response.json().get("Budgets", [])
 
         except requests.exceptions.HTTPError as e:
-            if response.status_code == 404:
-                return []
-            else:
-                raise
+            pass
 
 
     def import_xero_budgets(self):
