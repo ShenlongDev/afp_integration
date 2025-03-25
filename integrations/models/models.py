@@ -22,6 +22,9 @@ class Integration(models.Model):
     netsuite_account_id = models.CharField(max_length=255, blank=True, null=True)
     netsuite_client_id = models.CharField(max_length=255, blank=True, null=True)
     netsuite_client_secret = models.CharField(max_length=255, blank=True, null=True)
+    netsuite_consumer_key = models.CharField(max_length=255, blank=True, null=True)
+    netsuite_private_key = models.TextField(blank=True, null=True)
+    netsuite_certificate_id = models.CharField(max_length=255, blank=True, null=True)
     
     toast_api_url = models.CharField(max_length=100, blank=True, null=True)
     toast_client_id = models.CharField(max_length=255, blank=True, null=True)
