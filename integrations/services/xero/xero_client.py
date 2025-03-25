@@ -530,7 +530,7 @@ class XeroDataImporter:
             date_to = timezone.now().date().strftime("%Y-%m-%d")
             
             response = request_with_retry("get", url, headers=headers, params={
-                "DateFrom": "2020-01-01",
+                "DateFrom": "2025-01-01",
                 "DateTo": "2025-10-01"
             })
             return response.json().get("Budgets", [])
