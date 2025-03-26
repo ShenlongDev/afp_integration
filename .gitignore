@@ -89,3 +89,5 @@ celerybeat-schedule.bak
 celerybeat.pid
 celerybeat.log
 
+.DS_Store
+.python-version
