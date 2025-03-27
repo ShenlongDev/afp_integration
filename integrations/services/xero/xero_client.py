@@ -64,15 +64,18 @@ class XeroDataImporter:
     Shared values (integration, since_date, etc.) are stored in __init__.
     """
 
-    def __init__(self, integration: Integration, since_date=None):
+    def __init__(self, integration: Integration, since_date=None, until_date=None):
         self.integration = integration
         self.since_date = since_date
+        self.until_date = until_date
         self.client_id = integration.xero_client_id
         self.client_secret = integration.xero_client_secret
         self.tenant_id = str(integration.org.id)
         
         if since_date is None:
             self.since_date = timezone.now().date()
+        if until_date is None:
+            self.until_date = timezone.now().date()
         
     def get_paginated_results(self, url: str, result_key: str, extra_params: dict = None) -> list:
         results = []
@@ -513,7 +516,7 @@ class XeroDataImporter:
         return self.get_paginated_results("https://api.xero.com/api.xro/2.0/Budgets", "Budgets")
 
 
-    def get_budget_period_balances(self, budget_id: str):
+    def get_budget_period_balances(self, budget_id: str, until_date=None):
         print(f"budget_id::: {budget_id}")
         url = f"https://api.xero.com/api.xro/2.0/Budgets/{budget_id}"
         headers = {
@@ -526,12 +529,16 @@ class XeroDataImporter:
             if isinstance(date_from, (datetime, date)):
                 date_from = date_from.strftime("%Y-%m-%d")
             
-            # Use today's date for DateTo
-            date_to = timezone.now().date().strftime("%Y-%m-%d")
+            # Use until_date parameter or fallback to today's date
+            date_to = until_date
+            if isinstance(date_to, (datetime, date)):
+                date_to = date_to.strftime("%Y-%m-%d")
+            elif date_to is None:
+                date_to = timezone.now().date().strftime("%Y-%m-%d")
             
             response = request_with_retry("get", url, headers=headers, params={
-                "DateFrom": "2025-01-01",
-                "DateTo": "2025-10-01"
+                "DateFrom": date_from,
+                "DateTo": date_to
             })
             return response.json().get("Budgets", [])
 
@@ -539,8 +546,9 @@ class XeroDataImporter:
             pass
 
 
-    def import_xero_budgets(self):
-        logger.info("Importing Xero Budgets & Period Balances...")
+    def import_xero_budgets(self, until_date=None):
+        until_date = self.until_date
+        logger.info(f"Importing Xero Budgets & Period Balances from {self.since_date} to {until_date}...")
         now_ts = timezone.now()
         budgets = self.get_budgets()
 
@@ -563,7 +571,7 @@ class XeroDataImporter:
                     "source_system": "XERO"
                 }
             )
-            bp_response = self.get_budget_period_balances(budget_id)
+            bp_response = self.get_budget_period_balances(budget_id, until_date)
             if not bp_response:
                 logger.warning(f"No period balances found for budget_id: {budget_id}")
                 return
@@ -1445,10 +1453,6 @@ class XeroDataImporter:
         # 6. Budgets
         print("Importing Xero Budgets...")
         self.import_xero_budgets()
-
-        # # 7. General Ledger
-        # print("Mapping Xero General Ledger...")
-        # self.map_xero_general_ledger()
 
         logger.info("Finished full Xero data import successfully.")
         

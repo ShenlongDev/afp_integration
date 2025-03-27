@@ -257,6 +257,12 @@ class NetSuiteEntity(models.Model):
     terms = models.CharField(max_length=255, null=True)
     last_modified_date = models.DateTimeField(null=True)
     record_date = models.DateTimeField(null=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['tenant_id', 'entity_id']),
+            models.Index(fields=['last_modified_date']),
+        ]
 
 
 class NetSuiteJournals(models.Model):

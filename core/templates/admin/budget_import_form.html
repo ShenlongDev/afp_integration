@@ -1,0 +1,148 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <style>
+    .data-import-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 90%;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border-radius: 6px;
+    }
+    .data-import-container h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 24px;
+      color: #333;
+    }
+    .data-import-form {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-gap: 15px;
+      width: 100%;
+    }
+    .data-import-form p {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .data-import-form label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    .data-import-form input[type="text"],
+    .data-import-form input[type="email"],
+    .data-import-form input[type="password"],
+    .data-import-form textarea,
+    .data-import-form select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .data-import-form input[type="submit"] {
+      padding: 10px;
+      font-size: 16px;
+      color: #fff;
+      background-color: #337ab7;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    .data-import-form input[type="submit"]:hover {
+      background-color: #286090;
+    }
+    .since-date-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .since-date-container select {
+      width: 100%;
+    }
+    /* Error styles */
+    .error-summary {
+      background: #fdd;
+      border: 1px solid red;
+      padding: 10px;
+      margin-bottom: 20px;
+      width: 100%;
+      border-radius: 4px;
+    }
+    .error-summary p {
+      margin: 0 0 5px 0;
+      font-weight: bold;
+    }
+    .error-summary ul {
+      margin: 0;
+      padding-left: 20px;
+      list-style-type: disc;
+    }
+    .error-summary li {
+      color: red;
+    }
+    @media (max-width: 768px) {
+      .data-import-container {
+        width: 95%;
+        margin: 20px auto;
+        padding: 15px;
+      }
+      .data-import-form {
+        grid-gap: 10px;
+      }
+    }
+  </style>
+{% endblock extrahead %}
+
+{% block content %}
+  <div class="data-import-container">
+    <h1>Import Xero Budgets</h1>
+    {% if form.errors %}
+      <div class="error-summary">
+         <p>Please fix the following errors:</p>
+         <ul>
+           {% for field in form %}
+             {% for error in field.errors %}
+               <li><strong>{{ field.label }}:</strong> {{ error }}</li>
+             {% endfor %}
+           {% endfor %}
+           {% for error in form.non_field_errors %}
+             <li>{{ error }}</li>
+           {% endfor %}
+         </ul>
+      </div>
+    {% endif %}
+    <form class="data-import-form" method="post">
+      {% csrf_token %}
+      {{ form.integration_type }}
+      <p>
+        {{ form.organisation.label_tag }}
+        {{ form.organisation }}
+      </p>
+      <p>
+        {{ form.since_date.label_tag }}
+        <div class="since-date-container">
+          {{ form.since_date }}
+        </div>
+      </p>
+      <p>
+        {{ form.until_date.label_tag }}
+        <div class="since-date-container">
+          {{ form.until_date }}
+        </div>
+      </p>
+      <input type="submit" value="Import Budgets">
+    </form>
+  </div>
+{% endblock %} 

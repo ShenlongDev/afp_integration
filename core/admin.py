@@ -1,22 +1,22 @@
 from django.contrib import admin
 from .models import Organisation, TaskLog
-from core.forms import DataImportForm
+from core.forms import DataImportForm, BudgetImportForm
 from django.urls import path
 from django.shortcuts import render, redirect
 from django.contrib import messages
 
-
 from integrations.models.models import HighPriorityTask
+from integrations.services.xero.xero_client import XeroDataImporter
 
-class DataImportAdmin(admin.ModelAdmin):
-    change_list_template = "admin/data_import_changelist.html"  
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
+# Create a standalone admin site mixin class for import functions
+class ImportToolsMixin:
+    """Mixin that provides import tool views for any admin class"""
+    
+    def get_import_urls(self):
+        return [
             path('import-data/', self.admin_site.admin_view(self.import_data_view), name="import-data"),
+            path('import-budgets/', self.admin_site.admin_view(self.import_budgets_view), name="import-budgets"),
         ]
-        return custom_urls + urls
 
     def import_data_view(self, request):
         if request.method == 'POST':
@@ -49,6 +49,42 @@ class DataImportAdmin(admin.ModelAdmin):
             'title': "Data Import",
         }
         return render(request, "admin/data_import_form.html", context)
+        
+    def import_budgets_view(self, request):
+        if request.method == 'POST':
+            form = BudgetImportForm(request.POST)
+            if form.is_valid():
+                integration = form.cleaned_data['integration']
+                since_date = form.cleaned_data['since_date']
+                until_date = form.cleaned_data['until_date']
+                
+                # Process the budget import directly
+                try:
+                    # Create importer instance with date range
+                    importer = XeroDataImporter(integration, since_date)
+                    # Import budgets with the until_date
+                    importer.import_xero_budgets(until_date=until_date)
+                    
+                    messages.success(
+                        request,
+                        f"Successfully imported Xero budget data for {integration.org.name} from {since_date} to {until_date}"
+                    )
+                except Exception as e:
+                    messages.error(
+                        request,
+                        f"Error importing Xero budget data: {str(e)}"
+                    )
+                return redirect("..")
+        else:
+            form = BudgetImportForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            'form': form,
+            'title': "Import Xero Budgets",
+        }
+        return render(request, "admin/budget_import_form.html", context)
+
 
 class OrganisationAdmin(admin.ModelAdmin):
     list_display = ('name',)
@@ -60,5 +96,7 @@ class TaskLogAdmin(admin.ModelAdmin):
     search_fields = ('task_name', 'status')
     list_filter = ('status',)
     
-admin.site.register(Organisation, DataImportAdmin)
-admin.site.register(TaskLog)
+# Register regular model admins
+admin.site.register(Organisation, OrganisationAdmin)
+admin.site.register(TaskLog, TaskLogAdmin)
+

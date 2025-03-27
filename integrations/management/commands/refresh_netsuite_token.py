@@ -49,11 +49,6 @@ class Command(BaseCommand):
                         integration_type=INTEGRATION_TYPE_NETSUITE
                     )
                     
-                    # Skip if not expired and not forced
-                    if not force_refresh and token_obj.expires_at > timezone.now():
-                        self.stdout.write(f"Token for {integration} still valid until {token_obj.expires_at}")
-                        continue
-                    
                         
                 except IntegrationAccessToken.DoesNotExist:
                     self.stdout.write(self.style.ERROR(

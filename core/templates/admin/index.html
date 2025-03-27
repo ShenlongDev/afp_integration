@@ -1,0 +1,19 @@
+{% extends "admin/index.html" %}
+
+{% block content %}
+  <div class="data-import-section" style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; background-color: #f9f9f9; width: 100%; box-sizing: border-box; border-radius: 10px;">
+    <h1>Data Import Tools</h1>
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+      <a href="{% url 'admin:import-data' %}" class="btn" style="display: inline-block; padding: 10px 15px; color: #fff; background-color: #337ab7; border-radius: 4px; text-decoration: none;">
+        Full Data Import
+      </a>
+      <a href="{% url 'admin:import-budgets' %}" class="btn" style="display: inline-block; padding: 10px 15px; color: #fff; background-color: #5cb85c; border-radius: 4px; text-decoration: none;">
+        Xero Budgets Import
+      </a>
+    </div>
+    <p style="margin-top: 0; color: #555;">
+      Use these tools to import data from integrated systems. The budget import is specifically for Xero budget data.
+    </p>
+  </div>
+  {{ block.super }}
+{% endblock %} 
