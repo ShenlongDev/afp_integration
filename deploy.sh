@@ -18,10 +18,10 @@ python manage.py collectstatic --noinput
 
 # Gracefully stop Gunicorn
 echo "Killing existing Gunicorn instances..."
-pkill -f "gunicorn config.wsgi:application --bind 127.0.0.1:8000"
+pkill -f "gunicorn config.wsgi:application --bind 0.0.0.0:8000"
 
 echo "Starting Gunicorn..."
-gunicorn config.wsgi:application --bind 127.0.0.1:8000 --timeout 300 --workers 2 --daemon
+gunicorn config.wsgi:application --bind 0.0.0.0:8000 --timeout 300 --workers 2 --daemon
 
 # Gracefully stop Celery workers with a timeout, and if it fails, force kill.
 echo "Stopping Celery workers..."
