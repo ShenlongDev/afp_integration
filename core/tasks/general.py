@@ -40,7 +40,6 @@ def get_high_priority_task():
     from integrations.models.models import HighPriorityTask
     task = HighPriorityTask.objects.filter(processed=False, in_progress=False).order_by('created_at').first()
     if task:
-        # Atomically mark the task as in progress to prevent another dispatcher from picking it up.
         updated = HighPriorityTask.objects.filter(id=task.id, in_progress=False).update(in_progress=True)
         if updated:
             task.refresh_from_db()
@@ -97,7 +96,6 @@ def sync_organization(self, organization_id):
         org_integrations = Integration.objects.filter(org=organization_id).order_by('-id')
         for integration in org_integrations:
             logger.warning("Starting sync for integration %s", integration.id)
-            # Determine integration type based on which credentials are populated.
             if integration.toast_client_id and integration.toast_client_secret and integration.toast_api_url:
                 integration_type = "toast"
             elif integration.xero_client_id and integration.xero_client_secret:
@@ -118,7 +116,6 @@ def sync_organization(self, organization_id):
             elif integration_type == "toast":
                 logger.info("Dispatching Toast sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.toast import sync_toast_data
-                # Explicitly route toast tasks to the same queue.
                 sync_toast_data.apply_async(args=[integration.id], queue="org_sync")
             else:
                 logger.warning("Unknown integration type for integration %s", integration.id)
@@ -164,23 +161,17 @@ def process_high_priority(self, hp_task_id):
         return
 
     try:
-        # Prepare since_date and importer
-        since_date = (
-            hp_task.since_date.strftime("%Y-%m-%d")
-            if hp_task.since_date
-            else None
-        )
+        since_date = hp_task.since_date
+        until_date = hp_task.until_date 
         module_config = MODULES[hp_task.integration_type]
         ImporterClass = module_config["client"]
         logger.info(
-            "Processing High Priority task for integration: %s with since_date: %s",
-            integration,
-            since_date,
+            "Processing High Priority task for integration: %s with since_date: %s and until_date: %s",
+            integration, since_date, until_date
         )
 
-        importer = ImporterClass(integration, since_date)
+        importer = ImporterClass(integration, since_date, until_date)
 
-        # Process each module independently.
         if hp_task.selected_modules:
             for module in hp_task.selected_modules:
                 import_func = module_config["import_methods"].get(module)
@@ -200,7 +191,6 @@ def process_high_priority(self, hp_task_id):
                             module_exception,
                             exc_info=True,
                         )
-                        # Optionally, record the failure for the module separately.
                 else:
                     logger.warning(
                         "Unknown module %s for integration ID %s",
@@ -244,7 +234,6 @@ def process_high_priority(self, hp_task_id):
             "dispatched",
             f"High priority task for integration {hp_task.integration.id} processed at {timezone.now()}",
         )
-        # Mark the task as processed even if some modules failed.
         hp_task.processed = True
     except Exception as e:
         logger.error(
@@ -257,7 +246,6 @@ def process_high_priority(self, hp_task_id):
         hp_task.save(update_fields=["in_progress"])
         raise
     finally:
-        # Always clear the in_progress flag.
         hp_task.in_progress = False
         hp_task.save(update_fields=["processed", "in_progress"])
 
@@ -279,12 +267,10 @@ def dispatcher(self):
             logger.info("No high priority tasks found.")
         
         from integrations.models.models import Integration
-        # Get distinct organization IDs.
         org_ids = list(Integration.objects.values_list("org", flat=True).distinct().order_by("-org"))
         max_org_sync = 3
         active_count = get_active_org_sync_tasks()
         logger.info(f"Currently active organization sync tasks: {active_count}")
-        # Loop through organizations and dispatch if we're under the limit.
         for org_id in org_ids:
             if get_active_org_sync_tasks() < max_org_sync:
                 from core.tasks.general import sync_organization
@@ -303,6 +289,5 @@ def dispatcher(self):
         logger.info("Dispatcher completed successfully.")
         log_task_event("dispatcher", "success", f"Task completed successfully at {timezone.now()}")
     finally:
-        # Re-enqueue dispatcher after a brief wait.
         dispatcher.apply_async(countdown=5)
 

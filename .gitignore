@@ -91,3 +91,4 @@ celerybeat.log
 
 .DS_Store
 .python-version
+*.rdb

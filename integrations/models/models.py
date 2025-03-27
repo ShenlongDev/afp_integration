@@ -84,6 +84,7 @@ class HighPriorityTask(models.Model):
     integration = models.ForeignKey(Integration, on_delete=models.CASCADE)
     integration_type = models.CharField(max_length=50)
     since_date = models.DateField()
+    until_date = models.DateField(null=True, blank=True)
     selected_modules = models.JSONField(default=list, blank=True)
     processed = models.BooleanField(default=False)
     in_progress = models.BooleanField(default=False)
