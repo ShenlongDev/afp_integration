@@ -30,9 +30,9 @@ class ToastIntegrationService:
         self.end_date = end_date
 
     def get_restaurant_guid(self):
+        """Get all restaurant GUIDs associated with the current integration"""
         url = f"{self.hostname}/partners/v1/restaurants"
         headers = {"Authorization": f"Bearer {self.access_token}"}
-        print(f"headers: {headers}")
         payload = {
             "clientId": self.client_id,
             "clientSecret": self.client_secret,
@@ -44,14 +44,19 @@ class ToastIntegrationService:
             data = response.json()
             logger.info("Restaurant GUID response: %s", data)
             if isinstance(data, list) and data:
-                restaurant_guid = data[0].get("restaurantGuid")
-                return restaurant_guid
+                # Return all restaurant GUIDs instead of just the first one
+                restaurant_guids = [restaurant.get("restaurantGuid") for restaurant in data if restaurant.get("restaurantGuid")]
+                if restaurant_guids:
+                    return restaurant_guids
+                else:
+                    logger.error("No restaurant GUIDs found in Toast response.")
+                    return []
             else:
-                logger.error("No restaurant GUID found in Toast response.")
-                return None
+                logger.error("No restaurant data found in Toast response.")
+                return []
         except requests.RequestException as e:
-            logger.error("Failed to get restaurant GUID: %s", e)
-            return None
+            logger.error("Failed to get restaurant GUIDs: %s", e)
+            return []
 
     def format_date_for_toast(self, date_obj):
         if isinstance(date_obj, str):
@@ -110,185 +115,188 @@ class ToastIntegrationService:
 
     def import_restaurant_and_schedule_data(self):
         """
-        Fetches restaurant info (including schedules) from Toast and updates/creates:
+        Fetches restaurant info (including schedules) for all restaurants from Toast and updates/creates:
          - ToastGeneralLocation,
          - ToastDaySchedule,
          - ToastWeeklySchedule, and
          - ToastJoinedOpeningHours.
-         
-        Assumes a GET request to:
-           {{hostname}}/restaurants/v1/restaurants/{restaurantGUID}?includeArchived=false
-        returns a JSON response that includes keys "general", "urls", "location", and "schedules".
         """
-        restaurant_guid = self.get_restaurant_guid()
-        if not restaurant_guid:
-            raise Exception("Restaurant GUID not found.")
+        restaurant_guids = self.get_restaurant_guid()
+        if not restaurant_guids:
+            raise Exception("No restaurant GUIDs found.")
+        
+        results = []
+        for restaurant_guid in restaurant_guids:
+            logger.info(f"Processing restaurant with GUID: {restaurant_guid}")
+            url = f"{self.hostname}/restaurants/v1/restaurants/{restaurant_guid}?includeArchived=false"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Toast-Restaurant-External-ID": restaurant_guid
+            }
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+            except requests.RequestException as e:
+                logger.error("Failed to import restaurant and schedule data: %s", e)
+                raise
 
-        url = f"{self.hostname}/restaurants/v1/restaurants/{restaurant_guid}?includeArchived=false"
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Toast-Restaurant-External-ID": restaurant_guid
-        }
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-        except requests.RequestException as e:
-            logger.error("Failed to import restaurant and schedule data: %s", e)
-            raise
+            general = data.get("general", {})
+            urls = data.get("urls", {})
+            location_data = data.get("location", {})
 
-        general = data.get("general", {})
-        urls = data.get("urls", {})
-        location_data = data.get("location", {})
+            general_location_defaults = {
+                "tenant_id": self.integration.org.id,
+                "guid": data.get("guid"),
+                "general_name": general.get("name"),
+                "location_name": general.get("locationName"),
+                "location_code": general.get("locationCode"),
+                "description": general.get("description"),
+                "timezone": general.get("timeZone"),
+                # Convert the closeout hour (which is an integer) to a time object.
+                "closeout_hour": self.convert_int_to_time(general.get("closeoutHour")),
+                "management_group_guid": general.get("managementGroupGuid"),
+                "currency_code": general.get("currencyCode"),
+                "first_business_date": self.convert_to_date(general.get("firstBusinessDate")),
+                "archived": general.get("archived", False),
+                "url_website": urls.get("website"),
+                "url_facebook": urls.get("facebook"),
+                "url_twitter": urls.get("twitter"),
+                "url_order_online": urls.get("orderOnline"),
+                "address_line1": location_data.get("address1"),
+                "address_line2": location_data.get("address2"),
+                "city": location_data.get("city"),
+                "state_code": location_data.get("stateCode"),
+                "zip_code": location_data.get("zipCode"),
+                "country": location_data.get("country"),
+                "phone": location_data.get("phone"),
+                "latitude": location_data.get("latitude"),
+                "longitude": location_data.get("longitude"),
+            }
+            location_obj, _ = ToastGeneralLocation.objects.update_or_create(
+                guid=general_location_defaults["guid"],
+                tenant_id=self.integration.org.id,
+                defaults=general_location_defaults
+            )
+            logger.info("Imported restaurant location: %s", location_obj)
 
-        general_location_defaults = {
-            "tenant_id": self.integration.org.id,
-            "guid": data.get("guid"),
-            "general_name": general.get("name"),
-            "location_name": general.get("locationName"),
-            "location_code": general.get("locationCode"),
-            "description": general.get("description"),
-            "timezone": general.get("timeZone"),
-            # Convert the closeout hour (which is an integer) to a time object.
-            "closeout_hour": self.convert_int_to_time(general.get("closeoutHour")),
-            "management_group_guid": general.get("managementGroupGuid"),
-            "currency_code": general.get("currencyCode"),
-            "first_business_date": self.convert_to_date(general.get("firstBusinessDate")),
-            "archived": general.get("archived", False),
-            "url_website": urls.get("website"),
-            "url_facebook": urls.get("facebook"),
-            "url_twitter": urls.get("twitter"),
-            "url_order_online": urls.get("orderOnline"),
-            "address_line1": location_data.get("address1"),
-            "address_line2": location_data.get("address2"),
-            "city": location_data.get("city"),
-            "state_code": location_data.get("stateCode"),
-            "zip_code": location_data.get("zipCode"),
-            "country": location_data.get("country"),
-            "phone": location_data.get("phone"),
-            "latitude": location_data.get("latitude"),
-            "longitude": location_data.get("longitude"),
-        }
-        location_obj, _ = ToastGeneralLocation.objects.update_or_create(
-            guid=general_location_defaults["guid"],
-            tenant_id=self.integration.org.id,
-            defaults=general_location_defaults
-        )
-        logger.info("Imported restaurant location: %s", location_obj)
+            # Process schedule data:
+            schedules = data.get("schedules", {})
+            day_schedules_data = schedules.get("daySchedules", {})
+            week_schedule_data = schedules.get("weekSchedule", {})
 
-        # Process schedule data:
-        schedules = data.get("schedules", {})
-        day_schedules_data = schedules.get("daySchedules", {})
-        week_schedule_data = schedules.get("weekSchedule", {})
+            # Update/insert ToastDaySchedule records.
+            day_schedule_map = {}
+            for ds_guid, ds in day_schedules_data.items():
+                ds_defaults = {
+                    "tenant_id": self.integration.org.id,
+                    "integration": self.integration,
+                    "restaurant": location_obj,
+                    "guid": ds_guid,
+                    "property_name": ds.get("scheduleName"),
+                    "open_time": self.convert_to_time(ds.get("openTime")),
+                    "close_time": self.convert_to_time(ds.get("closeTime")),
+                    "schedule_name": ds.get("scheduleName"),
+                }
+                day_obj, _ = ToastDaySchedule.objects.update_or_create(
+                    guid=ds_guid,
+                    tenant_id=self.integration.org.id,
+                    defaults=ds_defaults
+                )
+                day_schedule_map[ds_guid] = day_obj
+            logger.info("Imported %d day schedules.", len(day_schedule_map))
 
-        # Update/insert ToastDaySchedule records.
-        day_schedule_map = {}
-        for ds_guid, ds in day_schedules_data.items():
-            ds_defaults = {
+            # Update/insert ToastWeeklySchedule record.
+            weekly_defaults = {
                 "tenant_id": self.integration.org.id,
                 "integration": self.integration,
                 "restaurant": location_obj,
-                "guid": ds_guid,
-                "property_name": ds.get("scheduleName"),
-                "open_time": self.convert_to_time(ds.get("openTime")),
-                "close_time": self.convert_to_time(ds.get("closeTime")),
-                "schedule_name": ds.get("scheduleName"),
+                "monday": week_schedule_data.get("monday"),
+                "tuesday": week_schedule_data.get("tuesday"),
+                "wednesday": week_schedule_data.get("wednesday"),
+                "thursday": week_schedule_data.get("thursday"),
+                "friday": week_schedule_data.get("friday"),
+                "saturday": week_schedule_data.get("saturday"),
+                "sunday": week_schedule_data.get("sunday"),
             }
-            day_obj, _ = ToastDaySchedule.objects.update_or_create(
-                guid=ds_guid,
+            weekly_obj, _ = ToastWeeklySchedule.objects.update_or_create(
+                integration=self.integration,
+                restaurant=location_obj,
                 tenant_id=self.integration.org.id,
-                defaults=ds_defaults
+                defaults=weekly_defaults
             )
-            day_schedule_map[ds_guid] = day_obj
-        logger.info("Imported %d day schedules.", len(day_schedule_map))
+            logger.info("Imported weekly schedule for restaurant: %s", location_obj)
 
-        # Update/insert ToastWeeklySchedule record.
-        weekly_defaults = {
-            "tenant_id": self.integration.org.id,
-            "integration": self.integration,
-            "restaurant": location_obj,
-            "monday": week_schedule_data.get("monday"),
-            "tuesday": week_schedule_data.get("tuesday"),
-            "wednesday": week_schedule_data.get("wednesday"),
-            "thursday": week_schedule_data.get("thursday"),
-            "friday": week_schedule_data.get("friday"),
-            "saturday": week_schedule_data.get("saturday"),
-            "sunday": week_schedule_data.get("sunday"),
-        }
-        weekly_obj, _ = ToastWeeklySchedule.objects.update_or_create(
-            integration=self.integration,
-            restaurant=location_obj,
-            tenant_id=self.integration.org.id,
-            defaults=weekly_defaults
-        )
-        logger.info("Imported weekly schedule for restaurant: %s", location_obj)
+            # Build joined opening hours (ToastJoinedOpeningHours)
+            def get_day_schedule_info(schedule_id):
+                ds = day_schedule_map.get(schedule_id)
+                if ds:
+                    overnight = False
+                    if ds.open_time and ds.close_time and ds.close_time < ds.open_time:
+                        overnight = True
+                    return ds.open_time, ds.close_time, overnight, ds.schedule_name
+                return None, None, False, None
 
-        # Build joined opening hours (ToastJoinedOpeningHours)
-        def get_day_schedule_info(schedule_id):
-            ds = day_schedule_map.get(schedule_id)
-            if ds:
-                overnight = False
-                if ds.open_time and ds.close_time and ds.close_time < ds.open_time:
-                    overnight = True
-                return ds.open_time, ds.close_time, overnight, ds.schedule_name
-            return None, None, False, None
+            monday_start, monday_end, monday_overnight, monday_related = get_day_schedule_info(week_schedule_data.get("monday"))
+            tuesday_start, tuesday_end, tuesday_overnight, tuesday_related = get_day_schedule_info(week_schedule_data.get("tuesday"))
+            wednesday_start, wednesday_end, wednesday_overnight, wednesday_related = get_day_schedule_info(week_schedule_data.get("wednesday"))
+            thursday_start, thursday_end, thursday_overnight, thursday_related = get_day_schedule_info(week_schedule_data.get("thursday"))
+            friday_start, friday_end, friday_overnight, friday_related = get_day_schedule_info(week_schedule_data.get("friday"))
+            saturday_start, saturday_end, saturday_overnight, saturday_related = get_day_schedule_info(week_schedule_data.get("saturday"))
+            sunday_start, sunday_end, sunday_overnight, sunday_related = get_day_schedule_info(week_schedule_data.get("sunday"))
 
-        monday_start, monday_end, monday_overnight, monday_related = get_day_schedule_info(week_schedule_data.get("monday"))
-        tuesday_start, tuesday_end, tuesday_overnight, tuesday_related = get_day_schedule_info(week_schedule_data.get("tuesday"))
-        wednesday_start, wednesday_end, wednesday_overnight, wednesday_related = get_day_schedule_info(week_schedule_data.get("wednesday"))
-        thursday_start, thursday_end, thursday_overnight, thursday_related = get_day_schedule_info(week_schedule_data.get("thursday"))
-        friday_start, friday_end, friday_overnight, friday_related = get_day_schedule_info(week_schedule_data.get("friday"))
-        saturday_start, saturday_end, saturday_overnight, saturday_related = get_day_schedule_info(week_schedule_data.get("saturday"))
-        sunday_start, sunday_end, sunday_overnight, sunday_related = get_day_schedule_info(week_schedule_data.get("sunday"))
-
-        joined_defaults = {
-            "tenant_id": self.integration.org.id,
-            "integration": self.integration,
-            "restaurant": location_obj,
-            "monday_start_time": monday_start,
-            "monday_end_time": monday_end,
-            "monday_overnight": monday_overnight,
-            "monday_related_day_schedule": monday_related,
-            "tuesday_start_time": tuesday_start,
-            "tuesday_end_time": tuesday_end,
-            "tuesday_overnight": tuesday_overnight,
-            "tuesday_related_day_schedule": tuesday_related,
-            "wednesday_start_time": wednesday_start,
-            "wednesday_end_time": wednesday_end,
-            "wednesday_overnight": wednesday_overnight,
-            "wednesday_related_day_schedule": wednesday_related,
-            "thursday_start_time": thursday_start,
-            "thursday_end_time": thursday_end,
-            "thursday_overnight": thursday_overnight,
-            "thursday_related_day_schedule": thursday_related,
-            "friday_start_time": friday_start,
-            "friday_end_time": friday_end,
-            "friday_overnight": friday_overnight,
-            "friday_related_day_schedule": friday_related,
-            "saturday_start_time": saturday_start,
-            "saturday_end_time": saturday_end,
-            "saturday_overnight": saturday_overnight,
-            "saturday_related_day_schedule": saturday_related,
-            "sunday_start_time": sunday_start,
-            "sunday_end_time": sunday_end,
-            "sunday_overnight": sunday_overnight,
-            "sunday_related_day_schedule": sunday_related,
-        }
-        joined_obj, _ = ToastJoinedOpeningHours.objects.update_or_create(
-            integration=self.integration,
-            restaurant=location_obj,
-            tenant_id=self.integration.org.id,
-            defaults=joined_defaults
-        )
-        logger.info("Imported joined opening hours for restaurant: %s", location_obj)
-        return {
-            "location": location_obj,
-            "day_schedules": list(day_schedule_map.values()),
-            "weekly_schedule": weekly_obj,
-            "joined_opening_hours": joined_obj,
-        }
+            joined_defaults = {
+                "tenant_id": self.integration.org.id,
+                "integration": self.integration,
+                "restaurant": location_obj,
+                "monday_start_time": monday_start,
+                "monday_end_time": monday_end,
+                "monday_overnight": monday_overnight,
+                "monday_related_day_schedule": monday_related,
+                "tuesday_start_time": tuesday_start,
+                "tuesday_end_time": tuesday_end,
+                "tuesday_overnight": tuesday_overnight,
+                "tuesday_related_day_schedule": tuesday_related,
+                "wednesday_start_time": wednesday_start,
+                "wednesday_end_time": wednesday_end,
+                "wednesday_overnight": wednesday_overnight,
+                "wednesday_related_day_schedule": wednesday_related,
+                "thursday_start_time": thursday_start,
+                "thursday_end_time": thursday_end,
+                "thursday_overnight": thursday_overnight,
+                "thursday_related_day_schedule": thursday_related,
+                "friday_start_time": friday_start,
+                "friday_end_time": friday_end,
+                "friday_overnight": friday_overnight,
+                "friday_related_day_schedule": friday_related,
+                "saturday_start_time": saturday_start,
+                "saturday_end_time": saturday_end,
+                "saturday_overnight": saturday_overnight,
+                "saturday_related_day_schedule": saturday_related,
+                "sunday_start_time": sunday_start,
+                "sunday_end_time": sunday_end,
+                "sunday_overnight": sunday_overnight,
+                "sunday_related_day_schedule": sunday_related,
+            }
+            joined_obj, _ = ToastJoinedOpeningHours.objects.update_or_create(
+                integration=self.integration,
+                restaurant=location_obj,
+                tenant_id=self.integration.org.id,
+                defaults=joined_defaults
+            )
+            logger.info("Imported joined opening hours for restaurant: %s", location_obj)
+            results.append({
+                "location": location_obj,
+                "day_schedules": list(day_schedule_map.values()),
+                "weekly_schedule": weekly_obj,
+                "joined_opening_hours": joined_obj,
+            })
+        
+        logger.info(f"Imported data for {len(results)} restaurants")
+        return results
 
     def import_orders(self):
+        """Import orders for all restaurants"""
         if self.start_date is None:
             self.start_date = timezone.now().date()
         start_date_str = self.format_date_for_toast(self.start_date)
@@ -296,38 +304,44 @@ class ToastIntegrationService:
             self.end_date = timezone.now()
         end_date_str = self.format_date_for_toast(self.end_date)
 
-        restaurant_guid = self.get_restaurant_guid()
-        if not restaurant_guid:
-            raise Exception("Restaurant GUID not found.")
+        restaurant_guids = self.get_restaurant_guid()
+        if not restaurant_guids:
+            raise Exception("No restaurant GUIDs found.")
 
-        url = f"{self.hostname}/orders/v2/ordersBulk"
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Toast-Restaurant-External-ID": restaurant_guid
-        }
-        params = {
-            "startDate": start_date_str,
-            "endDate": end_date_str
-        }
-        orders = []
-        page = 1
-        while True:
-            params["page"] = page
-            try:
-                response = requests.get(url, headers=headers, params=params)
-                response.raise_for_status()
-                data = response.json()
-                orders_batch = data 
-                if not orders_batch:
+        all_orders = []
+        for restaurant_guid in restaurant_guids:
+            logger.info(f"Importing orders for restaurant with GUID: {restaurant_guid}")
+            
+            url = f"{self.hostname}/orders/v2/ordersBulk"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Toast-Restaurant-External-ID": restaurant_guid
+            }
+            params = {
+                "startDate": start_date_str,
+                "endDate": end_date_str
+            }
+            orders = []
+            page = 1
+            while True:
+                params["page"] = page
+                try:
+                    response = requests.get(url, headers=headers, params=params)
+                    response.raise_for_status()
+                    data = response.json()
+                    orders_batch = data 
+                    if not orders_batch:
+                        break
+                    orders.extend(orders_batch)
+                    page += 1
+                except requests.RequestException as e:
+                    logger.error("Error fetching orders on page %s: %s", page, e)
                     break
-                orders.extend(orders_batch)
-                page += 1
-            except requests.RequestException as e:
-                logger.error("Error fetching orders on page %s: %s", page, e)
-                break
-
-        self.process_orders(orders)
-        return orders
+            
+            all_orders.extend(orders)
+        
+        self.process_orders(all_orders)
+        return all_orders
 
     def log_import_event(self, module_name: str, fetched_records: int):
         SyncTableLogs.objects.create(
