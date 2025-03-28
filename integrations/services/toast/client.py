@@ -32,6 +32,7 @@ class ToastIntegrationService:
     def get_restaurant_guid(self):
         url = f"{self.hostname}/partners/v1/restaurants"
         headers = {"Authorization": f"Bearer {self.access_token}"}
+        print(f"headers: {headers}")
         payload = {
             "clientId": self.client_id,
             "clientSecret": self.client_secret,
@@ -307,9 +308,7 @@ class ToastIntegrationService:
         params = {
             "startDate": start_date_str,
             "endDate": end_date_str
-            # "businessDate": '20250302'
         }
-
         orders = []
         page = 1
         while True:
