@@ -42,7 +42,6 @@ class ToastIntegrationService:
             response = requests.get(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
-            logger.info("Restaurant GUID response: %s", data)
             if isinstance(data, list) and data:
                 # Return all restaurant GUIDs instead of just the first one
                 restaurant_guids = [restaurant.get("restaurantGuid") for restaurant in data if restaurant.get("restaurantGuid")]
