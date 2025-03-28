@@ -20,10 +20,8 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None):
         logger.error("Integration with ID %s does not exist.", integration_id)
         return
 
-    # Compute today's date as a string in YYYY-MM-DD format.
     today_str = timezone.now().strftime('%Y-%m-%d')
     try:
-        # If provided, parse; otherwise set to today's date.
         if start_date_str:
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
         else:
@@ -36,7 +34,6 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None):
         if end_date_str:
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
         else:
-            # Default to next day, covering the full day of start_date.
             end_date = datetime.strptime(today_str, '%Y-%m-%d') + timedelta(days=1)
     except Exception as e:
         logger.error("Error parsing end_date_str: %s", e)
@@ -46,5 +43,6 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None):
                 integration_id, start_date, end_date)
     importer = ToastIntegrationService(integration, start_date, end_date)
     orders = importer.import_orders()
+    importer.import_restaurant_and_schedule_data()
     logger.info("Toast sync completed for integration %s, %d orders processed.",
                 integration_id, len(orders)) 
