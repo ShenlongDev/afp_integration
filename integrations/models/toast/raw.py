@@ -6,6 +6,7 @@ class ToastOrder(models.Model):
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE, related_name="toast_orders")
     tenant_id = models.IntegerField(db_index=True)
     order_guid = models.CharField(max_length=255, unique=True, db_index=True)
+    restaurant_guid = models.CharField(max_length=255, null=True, blank=True)
     payload = JSONField(help_text="Raw order data from Toast")
     order_net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     import_id = models.IntegerField(help_text="Reference to the integration ID")
