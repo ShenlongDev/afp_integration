@@ -160,7 +160,7 @@ def refresh_netsuite_token_task():
     """
     try:
         netsuite_integrations = Integration.objects.filter(
-            netsuite_client_id__isnull=False,
+            netsuite_account_id__isnull=False,
         )
         for integration in netsuite_integrations:
             auth_service = NetSuiteAuthService(integration)

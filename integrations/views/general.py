@@ -36,7 +36,7 @@ class IntegrationAuthView(APIView):
         
         tokens = {}
         
-        if integration.netsuite_client_id and integration.netsuite_client_secret:
+        if integration.netsuite_account_id and integration.netsuite_consumer_key:
             service = NetSuiteAuthService(integration)
             tokens["Netsuite Token"] = service.get_access_token()
             authorization_url = service.get_authorization_url(state="my-netsuite-state")

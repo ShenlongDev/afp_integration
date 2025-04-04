@@ -109,13 +109,13 @@ def sync_organization(self, organization_id):
                 sync_single_xero_data.apply_async(args=[integration.id])
             
             # Check NetSuite    
-            if integration.netsuite_client_id and integration.netsuite_client_secret:
+            if integration.netsuite_account_id and integration.netsuite_consumer_key:
                 logger.info("Dispatching NetSuite sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.netsuite import sync_single_netsuite_data
                 sync_single_netsuite_data.apply_async(args=[integration.id])
             
             # Check if no valid integration types were found
-            if not (integration.toast_client_id or integration.xero_client_id or integration.netsuite_client_id):
+            if not (integration.toast_client_id or integration.xero_client_id or integration.netsuite_account_id):
                 logger.warning("Unknown integration type for integration %s", integration.id)
                 
         logger.info("Completed dispatching sync for organization %s", organization_id)
@@ -331,7 +331,7 @@ def daily_previous_day_sync():
                 integration_types.append("xero")
                 
             # Check NetSuite - use client_id and client_secret consistently
-            if integration.netsuite_client_id and integration.netsuite_client_secret:
+            if integration.netsuite_account_id and integration.netsuite_consumer_key:
                 integration_types.append("netsuite")
             
             if not integration_types:
