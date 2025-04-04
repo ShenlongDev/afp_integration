@@ -331,6 +331,11 @@ class ToastIntegrationService:
                     orders_batch = data 
                     if not orders_batch:
                         break
+                    
+                    # Add restaurant_guid to each order
+                    for order in orders_batch:
+                        order["restaurant_guid"] = restaurant_guid
+                        
                     orders.extend(orders_batch)
                     page += 1
                 except requests.RequestException as e:
@@ -399,7 +404,9 @@ class ToastIntegrationService:
                         "dining_option": order_data.get("diningOption") if order_data.get("diningOption") else None,
                         "applied_packaging_info": order_data.get("appliedPackagingInfo") if order_data.get("appliedPackagingInfo") else None,
                         "opened_date": parse_datetime(order_data.get("openedDate")) if order_data.get("openedDate") else None,
-                        "void_business_date": order_data.get("voidBusinessDate")
+                        "void_business_date": order_data.get("voidBusinessDate"),
+                        # Add restaurant_guid to store with the order
+                        "restaurant_guid": order_data.get("restaurant_guid"),
                     }
                     order, created = ToastOrder.objects.update_or_create(
                         order_guid=order_guid,
@@ -408,21 +415,19 @@ class ToastIntegrationService:
                     )
 
                     # Initialize totals.
-                    total_revenue = Decimal("0.00")     # This will become toast_sales
-                    total_net_sales = Decimal("0.00")     # This will become order_net_sales
+                    total_revenue = Decimal("0.00")    
+                    total_net_sales = Decimal("0.00")  
                     total_refund_amount = Decimal("0.00")
-                    total_tip_total = Decimal("0.00")     # New accumulator for tips
-                    total_service_charge_total = Decimal("0.00")  # New accumulator for service charges
+                    total_tip_total = Decimal("0.00")    
+                    total_service_charge_total = Decimal("0.00")  
                     refund_business_date = None
 
                     # Process each check in the order.
                     for check_data in order_data.get("checks", []):
-                        # Skip check if it is voided, deleted, or marked as a refund.
                         if check_data.get("voided") or check_data.get("deleted") or check_data.get("refund"):
                             continue
 
                         check_guid = check_data.get("guid")
-                        # Assume check_subtotal is the base amount (which already reflects discounts).
                         check_subtotal = Decimal(str(check_data.get("amount", "0.00")))
                         tax_amount = Decimal(str(check_data.get("taxAmount", "0.00")))
                         tip_total = sum(
@@ -433,28 +438,23 @@ class ToastIntegrationService:
                             Decimal(str(sc.get("chargeAmount", "0.00")))
                             for sc in check_data.get("appliedServiceCharges", [])
                         )
-                        # Accumulate tip and service charge totals for the order.
                         total_tip_total += tip_total
                         total_service_charge_total += service_charge_total
 
-                        # For revenue, add everything.
                         check_revenue = check_subtotal + tax_amount + tip_total + service_charge_total
                         total_revenue += check_revenue
-                        # For net sales, we use only the check_subtotal.
                         total_net_sales += check_subtotal
 
-                        # Process refunds on this check.
                         check_refund = Decimal("0.00")
                         for payment in check_data.get("payments", []):
                             if payment.get("refund"):
                                 refund_amt = Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00")))
                                 check_refund += refund_amt
                                 total_refund_amount += refund_amt
-                                # Capture refund business date (assuming all refunds in this check share the same date)
                                 rbd = payment.get("refund", {}).get("refundBusinessDate")
                                 if rbd:
                                     refund_business_date = rbd
-                        # Update the check record with its computed refund.
+
                         check_defaults = {
                             "external_id": check_data.get("externalId"),
                             "entity_type": check_data.get("entityType"),
@@ -491,9 +491,7 @@ class ToastIntegrationService:
                             defaults=check_defaults
                         )
 
-                        # Process each selection within the check.
                         for selection_data in check_data.get("selections", []):
-                            # Skip selection if voided, a gift card, or marked as refunded.
                             if (selection_data.get("voided") or 
                                 selection_data.get("displayName", "").strip().lower() == "gift card" or 
                                 selection_data.get("refund")):
@@ -553,7 +551,6 @@ class ToastIntegrationService:
                                 }
                             )
 
-                    # Now, determine if refunds should be applied to this order's totals.
                     business_date = order_data.get("businessDate")
                     if refund_business_date and business_date and str(refund_business_date) == str(business_date):
                         total_revenue -= total_refund_amount
