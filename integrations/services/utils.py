@@ -64,8 +64,7 @@ def get_organisations_by_integration_type(integration_type):
     For 'xero', an Organisation is eligible if it has at least one related Integration with non-null 
     xero_client_id and xero_client_secret.
     
-    For 'netsuite', an Organisation is eligible if it has at least one related Integration with non-null
-    netsuite_client_id and netsuite_client_secret.
+    For 'netsuite', an Organisation is eligible if it has at least one related Integration with 
     
     Organisations can be eligible for both, and are included in the corresponding querysets.
     """
@@ -79,8 +78,7 @@ def get_organisations_by_integration_type(integration_type):
         ).distinct()
     elif integration_type.lower() == 'netsuite':
         return Organisation.objects.filter(
-            integrations__netsuite_client_id__isnull=False,
-            integrations__netsuite_client_secret__isnull=False
+            integrations__netsuite_account_id__isnull=False,
         ).distinct()
     elif integration_type.lower() == 'toast':
         return Organisation.objects.filter(
@@ -114,7 +112,6 @@ def get_integrations_by_integration_type(integration_type):
         )
     elif integration_type.lower() == 'netsuite':
         return Integration.objects.filter(
-            netsuite_client_id__isnull=False,
-            netsuite_client_secret__isnull=False
+            netsuite_account_id__isnull=False,
         )
     return Integration.objects.none()

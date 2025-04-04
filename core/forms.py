@@ -121,7 +121,7 @@ class DataImportForm(forms.Form):
         if organisation and integration_type:
             cred_fields = {
                 'xero': ('xero_client_id', 'xero_client_secret'),
-                'netsuite': ('netsuite_client_id', 'netsuite_client_secret'),
+                'netsuite': ('netsuite_account_id', 'netsuite_client_secret'),
                 'toast': ('toast_client_id', 'toast_client_secret'),
             }
             id_field, secret_field = cred_fields.get(integration_type, (None, None))

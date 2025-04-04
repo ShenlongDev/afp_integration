@@ -75,7 +75,7 @@ class Command(BaseCommand):
                     status="SUCCESS",
                     detail=f"Refreshed NetSuite token for {integration}"
                 )
-                
+            
             except Exception as e:
                 error_count += 1
                 error_msg = f"Error refreshing token for {integration}: {str(e)}"

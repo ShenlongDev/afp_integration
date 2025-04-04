@@ -21,7 +21,7 @@ class NetSuiteAuthService:
     def __init__(self, integration: Integration):
         """
         :param integration: The Integration record that has netsuite_account_id,
-                            netsuite_client_id, and netsuite_private_key.
+                        and netsuite_private_key.
         """
         self.integration = integration
 
