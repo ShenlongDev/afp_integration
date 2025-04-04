@@ -26,8 +26,6 @@ def get_module_choices(integration_type):
     For a given integration type (e.g., 'xero' or 'netsuite'),
     return a list of module/component choices based on available import methods.
     """
-    print(integration_type)
-    print(MODULES)
     if integration_type in MODULES:
         import_methods = MODULES[integration_type].get("import_methods", {})
         return [(key, key.replace('_', ' ').title()) for key in import_methods.keys()]
@@ -121,11 +119,10 @@ class DataImportForm(forms.Form):
         if organisation and integration_type:
             cred_fields = {
                 'xero': ('xero_client_id', 'xero_client_secret'),
-                'netsuite': ('netsuite_account_id', 'netsuite_client_secret'),
+                'netsuite': ('netsuite_account_id', 'netsuite_consumer_key'),
                 'toast': ('toast_client_id', 'toast_client_secret'),
             }
             id_field, secret_field = cred_fields.get(integration_type, (None, None))
-            print(id_field, secret_field)
             if id_field and secret_field:
                 integration = Integration.objects.filter(
                     org=organisation,
@@ -271,7 +268,6 @@ class BudgetImportForm(forms.Form):
                 since_date.strftime('%Y-%m-%d'),
                 until_date.strftime('%Y-%m-%d')
             )
-            print("Task triggered")
             log_task_event(
                 f"Xero budget import task initiated for {integration.org.name} from {since_date} to {until_date}",
                 "success",

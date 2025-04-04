@@ -70,7 +70,11 @@ def get_organisations_by_integration_type(integration_type):
     """
     from core.models import Organisation
     from integrations.models.models import Integration
-
+    print(integration_type)
+    print(Organisation.objects.filter(
+            integrations__netsuite_account_id__isnull=False,
+        ))
+    
     if integration_type.lower() == 'xero':
         return Organisation.objects.filter(
             integrations__xero_client_id__isnull=False,
@@ -79,7 +83,8 @@ def get_organisations_by_integration_type(integration_type):
     elif integration_type.lower() == 'netsuite':
         return Organisation.objects.filter(
             integrations__netsuite_account_id__isnull=False,
-        ).distinct()
+            integrations__netsuite_consumer_key__isnull=False
+        )
     elif integration_type.lower() == 'toast':
         return Organisation.objects.filter(
             integrations__toast_client_id__isnull=False,
