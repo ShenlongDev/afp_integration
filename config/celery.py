@@ -2,6 +2,7 @@ import os
 from celery import Celery
 from django.conf import settings
 from celery.signals import worker_ready
+from celery.schedules import crontab
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
@@ -13,6 +14,20 @@ app.autodiscover_tasks(lambda: settings.INSTALLED_APPS)
 
 app.conf.broker_connection_retry_on_startup = True
 
+app.conf.beat_schedule = {
+    'daily-previous-day-sync': {
+        'task': 'core.tasks.general.daily_previous_day_sync',
+        'schedule': crontab(hour=0, minute=0),
+        'options': {
+            'queue': 'high_priority',
+            'expires': None,
+            'task_track_started': True,
+            'task_time_limit': 1800,
+            'task_soft_time_limit': 1500,
+        }
+    },
+}
+
 def get_active_org_sync_tasks():
     """
     Returns the total number of active tasks of type 'core.tasks.general.sync_organization'.
@@ -22,7 +37,7 @@ def get_active_org_sync_tasks():
     count = 0
     for worker_tasks in active.values():
         for task in worker_tasks:
-            # Adjust the name if necessary to match your task’s full path.
+            # Adjust the name if necessary to match your task's full path.
             if task.get("name") == "core.tasks.general.sync_organization":
                 count += 1
     return count
