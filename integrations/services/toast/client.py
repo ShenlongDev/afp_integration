@@ -415,11 +415,11 @@ class ToastIntegrationService:
                     )
 
                     # Initialize totals.
-                    total_revenue = Decimal("0.00")     
-                    total_net_sales = Decimal("0.00")     
+                    total_revenue = Decimal("0.00")    
+                    total_net_sales = Decimal("0.00")  
                     total_refund_amount = Decimal("0.00")
                     total_tax_refund_amount = Decimal("0.00")  # New variable to track tax refunds
-                    total_tip_total = Decimal("0.00")     
+                    total_tip_total = Decimal("0.00")    
                     total_service_charge_total = Decimal("0.00")  
                     refund_business_date = None
 
@@ -446,14 +446,12 @@ class ToastIntegrationService:
                         total_revenue += check_revenue
                         total_net_sales += check_subtotal
 
-                        # Process refunds on this check.
                         check_refund = Decimal("0.00")
                         for payment in check_data.get("payments", []):
                             if payment.get("refund"):
                                 refund_amt = Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00")))
                                 check_refund += refund_amt
                                 total_refund_amount += refund_amt
-                                # Capture refund business date (assuming all refunds in this check share the same date)
                                 rbd = payment.get("refund", {}).get("refundBusinessDate")
                                 if rbd:
                                     refund_business_date = rbd
@@ -494,6 +492,7 @@ class ToastIntegrationService:
                             defaults=check_defaults
                         )
 
+                        # Process selections and accumulate refund details
                         for selection_data in check_data.get("selections", []):
                             if (selection_data.get("voided") or 
                                 selection_data.get("displayName", "").strip().lower() == "gift card" or 
@@ -554,31 +553,36 @@ class ToastIntegrationService:
                                 }
                             )
 
-                            # Check for tax refund amount in refundDetails
-                            if selection_data.get("refundDetails"):
-                                refund_details = selection_data.get("refundDetails")
-                                tax_refund_amount = Decimal(str(refund_details.get("taxRefundAmount", "0.00")))
-                                total_tax_refund_amount += tax_refund_amount
+                            # Process refund details for this selection
+                            refund_details = selection_data.get("refundDetails")
+                            if refund_details:
+                                selection_refund_amount = Decimal(str(refund_details.get("refundAmount", "0.00")))
+                                selection_tax_refund_amount = Decimal(str(refund_details.get("taxRefundAmount", "0.00")))
+                                
+                                # Add tax refund amount to our tracker
+                                total_tax_refund_amount += selection_tax_refund_amount
 
-                    business_date = order_data.get("businessDate")
-                    if refund_business_date and business_date and str(refund_business_date) == str(business_date):
-                        total_revenue -= (total_refund_amount + total_tax_refund_amount)
-                        total_net_sales -= (total_refund_amount + total_tax_refund_amount)
-                        # Prevent net sales from going negative.
-                        if total_net_sales < Decimal("0.00"):
-                            total_net_sales = Decimal("0.00")
-                    # Otherwise, if the refund business date does not match,
-                    # leave these day's totals unchanged (refund will be recorded on its own day).
-
-                    # Save the accumulated tip and service charge totals on the order level.
-                    order.tip = total_tip_total
-                    order.service_charges = total_service_charge_total
-                    order.toast_sales = total_revenue
-                    order.order_net_sales = total_net_sales
-                    order.total_refunds = total_refund_amount + total_tax_refund_amount  # Include tax refunds in total
-                    if refund_business_date:
-                        order.refund_business_date = refund_business_date
-                    order.save()
+                        # Business date refund calculation
+                        business_date = order_data.get("businessDate")
+                        if refund_business_date and business_date and str(refund_business_date) == str(business_date):
+                            # Include tax refund amount in total refunds and subtract from revenue
+                            total_refund_amount += total_tax_refund_amount
+                            total_revenue -= total_refund_amount
+                            total_net_sales -= total_refund_amount
+                            
+                            # Prevent net sales from going negative.
+                            if total_net_sales < Decimal("0.00"):
+                                total_net_sales = Decimal("0.00")
+                        
+                        # Save the accumulated values on the order level.
+                        order.tip = total_tip_total
+                        order.service_charges = total_service_charge_total
+                        order.toast_sales = total_revenue
+                        order.order_net_sales = total_net_sales
+                        order.total_refunds = total_refund_amount
+                        if refund_business_date:
+                            order.refund_business_date = refund_business_date
+                        order.save()
             except Exception as e:
                 logger.error("Error processing order %s: %s", order_guid, e)
 
