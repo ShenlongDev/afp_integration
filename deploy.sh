@@ -23,10 +23,17 @@ pkill -f "gunicorn config.wsgi:application --bind 0.0.0.0:8000"
 echo "Starting Gunicorn..."
 gunicorn config.wsgi:application --bind 0.0.0.0:8000 --daemon
 
-# Gracefully stop Celery workers with a timeout, and if it fails, force kill.
+# Gracefully stop Celery workers
 echo "Stopping Celery workers..."
-pkill -f "celery -A config worker"
-sleep 5  # Allow graceful shutdown
+celery -A config control shutdown  # Send shutdown signal instead of kill
+sleep 30  # Allow more time for graceful shutdown before proceeding
+
+# Only if above fails, use pkill as a fallback
+if pgrep -f "celery -A config worker" > /dev/null; then
+    echo "Some workers didn't shut down gracefully, force stopping..."
+    pkill -f "celery -A config worker"
+    sleep 5
+fi
 
 # Clean up stale pidfiles if required
 rm -f /var/run/celery/*.pid
