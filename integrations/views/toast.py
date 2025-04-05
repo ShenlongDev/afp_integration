@@ -8,14 +8,16 @@ from integrations.models.toast.raw import ToastOrder
 
 class SalesSummaryAPIView(APIView):
     """
-    GET API endpoint that accepts startdate, enddate, and option.
+    GET API endpoint that accepts startdate, enddate, option, and optionally restaurant_guid.
     Example URL: /sales-summary/?startdate=20250301&enddate=20250303&option=Netsales
+    Example with restaurant filter: /sales-summary/?startdate=20250301&enddate=20250303&option=Netsales&restaurant_guid=9cfaffa2-0592-4f72-8b3e-423c879b9150
     """
     def get(self, request, format=None):
         # Get parameters from URL query parameters.
         start_date = request.query_params.get('startdate')
         end_date = request.query_params.get('enddate')
         option = request.query_params.get('option')
+        restaurant_guid = request.query_params.get('restaurant_guid')
 
         # Validate presence of parameters.
         if not start_date or not end_date or not option:
@@ -57,11 +59,15 @@ class SalesSummaryAPIView(APIView):
         # Determine which field to aggregate.
         field_name = "order_net_sales" if option == "netsales" else "toast_sales"
 
-        # Build a queryset that considers orders with either a business_date or a refund_business_date in the range.
-        orders = ToastOrder.objects.filter(
-            Q(business_date__gte=start_date_int, business_date__lte=end_date_int) |
-            Q(refund_business_date__gte=str(start_date_int), refund_business_date__lte=str(end_date_int))
-        )
+        # Build a base queryset with date range filters
+        date_filter = Q(business_date__gte=start_date_int, business_date__lte=end_date_int) | \
+                      Q(refund_business_date__gte=str(start_date_int), refund_business_date__lte=str(end_date_int))
+        
+        # Add restaurant_guid filter if provided
+        if restaurant_guid:
+            orders = ToastOrder.objects.filter(date_filter, restaurant_guid=restaurant_guid)
+        else:
+            orders = ToastOrder.objects.filter(date_filter)
 
         # Aggregate primary amount and refund adjustment.
         result = orders.aggregate(
@@ -102,4 +108,9 @@ class SalesSummaryAPIView(APIView):
             "option": option,
             "total": str(total_value)
         }
+        
+        # Include restaurant_guid in the response if it was provided
+        if restaurant_guid:
+            data["restaurant_guid"] = restaurant_guid
+            
         return Response(data, status=status.HTTP_200_OK)
