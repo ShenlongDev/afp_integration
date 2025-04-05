@@ -415,10 +415,11 @@ class ToastIntegrationService:
                     )
 
                     # Initialize totals.
-                    total_revenue = Decimal("0.00")    
-                    total_net_sales = Decimal("0.00")  
+                    total_revenue = Decimal("0.00")     
+                    total_net_sales = Decimal("0.00")     
                     total_refund_amount = Decimal("0.00")
-                    total_tip_total = Decimal("0.00")    
+                    total_tax_refund_amount = Decimal("0.00")  # New variable to track tax refunds
+                    total_tip_total = Decimal("0.00")     
                     total_service_charge_total = Decimal("0.00")  
                     refund_business_date = None
 
@@ -445,12 +446,14 @@ class ToastIntegrationService:
                         total_revenue += check_revenue
                         total_net_sales += check_subtotal
 
+                        # Process refunds on this check.
                         check_refund = Decimal("0.00")
                         for payment in check_data.get("payments", []):
                             if payment.get("refund"):
                                 refund_amt = Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00")))
                                 check_refund += refund_amt
                                 total_refund_amount += refund_amt
+                                # Capture refund business date (assuming all refunds in this check share the same date)
                                 rbd = payment.get("refund", {}).get("refundBusinessDate")
                                 if rbd:
                                     refund_business_date = rbd
@@ -551,10 +554,16 @@ class ToastIntegrationService:
                                 }
                             )
 
+                            # Check for tax refund amount in refundDetails
+                            if selection_data.get("refundDetails"):
+                                refund_details = selection_data.get("refundDetails")
+                                tax_refund_amount = Decimal(str(refund_details.get("taxRefundAmount", "0.00")))
+                                total_tax_refund_amount += tax_refund_amount
+
                     business_date = order_data.get("businessDate")
                     if refund_business_date and business_date and str(refund_business_date) == str(business_date):
-                        total_revenue -= total_refund_amount
-                        total_net_sales -= total_refund_amount
+                        total_revenue -= (total_refund_amount + total_tax_refund_amount)
+                        total_net_sales -= (total_refund_amount + total_tax_refund_amount)
                         # Prevent net sales from going negative.
                         if total_net_sales < Decimal("0.00"):
                             total_net_sales = Decimal("0.00")
@@ -566,7 +575,7 @@ class ToastIntegrationService:
                     order.service_charges = total_service_charge_total
                     order.toast_sales = total_revenue
                     order.order_net_sales = total_net_sales
-                    order.total_refunds = total_refund_amount
+                    order.total_refunds = total_refund_amount + total_tax_refund_amount  # Include tax refunds in total
                     if refund_business_date:
                         order.refund_business_date = refund_business_date
                     order.save()
