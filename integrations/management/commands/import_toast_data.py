@@ -8,7 +8,7 @@ from integrations.services.toast.client import ToastIntegrationService
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    help = 'Import Toast orders for a specific Toast integration.'
+    help = 'Import Toast data for a specific Toast integration.'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -28,6 +28,28 @@ class Command(BaseCommand):
             help='Optional end date (YYYY-MM-DD) to import orders until',
             default=None
         )
+        # Add module selection arguments
+        parser.add_argument(
+            '--orders',
+            action='store_true',
+            help='Import orders data'
+        )
+        parser.add_argument(
+            '--restaurants',
+            action='store_true',
+            help='Import restaurant and schedule data'
+        )
+        parser.add_argument(
+            '--revenue-centers',
+            action='store_true',
+            help='Import revenue centers data'
+        )
+        parser.add_argument(
+            '--all',
+            action='store_true',
+            help='Import all available data types (default if no specific modules are selected)'
+        )
+
     def handle(self, *args, **options):
         integration_id = options.get('integration_id')
         since_date_str = options.get('since')
@@ -50,6 +72,16 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"Invalid --until date format: {until_date_str}"))
                 return
 
+        # Determine which modules to run
+        run_orders = options.get('orders')
+        run_restaurants = options.get('restaurants')
+        run_revenue_centers = options.get('revenue_centers')
+        run_all = options.get('all')
+
+        # If no specific modules are selected, run all
+        if not (run_orders or run_restaurants or run_revenue_centers):
+            run_all = True
+
         integrations = []
         if integration_id:
             try:
@@ -71,13 +103,25 @@ class Command(BaseCommand):
             self.stdout.write(f"Processing Toast Integration ID: {integration.id}")
             try:
                 service = ToastIntegrationService(integration, since_date, until_date)
-                orders = service.import_orders()
-                restaurant_info = service.import_restaurant_and_schedule_data()
-                self.stdout.write(self.style.SUCCESS(f"Imported restaurant info for integration ID {integration.id}"))
-                self.stdout.write(self.style.SUCCESS(f"Imported day schedules for integration ID {integration.id}"))
-                self.stdout.write(self.style.SUCCESS(f"Imported weekly schedule for integration ID {integration.id}"))
-                self.stdout.write(self.style.SUCCESS(f"Imported joined opening hours for integration ID {integration.id}"))
-                self.stdout.write(self.style.SUCCESS(f"Imported {len(orders)} orders for integration ID {integration.id}"))
+                
+                # Import orders if selected
+                if run_all or run_orders:
+                    self.stdout.write(f"Importing orders for integration ID {integration.id}...")
+                    orders = service.import_orders()
+                    self.stdout.write(self.style.SUCCESS(f"Imported {len(orders)} orders for integration ID {integration.id}"))
+                
+                # Import restaurant data if selected
+                if run_all or run_restaurants:
+                    self.stdout.write(f"Importing restaurant data for integration ID {integration.id}...")
+                    restaurant_info = service.import_restaurant_and_schedule_data()
+                    self.stdout.write(self.style.SUCCESS(f"Imported restaurant info, day schedules, weekly schedule, and opening hours for integration ID {integration.id}"))
+                
+                # Import revenue centers if selected
+                if run_all or run_revenue_centers:
+                    self.stdout.write(f"Importing revenue centers for integration ID {integration.id}...")
+                    revenue_centers = service.import_revenue_centers()
+                    self.stdout.write(self.style.SUCCESS(f"Imported revenue centers for integration ID {integration.id}"))
+                
             except Exception as e:
-                logger.error("Error importing Toast orders for integration ID %s: %s", integration.id, e, exc_info=True)
-                self.stdout.write(self.style.ERROR(f"Error importing orders for integration ID {integration.id}: {str(e)}"))
+                logger.error("Error importing Toast data for integration ID %s: %s", integration.id, e, exc_info=True)
+                self.stdout.write(self.style.ERROR(f"Error importing data for integration ID {integration.id}: {str(e)}"))

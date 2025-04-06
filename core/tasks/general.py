@@ -46,6 +46,7 @@ def get_high_priority_task():
                 processed=False, 
                 in_progress=False
             ).order_by('created_at').first()
+            print(task)
             
             if task:
                 # Mark as in progress immediately within the transaction

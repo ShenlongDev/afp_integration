@@ -291,3 +291,24 @@ class ToastJoinedOpeningHours(models.Model):
             models.Index(fields=["saturday_start_time", "saturday_end_time"]),
             models.Index(fields=["sunday_start_time", "sunday_end_time"]),
         ]
+
+class ToastRevenueCenter(models.Model):
+    tenant_id = models.IntegerField(db_index=True)
+    integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
+    restaurant_guid = models.CharField(max_length=255, db_index=True)
+    revenue_center_guid = models.CharField(max_length=255, db_index=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    entity_type = models.CharField(max_length=100, null=True, blank=True)
+    
+    class Meta:
+        unique_together = ('tenant_id', 'revenue_center_guid')
+        indexes = [
+            models.Index(fields=["tenant_id"]),
+            models.Index(fields=["integration"]),
+            models.Index(fields=["restaurant_guid"]),
+            models.Index(fields=["revenue_center_guid"]),
+        ]
+        
+    def __str__(self):
+        return f"ToastRevenueCenter: {self.name} ({self.revenue_center_guid})"
