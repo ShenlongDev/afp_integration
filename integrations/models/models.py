@@ -88,8 +88,16 @@ class HighPriorityTask(models.Model):
     selected_modules = models.JSONField(default=list, blank=True)
     processed = models.BooleanField(default=False)
     in_progress = models.BooleanField(default=False)
+    in_progress_since = models.DateTimeField(null=True, blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"HighPriorityTask {self.id}"
+    
+    @property
+    def processing_duration(self):
+        if self.in_progress_since and self.processed_at:
+            return self.processed_at - self.in_progress_since
+        return None
     

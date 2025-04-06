@@ -34,11 +34,25 @@ def log_task_event(task_name, status, detail):
 
 def get_high_priority_task():
     """
-    Returns the earliest unprocessed high priority task.
+    Returns the earliest unprocessed high priority task that is not already in progress.
     """
     try:
         from integrations.models.models import HighPriorityTask
-        task = HighPriorityTask.objects.filter(processed=False).order_by('created_at').first()
+        from django.db import transaction
+        
+        with transaction.atomic():
+            # Get the earliest task that's not processed and not in progress
+            task = HighPriorityTask.objects.select_for_update().filter(
+                processed=False, 
+                in_progress=False
+            ).order_by('created_at').first()
+            
+            if task:
+                # Mark as in progress immediately within the transaction
+                task.in_progress = True
+                task.in_progress_since = timezone.now()
+                task.save(update_fields=["in_progress", "in_progress_since"])
+                
         return task
     except Exception as exc:
         logger.error("Error fetching high priority task: %s", exc, exc_info=True)
@@ -174,7 +188,8 @@ def process_high_priority(self, hp_task_id):
         ImporterClass = module_config["client"]
         logger.info("Processing High Priority task for integration: %s with since_date: %s",
                     integration, since_date)
-        
+        HighPriorityTask.objects.filter(pk=hp_task_id).update(in_progress=True, in_progress_since=timezone.now())
+
         # Create importer instance
         importer = ImporterClass(integration, since_date, until_date)
         
@@ -242,9 +257,12 @@ def process_high_priority(self, hp_task_id):
         )
         raise
     finally:
-        # Always mark as processed when we're done, regardless of success/failure
+        # Always mark as processed and not in progress when we're done
+        current_time = timezone.now()
         hp_task.processed = True
-        hp_task.save(update_fields=["processed"])
+        hp_task.in_progress = False
+        hp_task.processed_at = current_time
+        hp_task.save(update_fields=["processed", "in_progress", "processed_at"])
 
 
 @shared_task(bind=True, max_retries=3)
@@ -257,8 +275,13 @@ def dispatcher(self):
     try:                
         hp_task = get_high_priority_task()
         if hp_task:
-            # Enqueue for the dedicated high priority worker.
-            process_high_priority.apply_async(args=[hp_task.id], queue="high_priority")
+            # Apply with higher priority and immediate execution
+            process_high_priority.apply_async(
+                args=[hp_task.id], 
+                queue="high_priority",
+                priority=9,  # Highest priority
+                countdown=0  # Execute immediately
+            )
         else:
             logger.info("No high priority tasks found.")
         
