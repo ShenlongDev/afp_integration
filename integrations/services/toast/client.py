@@ -9,9 +9,10 @@ from .auth import ToastAuthService
 from integrations.models.toast.raw import (
     ToastOrder, ToastCheck, ToastSelection,
     ToastGeneralLocation, ToastDaySchedule, 
-    ToastWeeklySchedule, ToastJoinedOpeningHours
+    ToastWeeklySchedule, ToastJoinedOpeningHours, ToastRevenueCenter
 )
 from integrations.models.models import SyncTableLogs
+import time as timeclock  # Use a different name to avoid conflict
 
 logger = logging.getLogger(__name__)
 
@@ -324,22 +325,49 @@ class ToastIntegrationService:
             page = 1
             while True:
                 params["page"] = page
-                try:
-                    response = requests.get(url, headers=headers, params=params)
-                    response.raise_for_status()
-                    data = response.json()
-                    orders_batch = data 
-                    if not orders_batch:
-                        break
-                    
-                    # Add restaurant_guid to each order
-                    for order in orders_batch:
-                        order["restaurant_guid"] = restaurant_guid
+                max_retries = 1
+                retry_count = 0
+                
+                while retry_count <= max_retries:
+                    try:
+                        response = requests.get(url, headers=headers, params=params)
+                        response.raise_for_status()
+                        data = response.json()
+                        orders_batch = data 
+                        if not orders_batch:
+                            break
                         
-                    orders.extend(orders_batch)
-                    page += 1
-                except requests.RequestException as e:
-                    logger.error("Error fetching orders on page %s: %s", page, e)
+                        # Add restaurant_guid to each order
+                        for order in orders_batch:
+                            order["restaurant_guid"] = restaurant_guid
+                            
+                        orders.extend(orders_batch)
+                        page += 1
+                        # Success - break retry loop
+                        break
+                        
+                    except requests.RequestException as e:
+                        # Check specifically for 401 Unauthorized errors
+                        if hasattr(e, 'response') and e.response and e.response.status_code == 401:
+                            if retry_count < max_retries:
+                                logger.warning(f"Received 401 Unauthorized error. Refreshing access token and retrying...")
+                                # Refresh the token
+                                self.access_token = self.auth_service.login()
+                                # Update headers with new token
+                                headers["Authorization"] = f"Bearer {self.access_token}"
+                                retry_count += 1
+                                continue
+                        
+                        # Either not a 401 error or retry failed
+                        logger.error(f"Error fetching orders on page {page}: {e}")
+                        break
+                
+                # If we exhausted our retries or hit a different error, break the pagination loop
+                if retry_count > max_retries:
+                    break
+                
+                # If orders_batch was empty, we've reached the end
+                if not orders_batch:
                     break
             
             all_orders.extend(orders)
@@ -358,142 +386,154 @@ class ToastIntegrationService:
         )
 
     def process_orders(self, orders):
-        for order_data in orders:
-            order_guid = order_data.get("guid")
-            # Skip the order if it is marked as a refund.
+        print(f"Starting to process {len(orders)} orders")
+        
+        for index, order_data in enumerate(orders):
+            order_guid = order_data.get("guid", "unknown")
+            
+            # Skip the order if it is marked as a refund    
             if order_data.get("refund"):
+                print(f"Skipping refund order {order_guid}")
                 continue
-
+            
             try:
-                with transaction.atomic():
-                    order_defaults = {
-                        "integration": self.integration,
-                        "payload": order_data,
-                        "order_net_sales": Decimal("0.00"),  # will update below
-                        "import_id": self.integration.id,
-                        "ws_import_date": timezone.now(),
-                        "created_date": parse_datetime(order_data.get("createdDate")) if order_data.get("createdDate") else None,
-                        "closed_date": parse_datetime(order_data.get("closedDate")) if order_data.get("closedDate") else None,
-                        "modified_date": parse_datetime(order_data.get("modifiedDate")) if order_data.get("modifiedDate") else None,
-                        "external_id": order_data.get("externalId"),
-                        "entity_type": order_data.get("entityType"),
-                        "revenue_center_guid": order_data.get("revenueCenter", {}).get("guid") if order_data.get("revenueCenter") else None,
-                        "server_guid": order_data.get("server", {}).get("guid") if order_data.get("server") else None,
-                        "created_in_test_mode": order_data.get("createdInTestMode"),
-                        "display_number": order_data.get("displayNumber"),
-                        "last_modified_device_id": order_data.get("lastModifiedDevice", {}).get("id") if order_data.get("lastModifiedDevice") else None,
-                        "source": order_data.get("source"),
-                        "void_date": parse_datetime(order_data.get("voidDate")) if order_data.get("voidDate") else None,
-                        "duration": order_data.get("duration"),
-                        "business_date": order_data.get("businessDate"),
-                        "paid_date": parse_datetime(order_data.get("paidDate")) if order_data.get("paidDate") else None,
-                        "restaurant_service_guid": order_data.get("restaurantService", {}).get("guid") if order_data.get("restaurantService") else None,
-                        "excess_food": order_data.get("excessFood"),
-                        # Store voided orders instead of skipping them.
-                        "voided": order_data.get("voided"),
-                        # New: Store deleted orders by reading the value (default to False if missing).
-                        "deleted": order_data.get("deleted", False),
-                        "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
-                        "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}) else None,
-                        "required_prep_time": order_data.get("requiredPrepTime"),
-                        "approval_status": order_data.get("approvalStatus"),
-                        "delivery_info": order_data.get("deliveryInfo"),
-                        "service_area_guid": order_data.get("serviceArea", {}).get("guid") if order_data.get("serviceArea") else None,
-                        "curbside_pickup_info": order_data.get("curbsidePickupInfo") if order_data.get("curbsidePickupInfo") else None,
-                        "number_of_guests": order_data.get("numberOfGuests") if order_data.get("numberOfGuests") else None,
-                        "dining_option": order_data.get("diningOption") if order_data.get("diningOption") else None,
-                        "applied_packaging_info": order_data.get("appliedPackagingInfo") if order_data.get("appliedPackagingInfo") else None,
-                        "opened_date": parse_datetime(order_data.get("openedDate")) if order_data.get("openedDate") else None,
-                        "void_business_date": order_data.get("voidBusinessDate"),
-                        # Add restaurant_guid to store with the order
-                        "restaurant_guid": order_data.get("restaurant_guid"),
+
+                # Process in smaller chunks, breaking the transaction
+                order_defaults = {
+                    "integration": self.integration,
+                    # Don't save full payload initially
+                    "payload": {},  # Empty temporarily
+                    "order_net_sales": Decimal("0.00"),
+                    "import_id": self.integration.id,
+                    "ws_import_date": timezone.now(),
+                    "created_date": parse_datetime(order_data.get("createdDate")) if order_data.get("createdDate") else None,
+                    "closed_date": parse_datetime(order_data.get("closedDate")) if order_data.get("closedDate") else None,
+                    "modified_date": parse_datetime(order_data.get("modifiedDate")) if order_data.get("modifiedDate") else None,
+                    "external_id": order_data.get("externalId"),
+                    "entity_type": order_data.get("entityType"),
+                    "revenue_center_guid": order_data.get("revenueCenter", {}).get("guid") if order_data.get("revenueCenter") else None,
+                    "server_guid": order_data.get("server", {}).get("guid") if order_data.get("server") else None,
+                    "created_in_test_mode": order_data.get("createdInTestMode"),
+                    "display_number": order_data.get("displayNumber"),
+                    "last_modified_device_id": order_data.get("lastModifiedDevice", {}).get("id") if order_data.get("lastModifiedDevice") else None,
+                    "source": order_data.get("source"),
+                    "void_date": parse_datetime(order_data.get("voidDate")) if order_data.get("voidDate") else None,
+                    "duration": order_data.get("duration"),
+                    "business_date": order_data.get("businessDate"),
+                    "paid_date": parse_datetime(order_data.get("paidDate")) if order_data.get("paidDate") else None,
+                    "restaurant_service_guid": order_data.get("restaurantService", {}).get("guid") if order_data.get("restaurantService") else None,
+                    "excess_food": order_data.get("excessFood"),
+                    # Store voided orders instead of skipping them.
+                    "voided": order_data.get("voided"),
+                    # New: Store deleted orders by reading the value (default to False if missing).
+                    "deleted": order_data.get("deleted", False),
+                    "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
+                    "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}) else None,
+                    "required_prep_time": order_data.get("requiredPrepTime"),
+                    "approval_status": order_data.get("approvalStatus"),
+                    "delivery_info": order_data.get("deliveryInfo"),
+                    "service_area_guid": order_data.get("serviceArea", {}).get("guid") if order_data.get("serviceArea") else None,
+                    "curbside_pickup_info": order_data.get("curbsidePickupInfo") if order_data.get("curbsidePickupInfo") else None,
+                    "number_of_guests": order_data.get("numberOfGuests") if order_data.get("numberOfGuests") else None,
+                    "dining_option": order_data.get("diningOption") if order_data.get("diningOption") else None,
+                    "applied_packaging_info": order_data.get("appliedPackagingInfo") if order_data.get("appliedPackagingInfo") else None,
+                    "opened_date": parse_datetime(order_data.get("openedDate")) if order_data.get("openedDate") else None,
+                    "void_business_date": order_data.get("voidBusinessDate"),
+                    # Add restaurant_guid to store with the order
+                    "restaurant_guid": order_data.get("restaurant_guid"),
+                }
+                    
+                order, created = ToastOrder.objects.update_or_create(
+                    order_guid=order_guid,
+                    tenant_id=self.integration.org.id,
+                    defaults=order_defaults
+                )
+                
+                                # Initialize totals
+                total_revenue = Decimal("0.00")    
+                total_net_sales = Decimal("0.00")  
+                total_refund_amount = Decimal("0.00")
+                total_tip_total = Decimal("0.00")    
+                total_service_charge_total = Decimal("0.00")  
+                refund_business_date = None
+
+                for check_index, check_data in enumerate(order_data.get("checks", [])):
+                    if check_data.get("voided") or check_data.get("deleted") or check_data.get("refund"):
+                        continue
+
+                    check_guid = check_data.get("guid")
+                    check_subtotal = Decimal(str(check_data.get("amount", "0.00")))
+                    tax_amount = Decimal(str(check_data.get("taxAmount", "0.00")))
+                    tip_total = sum(
+                        Decimal(str(p.get("tipAmount", "0.00")))
+                        for p in check_data.get("payments", [])
+                    )
+                    service_charge_total = sum(
+                        Decimal(str(sc.get("chargeAmount", "0.00")))
+                        for sc in check_data.get("appliedServiceCharges", [])
+                    )
+                    total_tip_total += tip_total
+                    total_service_charge_total += service_charge_total
+
+                    check_revenue = check_subtotal + tax_amount + tip_total + service_charge_total
+                    total_revenue += check_revenue
+                    total_net_sales += check_subtotal
+
+                    # Process refunds on this check - use payment refunds for total_refund_amount
+                    check_refund = Decimal("0.00")
+                    for payment in check_data.get("payments", []):
+                        if payment.get("refund"):
+                            refund_amt = Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00")))
+                            check_refund += refund_amt
+                            total_refund_amount += refund_amt
+                            # Capture refund business date
+                            rbd = payment.get("refund", {}).get("refundBusinessDate")
+                            if rbd:
+                                refund_business_date = rbd
+                    
+                    check_defaults = {
+                        "external_id": check_data.get("externalId"),
+                        "entity_type": check_data.get("entityType"),
+                        "last_modified_device_id": check_data.get("lastModifiedDevice", {}).get("id") if check_data.get("lastModifiedDevice") else None,
+                        "void_date": parse_datetime(check_data.get("voidDate")) if check_data.get("voidDate") else None,
+                        "duration": check_data.get("duration"),
+                        "opened_by": check_data.get("openedBy"),
+                        "paid_date": parse_datetime(check_data.get("paidDate")) if check_data.get("paidDate") else None,
+                        "applied_loyalty_info": check_data.get("appliedLoyaltyInfo"),
+                        "voided": check_data.get("voided"),
+                        "payment_status": check_data.get("paymentStatus"),
+                        "amount": check_data.get("amount"),
+                        "tab_name": check_data.get("tabName"),
+                        "tax_exempt": check_data.get("taxExempt"),
+                        "tax_exemption_account": check_data.get("taxExemptionAccount"),
+                        "total_amount": check_data.get("totalAmount"),
                     }
-                    order, created = ToastOrder.objects.update_or_create(
-                        order_guid=order_guid,
+                    check_defaults.update({
+                        "display_number": check_data.get("displayNumber"),
+                        "net_sales": check_subtotal,
+                        "service_charge_total": service_charge_total,
+                        "discount_total": sum(
+                            Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
+                            for d in check_data.get("appliedDiscounts", [])
+                        ),
+                        "opened_date": parse_datetime(check_data.get("openedDate")) if check_data.get("openedDate") else None,
+                        "closed_date": parse_datetime(check_data.get("closedDate")) if check_data.get("closedDate") else None,
+                        "check_refund": check_refund
+                    })
+                    check_obj, _ = ToastCheck.objects.update_or_create(
+                        check_guid=check_guid,
+                        order=order,
                         tenant_id=self.integration.org.id,
-                        defaults=order_defaults
+                        defaults=check_defaults
                     )
 
-                    # Initialize totals.
-                    total_revenue = Decimal("0.00")    
-                    total_net_sales = Decimal("0.00")  
-                    total_refund_amount = Decimal("0.00")
-                    total_tip_total = Decimal("0.00")    
-                    total_service_charge_total = Decimal("0.00")  
-                    refund_business_date = None
-
-                    # Process each check in the order.
-                    for check_data in order_data.get("checks", []):
-                        if check_data.get("voided") or check_data.get("deleted") or check_data.get("refund"):
-                            continue
-
-                        check_guid = check_data.get("guid")
-                        check_subtotal = Decimal(str(check_data.get("amount", "0.00")))
-                        tax_amount = Decimal(str(check_data.get("taxAmount", "0.00")))
-                        tip_total = sum(
-                            Decimal(str(p.get("tipAmount", "0.00")))
-                            for p in check_data.get("payments", [])
-                        )
-                        service_charge_total = sum(
-                            Decimal(str(sc.get("chargeAmount", "0.00")))
-                            for sc in check_data.get("appliedServiceCharges", [])
-                        )
-                        total_tip_total += tip_total
-                        total_service_charge_total += service_charge_total
-
-                        check_revenue = check_subtotal + tax_amount + tip_total + service_charge_total
-                        total_revenue += check_revenue
-                        total_net_sales += check_subtotal
-
-                        # Process refunds on this check - use payment refunds for total_refund_amount
-                        check_refund = Decimal("0.00")
-                        for payment in check_data.get("payments", []):
-                            if payment.get("refund"):
-                                refund_amt = Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00")))
-                                check_refund += refund_amt
-                                total_refund_amount += refund_amt
-                                # Capture refund business date
-                                rbd = payment.get("refund", {}).get("refundBusinessDate")
-                                if rbd:
-                                    refund_business_date = rbd
-                        
-                        check_defaults = {
-                            "external_id": check_data.get("externalId"),
-                            "entity_type": check_data.get("entityType"),
-                            "last_modified_device_id": check_data.get("lastModifiedDevice", {}).get("id") if check_data.get("lastModifiedDevice") else None,
-                            "void_date": parse_datetime(check_data.get("voidDate")) if check_data.get("voidDate") else None,
-                            "duration": check_data.get("duration"),
-                            "opened_by": check_data.get("openedBy"),
-                            "paid_date": parse_datetime(check_data.get("paidDate")) if check_data.get("paidDate") else None,
-                            "applied_loyalty_info": check_data.get("appliedLoyaltyInfo"),
-                            "voided": check_data.get("voided"),
-                            "payment_status": check_data.get("paymentStatus"),
-                            "amount": check_data.get("amount"),
-                            "tab_name": check_data.get("tabName"),
-                            "tax_exempt": check_data.get("taxExempt"),
-                            "tax_exemption_account": check_data.get("taxExemptionAccount"),
-                            "total_amount": check_data.get("totalAmount"),
-                        }
-                        check_defaults.update({
-                            "display_number": check_data.get("displayNumber"),
-                            "net_sales": check_subtotal,
-                            "service_charge_total": service_charge_total,
-                            "discount_total": sum(
-                                Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
-                                for d in check_data.get("appliedDiscounts", [])
-                            ),
-                            "opened_date": parse_datetime(check_data.get("openedDate")) if check_data.get("openedDate") else None,
-                            "closed_date": parse_datetime(check_data.get("closedDate")) if check_data.get("closedDate") else None,
-                            "check_refund": check_refund
-                        })
-                        check_obj, _ = ToastCheck.objects.update_or_create(
-                            check_guid=check_guid,
-                            order=order,
-                            tenant_id=self.integration.org.id,
-                            defaults=check_defaults
-                        )
-
-                        for selection_data in check_data.get("selections", []):
+                    # Add more checkpoint logging for selections
+                    selection_count = len(check_data.get("selections", []))
+                    
+                    selection_index = 0
+                    for selection_data in check_data.get("selections", []):
+                        try:
+                            selection_index += 1
                             if (selection_data.get("voided") or 
                                 selection_data.get("displayName", "").strip().lower() == "gift card" or 
                                 selection_data.get("refund")):
@@ -567,47 +607,193 @@ class ToastIntegrationService:
                                                 if rbd:
                                                     refund_business_date = rbd
                                                     break
+                        except Exception as e:
+                            print(f"Error processing selection {selection_index} in check {check_index+1}: {str(e)}")
+                            logger.error(f"Error processing selection in order {order_guid}: {e}", exc_info=True)
+                
+                business_date = order_data.get("businessDate")
+                if refund_business_date and business_date and str(refund_business_date) == str(business_date):
+                        if (selection_data.get("voided") or 
+                            selection_data.get("displayName", "").strip().lower() == "gift card" or 
+                            selection_data.get("refund")):
+                            continue
+                        selection_guid = selection_data.get("guid")
+                        pre_discount_price = Decimal(str(selection_data.get("preDiscountPrice", "0.00")))
+                        discount_total = sum(
+                            Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
+                            for d in selection_data.get("appliedDiscounts", [])
+                        )
+                        quantity = Decimal(str(selection_data.get("quantity", "1")))
+                        selection_net = (pre_discount_price - discount_total) * quantity
 
-                    business_date = order_data.get("businessDate")
-                    if refund_business_date and business_date and str(refund_business_date) == str(business_date):
-                        # The payment refund amount already includes tax, so we use it directly
-                        total_revenue -= total_refund_amount
-                        
-                        # For net sales, we need to ensure we're only deducting the right portion
-                        # The payment refund amount already includes tax, so we need to adjust
-                        # to avoid double-counting
-                        refund_without_tax = total_refund_amount
-                        
-                        # Check each selection for refundDetails to adjust net sales correctly
-                        for check_data in order_data.get("checks", []):
-                            for selection_data in check_data.get("selections", []):
-                                refund_details = selection_data.get("refundDetails")
-                                if refund_details:
-                                    # For net sales calculation, use the selection's refundAmount 
-                                    # since that's the pre-tax amount
-                                    refund_amount = Decimal(str(refund_details.get("refundAmount", "0.00")))
-                                    refund_without_tax = refund_amount
-                        
-                        total_net_sales -= refund_without_tax
-                        
-                        # Prevent net sales from going negative
-                        if total_net_sales < Decimal("0.00"):
-                            total_net_sales = Decimal("0.00")
+                        selection_defaults = {
+                            "external_id": selection_data.get("externalId"),
+                            "entity_type": selection_data.get("entityType"),
+                            "deferred": selection_data.get("deferred"),
+                            "void_reason": selection_data.get("voidReason"),
+                            "option_group": selection_data.get("optionGroup"),
+                            "modifiers": selection_data.get("modifiers"),
+                            "seat_number": selection_data.get("seatNumber"),
+                            "fulfillment_status": selection_data.get("fulfillmentStatus"),
+                            "option_group_pricing_mode": selection_data.get("optionGroupPricingMode"),
+                            "gift_card_selection_info": selection_data.get("giftCardSelectionInfo"),
+                            "sales_category_guid": selection_data.get("salesCategory", {}).get("guid") if selection_data.get("salesCategory") else None,
+                            "split_origin": selection_data.get("splitOrigin"),
+                            "selection_type": selection_data.get("selectionType"),
+                            "price": selection_data.get("price"),
+                            "applied_taxes": selection_data.get("appliedTaxes"),
+                            "stored_value_transaction_id": selection_data.get("storedValueTransactionId"),
+                            "item_group": selection_data.get("itemGroup"),
+                            "item": selection_data.get("item"),
+                            "tax_inclusion": selection_data.get("taxInclusion"),
+                            "receipt_line_price": selection_data.get("receiptLinePrice"),
+                            "unit_of_measure": selection_data.get("unitOfMeasure"),
+                            "refund_details": selection_data.get("refundDetails"),
+                            "toast_gift_card": selection_data.get("toastGiftCard"),
+                            "tax": selection_data.get("tax"),
+                            "dining_option": selection_data.get("diningOption"),
+                            "void_business_date": selection_data.get("voidBusinessDate"),
+                            "created_date": parse_datetime(selection_data.get("createdDate")) if selection_data.get("createdDate") else None,
+                            "pre_modifier": selection_data.get("preModifier"),
+                            "modified_date": parse_datetime(selection_data.get("modifiedDate")) if selection_data.get("modifiedDate") else None,
+                        }
+                        ToastSelection.objects.update_or_create(
+                            selection_guid=selection_guid,
+                            toast_check=check_obj,
+                            tenant_id=self.integration.org.id,
+                            defaults={
+                                "order_guid": order_guid,
+                                "display_name": selection_data.get("displayName"),
+                                "pre_discount_price": pre_discount_price,
+                                "discount_total": discount_total,
+                                "net_sales": selection_net,
+                                "quantity": quantity,
+                                **selection_defaults,
+                            }
+                        )
+
+                        # Track selection refunds specifically for tax refunds
+                        refund_details = selection_data.get("refundDetails")
+                        if refund_details:
+                            tax_refund = Decimal(str(refund_details.get("taxRefundAmount", "0.00")))
+                            if tax_refund > 0:
+                                total_refund_amount += tax_refund
+                                # Get refund business date if not already set
+                                if not refund_business_date:
+                                    for payment in check_data.get("payments", []):
+                                        if payment.get("refund"):
+                                            rbd = payment.get("refund", {}).get("refundBusinessDate")
+                                            if rbd:
+                                                refund_business_date = rbd
+                                                break
+
+                business_date = order_data.get("businessDate")
+                if refund_business_date and business_date and str(refund_business_date) == str(business_date):
+                    # Always apply refunds to total_revenue
+                    total_revenue -= total_refund_amount
                     
-                    # Save the accumulated tip and service charge totals on the order level.
-                    order.tip = total_tip_total
-                    order.service_charges = total_service_charge_total
-                    order.toast_sales = total_revenue
-                    order.order_net_sales = total_net_sales
-                    order.total_refunds = total_refund_amount
-                    if refund_business_date:
-                        order.refund_business_date = refund_business_date
-                    order.save()
-            except Exception as e:
-                logger.error("Error processing order %s: %s", order_guid, e)
+                    # For net sales, check if we have item-level refundDetails
+                    refund_without_tax = Decimal("0.00")
+                    has_item_refunds = False
+                    
+                    # Check each selection for refundDetails to adjust net sales correctly
+                    for check_data in order_data.get("checks", []):
+                        for selection_data in check_data.get("selections", []):
+                            refund_details = selection_data.get("refundDetails")
+                            if refund_details:
+                                # Found item-level refund details
+                                has_item_refunds = True
+                                refund_amount = Decimal(str(refund_details.get("refundAmount", "0.00")))
+                                refund_without_tax += refund_amount
+                    
+                    # If no item refunds were found but we have payment refunds,
+                    # use the payment refund amount for net sales
+                    if not has_item_refunds and total_refund_amount > 0:
+                        refund_without_tax = total_refund_amount
+                    
+                    total_net_sales -= refund_without_tax
+                
+                # Save the accumulated tip and service charge totals on the order level.
+                order.tip = total_tip_total
+                order.service_charges = total_service_charge_total
+                order.toast_sales = total_revenue
+                order.order_net_sales = total_net_sales
+                order.total_refunds = total_refund_amount
+                if refund_business_date:
+                    order.refund_business_date = refund_business_date
+                order.save()
 
-        logger.info("Imported %s orders", len(orders))
+                # Extract revenue center guid and create basic record
+                revenue_center_guid = order_data.get("revenueCenter", {}).get("guid") if order_data.get("revenueCenter") else None
+                if revenue_center_guid and order_data.get("restaurant_guid"):
+                    # Create basic ToastRevenueCenter record with identifiers only
+                    ToastRevenueCenter.objects.update_or_create(
+                        tenant_id=self.integration.org.id,
+                        integration=self.integration,
+                        revenue_center_guid=revenue_center_guid,
+                        defaults={
+                            "restaurant_guid": order_data.get("restaurant_guid"),
+                        }
+                    )
+
+                order.payload = order_data
+                order.save()
+
+                
+            except Exception as e:
+                print(f"ERROR processing order {order_guid}: {str(e)}")
+                logger.error(f"Error processing order {order_guid}: {e}", exc_info=True)
+                continue
+        
+        print(f"Finished processing all {len(orders)} orders")
+        logger.info(f"Imported {len(orders)} orders")
         self.log_import_event(module_name="toast_orders", fetched_records=len(orders))
+
+    def import_revenue_centers(self):
+        """
+        Import revenue centers for all restaurants from Toast API
+        """
+        all_revenue_centers = []
+        
+        # Get revenue centers that don't have a name
+        revenue_centers_to_update = ToastRevenueCenter.objects.filter(
+            tenant_id=self.integration.org.id,
+            integration=self.integration,
+            name__isnull=True
+        ).select_related('integration')
+        
+        logger.info(f"Found {revenue_centers_to_update.count()} revenue centers without names to update")
+        
+        for revenue_center in revenue_centers_to_update:
+            if not revenue_center.revenue_center_guid or not revenue_center.restaurant_guid:
+                continue
+                
+            try:
+                url = f"{self.hostname}/config/v2/revenueCenters/{revenue_center.revenue_center_guid}"
+                headers = {
+                    "Authorization": f"Bearer {self.access_token}",
+                    "Toast-Restaurant-External-ID": revenue_center.restaurant_guid
+                }
+                
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                
+                # Update revenue center record
+                revenue_center.name = data.get("name")
+                revenue_center.description = data.get("description")
+                revenue_center.entity_type = data.get("entityType")
+                revenue_center.save()
+                
+                all_revenue_centers.append(revenue_center)
+                logger.info(f"Updated revenue center: {revenue_center.name} for restaurant {revenue_center.restaurant_guid}")
+                
+            except requests.RequestException as e:
+                logger.error(f"Error fetching revenue center {revenue_center.revenue_center_guid}: {e}")
+        
+        logger.info(f"Updated {len(all_revenue_centers)} revenue centers")
+        self.log_import_event(module_name="toast_revenue_centers", fetched_records=len(all_revenue_centers))
+        return all_revenue_centers
 
 
 

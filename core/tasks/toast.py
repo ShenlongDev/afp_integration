@@ -8,11 +8,14 @@ from integrations.services.toast.client import ToastIntegrationService
 logger = logging.getLogger(__name__)
 
 @shared_task
-def sync_toast_data(integration_id, start_date_str=None, end_date_str=None):
+def sync_toast_data(integration_id, start_date_str=None, end_date_str=None, modules=None):
     """
     Celery task to sync Toast orders for a given integration.
     If start_date_str and end_date_str are provided (YYYY-MM-DD format), they will be used.
     Otherwise, defaults to orders from today's date (from midnight until the next midnight).
+    
+    modules: Optional list of modules to sync ['orders', 'restaurant_info', 'revenue_centers']
+    If not provided, syncs all modules.
     """
     try:
         integration = Integration.objects.get(pk=integration_id)
@@ -39,10 +42,34 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None):
         logger.error("Error parsing end_date_str: %s", e)
         end_date = datetime.strptime(today_str, '%Y-%m-%d') + timedelta(days=1)
 
-    logger.info("Syncing Toast orders for integration %s from %s to %s",
+    logger.info("Syncing Toast data for integration %s from %s to %s",
                 integration_id, start_date, end_date)
+    
     importer = ToastIntegrationService(integration, start_date, end_date)
-    orders = importer.import_orders()
-    importer.import_restaurant_and_schedule_data()
-    logger.info("Toast sync completed for integration %s, %d orders processed.",
-                integration_id, len(orders)) 
+    
+    # If no modules specified, sync all
+    if not modules:
+        modules = ['orders', 'restaurant_info', 'revenue_centers']
+    
+    results = {}
+    
+    # Process each requested module
+    if 'orders' in modules:
+        logger.info("Syncing Toast orders for integration %s", integration_id)
+        orders = importer.import_orders()
+        results['orders'] = len(orders)
+        
+    if 'restaurant_info' in modules:
+        logger.info("Syncing Toast restaurant info for integration %s", integration_id)
+        restaurant_data = importer.import_restaurant_and_schedule_data()
+        results['restaurant_info'] = len(restaurant_data)
+        
+    if 'revenue_centers' in modules:
+        logger.info("Syncing Toast revenue centers for integration %s", integration_id)
+        revenue_centers = importer.import_revenue_centers()
+        results['revenue_centers'] = len(revenue_centers)
+    
+    logger.info("Toast sync completed for integration %s: %s",
+                integration_id, results)
+    
+    return results 

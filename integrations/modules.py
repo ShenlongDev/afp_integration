@@ -83,6 +83,11 @@ def netsuite_import_accounting_periods(importer):
 def toast_import_orders(importer):
     return importer.import_orders()
 
+def toast_import_restaurant_data(importer):
+    return importer.import_restaurant_and_schedule_data()
+
+def toast_import_revenue_centers(importer):
+    return importer.import_revenue_centers()
 
 MODULES = {
     "xero": {
@@ -115,6 +120,8 @@ MODULES = {
         "client": ToastIntegrationService,
         "import_methods": {
             "orders": toast_import_orders,
+            "restaurant_info": toast_import_restaurant_data,
+            "revenue_centers": toast_import_revenue_centers,
         },
     },
 }
