@@ -7,7 +7,13 @@ from integrations.models.toast.raw import (
     ToastWeeklySchedule,
     ToastJoinedOpeningHours,
     ToastSelection,
+    ToastRevenueCenter,
 )
+
+class ToastRevenueCenterAdmin(admin.ModelAdmin):
+    list_display = ('tenant_id', 'name', 'description', 'entity_type')
+    search_fields = ('tenant_id', 'name', 'description', 'entity_type')
+    ordering = ('tenant_id', 'name')
 
 class ToastSelectionAdmin(admin.ModelAdmin):
     list_display = ('display_name', 'pre_discount_price', 'discount_total', 'void_business_date', 'quantity', 'voided')
@@ -50,4 +56,5 @@ admin.site.register(ToastDaySchedule, ToastDayScheduleAdmin)
 admin.site.register(ToastWeeklySchedule, ToastWeeklyScheduleAdmin)
 admin.site.register(ToastJoinedOpeningHours, ToastJoinedOpeningHoursAdmin)
 admin.site.register(ToastSelection, ToastSelectionAdmin)
+admin.site.register(ToastRevenueCenter, ToastRevenueCenterAdmin)
 

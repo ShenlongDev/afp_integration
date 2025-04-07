@@ -117,6 +117,8 @@ class Command(BaseCommand):
                         'departments': importer.import_departments,
                         'entities': importer.import_entities,
                         'accounting_periods': importer.import_accounting_periods,
+                        'budgets': importer.import_budgets,
+                        'locations': importer.import_locations,
                         # 'general_ledger': importer.transform_general_ledger,
                         # 'transformed_transactions': importer.transform_transactions,
                     }

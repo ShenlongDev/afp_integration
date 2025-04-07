@@ -11,7 +11,17 @@ from integrations.models.netsuite.analytics import (
     NetSuiteEntity,
     NetSuiteAccountingPeriods,
     NetSuiteTransformedTransaction,
+    NetSuiteBudgets,
+    NetSuiteLocations,
 )
+
+class NetSuiteLocationsAdmin(admin.ModelAdmin):
+    list_display = ('tenant_id', 'location_id', 'name', 'full_name', 'external_id', 'include_children', 'is_inactive', 'main_address', 'subsidiary', 'parent', 'last_modified_date', 'record_date')
+    search_fields = ('tenant_id', 'location_id', 'name', 'full_name', 'external_id', 'include_children', 'is_inactive', 'main_address', 'subsidiary', 'parent', 'last_modified_date', 'record_date')
+
+class NetSuiteBudgetsAdmin(admin.ModelAdmin):
+    list_display = ('tenant_id', 'budget_id', 'account_id', 'amount', 'fiscal_year', 'period', 'last_modified_date', 'record_date')
+    search_fields = ('tenant_id', 'budget_id', 'account_id', 'amount', 'fiscal_year', 'period', 'last_modified_date', 'record_date')
 
 class NetSuiteVendorsAdmin(admin.ModelAdmin):
     list_display = (
@@ -70,3 +80,5 @@ admin.site.register(NetSuiteJournals, NetSuiteJournalsAdmin)
 admin.site.register(NetSuiteEntity, NetSuiteEntityAdmin)
 admin.site.register(NetSuiteAccountingPeriods, NetSuiteAccountingPeriodsAdmin)
 admin.site.register(NetSuiteTransformedTransaction, NetSuiteTransformedTransactionAdmin)
+admin.site.register(NetSuiteBudgets, NetSuiteBudgetsAdmin)
+admin.site.register(NetSuiteLocations, NetSuiteLocationsAdmin)

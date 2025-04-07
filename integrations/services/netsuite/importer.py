@@ -24,6 +24,8 @@ from integrations.models.netsuite.analytics import (
     NetSuiteTransactionLine,
     NetSuiteTransactionAccountingLine,
     NetSuiteTransformedTransaction,
+    NetSuiteBudgets,
+    NetSuiteLocations,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,6 +126,7 @@ class NetSuiteImporter:
     def import_subsidiaries(self):
         logger.info("Importing NetSuite Subsidiaries...")
         date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
+
         query = f"""
             SELECT id, name, fullname, legalname, iselimination, currency, country, lastmodifieddate
             FROM subsidiary
@@ -781,8 +784,87 @@ class NetSuiteImporter:
                 break
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported Transaction Accounting Lines: {total_imported} records processed.")
+        
+    # ------------------------------------------------------------
+    # 11) Import Budgets
+    # ------------------------------------------------------------
+    def import_budgets(self):
+        logger.info("Importing NetSuite Budgets...")
+        # Build a date clause using lastmodifieddate field
+        date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
+        # Adjust the query as necessary; here we assume the table name is "Budget"
+        query = f"SELECT * FROM Budgets WHERE 1=1 {date_clause}"
+        rows = list(self.client.execute_suiteql(query))
+        print(f"fetched {len(rows)} budget records")
+
+        def process_budget(r):
+            print(f"processing budget: {r}")
+            budget_id = r.get("id")
+            if not budget_id:
+                return
+            try:
+                NetSuiteBudgets.objects.update_or_create(
+                    budget_id=budget_id,
+                    defaults={
+                        "tenant_id": self.org.id,
+                        "account_id": r.get("account"), 
+                        "amount": decimal_or_none(r.get("amount")),
+                        "fiscal_year": r.get("fiscalyear"),
+                        "period": r.get("period"),
+                        "last_modified_date": self.parse_datetime(r.get("lastmodifieddate")),
+                        "record_date": self.now_ts,
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error importing budget row: {e}", exc_info=True)
+
+        BatchUtils.process_in_batches(rows, process_budget, batch_size=1000)
+        self.log_import_event(module_name="netsuite_budgets", fetched_records=len(rows))
+        logger.info(f"Imported Budgets: {len(rows)} records processed.")
     
- 
+    # ------------------------------------------------------------
+    # 12) Import Locations
+    # ------------------------------------------------------------
+    def import_locations(self):
+        logger.info("Importing NetSuite Locations...")
+        date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
+        query = f"""
+        SELECT * 
+        FROM location
+        WHERE 1=1 {date_clause}
+        ORDER BY id
+        """
+        rows = list(self.client.execute_suiteql(query))
+
+        def process_location(r):
+            location_id = r.get("id")
+            if not location_id:
+                return
+            try:
+                NetSuiteLocations.objects.update_or_create(
+                    location_id=location_id,
+                    defaults={
+                        "tenant_id": self.org.id,
+                        "name": r.get("name"),
+                        "full_name": r.get("fullname"),
+                        "external_id": r.get("externalid"),
+                        "include_children": bool_from_str(r.get("includechildren")),
+                        "is_inactive": bool_from_str(r.get("isinactive")),
+                        "main_address": r.get("mainaddress"),
+                        "subsidiary": r.get("subsidiary"),
+                        "parent": r.get("parent"),
+                        "last_modified_date": self.parse_datetime(r.get("lastmodifieddate")),
+                        "record_date": self.now_ts,
+                        "consolidation_key": self.integration.netsuite_account_id,
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error importing location row: {e}", exc_info=True)
+
+        BatchUtils.process_in_batches(rows, process_location, batch_size=1000)
+        self.log_import_event(module_name="netsuite_locations", fetched_records=len(rows))
+        logger.info(f"Imported Locations: {len(rows)} records processed.")
+
     # ------------------------------------------------------------
     # Helper Methods
     # ------------------------------------------------------------
