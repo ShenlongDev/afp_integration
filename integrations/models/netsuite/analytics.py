@@ -510,5 +510,43 @@ class NetSuiteTransformedTransaction(models.Model):
         unique_together = ("tenant_id", "transactionid", "linesequencenumber")
         
 
-      
-        
+class NetSuiteBudgets(models.Model):
+    tenant_id = models.IntegerField(null=True, blank=True)
+    budget_id = models.CharField(max_length=255, null=True)
+    account_id = models.CharField(max_length=255, null=True)
+    amount = models.DecimalField(max_digits=15, decimal_places=2, null=True)
+    fiscal_year = models.IntegerField(null=True)
+    period = models.IntegerField(null=True)
+    last_modified_date = models.DateTimeField(null=True)
+    record_date = models.DateTimeField(null=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['tenant_id', 'budget_id']),
+        ]
+
+
+class NetSuiteLocations(models.Model):
+    tenant_id = models.IntegerField(null=True, blank=True)
+    location_id = models.CharField(max_length=255, null=True)
+    name = models.CharField(max_length=255, null=True)
+    full_name = models.CharField(max_length=255, null=True)
+    external_id = models.CharField(max_length=255, null=True)
+    include_children = models.BooleanField(null=True)
+    is_inactive = models.BooleanField(null=True)
+    main_address = models.CharField(max_length=255, null=True)
+    subsidiary = models.CharField(max_length=255, null=True)
+    parent = models.CharField(max_length=255, null=True)
+    last_modified_date = models.DateTimeField(null=True)
+    record_date = models.DateTimeField(null=True)
+    consolidation_key = models.CharField(max_length=255, null=True)
+    
+    def __str__(self):
+        return f"Location {self.name} ({self.location_id})"
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['tenant_id', 'location_id']),
+            models.Index(fields=['last_modified_date']),
+        ]
+

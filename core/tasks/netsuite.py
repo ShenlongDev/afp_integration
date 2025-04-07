@@ -80,6 +80,18 @@ def netsuite_import_transaction_accounting_lines(integration_id, since_str=None)
     logger.info(f"NetSuite transaction accounting lines imported for integration: {integration_id}")
 
 @shared_task
+def netsuite_import_locations(integration_id, since_str=None):
+    importer = get_netsuite_importer(integration_id, since_str)
+    importer.import_locations()
+    logger.info(f"NetSuite locations imported for integration: {integration_id}")
+    
+@shared_task
+def netsuite_import_budgets(integration_id, since_str=None):
+    importer = get_netsuite_importer(integration_id, since_str)
+    importer.import_budgets()
+    logger.info(f"NetSuite budgets imported for integration: {integration_id}")
+
+@shared_task
 def wait_60_seconds(integration_id):
     """
     Waits for 20 seconds before returning.
@@ -121,7 +133,10 @@ def sync_netsuite_data(integration_id, since_str: str = None):
         netsuite_import_transaction_lines.si(integration_id, since_str),
         wait_60_seconds.si(integration_id),
         netsuite_import_transaction_accounting_lines.si(integration_id, since_str),
-        wait_and_reschedule.si(integration_id)
+        wait_and_reschedule.si(integration_id),
+        netsuite_import_locations.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        netsuite_import_budgets.si(integration_id, since_str),
     )
     task_chain.apply_async()
     logger.info(f"Dispatched NetSuite sync tasks for integration: {integration_id}")
@@ -150,6 +165,10 @@ def sync_single_netsuite_data(integration_id, since_str: str = None):
         netsuite_import_transaction_lines.si(integration_id, since_str),
         wait_60_seconds.si(integration_id),
         netsuite_import_transaction_accounting_lines.si(integration_id, since_str),
+        wait_and_reschedule.si(integration_id),
+        netsuite_import_locations.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        netsuite_import_budgets.si(integration_id, since_str),
     )
     task_chain.apply_async()
 
