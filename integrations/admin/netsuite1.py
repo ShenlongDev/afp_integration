@@ -19,4 +19,3 @@ class NetSuiteTransactions1Admin(admin.ModelAdmin):
 
 admin.site.register(NetSuiteTransactionAccountingLine1, NetSuiteTransactionAccountingLine1Admin)
 admin.site.register(NetSuiteTransactionLine1, NetSuiteTransactionLine1Admin)
-admin.site.register(NetSuiteTransactions1, NetSuiteTransactions1Admin)

@@ -429,6 +429,7 @@ class NetSuiteImporter:
             """
             
             rows = list(self.client.execute_suiteql(query))
+            print(f"fetched {len(rows)} transaction records at {min_id}")
             if not rows:
                 break
             
@@ -442,6 +443,7 @@ class NetSuiteImporter:
                     continue
 
                 try:
+                    # print(f"Transaction ID: {txn_id}, Foreign Amount Paid: {r.get('foreignamountpaid')}, Foreign Amount Unpaid: {r.get('foreignamountunpaid')}")
                     NetSuiteTransactions.objects.update_or_create(
                         transactionid=str(txn_id),
                         tenant_id=self.org.id,
@@ -608,6 +610,7 @@ class NetSuiteImporter:
                 unique_key = f"{self.integration.netsuite_account_id}_{line_counter}"
                 
                 try:
+                    # print(f"Foreign Amount: {r.get('foreignamount')}, Foreign Credit Amount: {r.get('creditforeignamount')}")
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
                     from integrations.models.netsuite.temp import NetSuiteTransactionLine1
                     NetSuiteTransactionLine1.objects.update_or_create(
@@ -746,6 +749,7 @@ class NetSuiteImporter:
                     # if str(r.get("debit")) == "4.13" and str(r.get("account")) == "326":
                     #     print(f"last_modified: {last_modified}, transaction: {r.get('transaction')}, transactionline: {r.get('transactionline')}, memo: {r.get('memo')}, netamount: {r.get('debit')}")
 
+                    # print(f"Debit: {r.get('debit')}, Credit: {r.get('credit')}, Net Amount: {r.get('netamount')}")
                     from integrations.models.netsuite.temp import NetSuiteTransactionAccountingLine1
                     NetSuiteTransactionAccountingLine1.objects.update_or_create(
                         transaction=r.get("transaction").lower(),
