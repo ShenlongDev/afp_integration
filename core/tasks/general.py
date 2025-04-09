@@ -102,6 +102,8 @@ def sync_organization(self, organization_id):
         return
 
     try:
+        # Add more logging to debug
+        logger.info("Actually starting sync for organization %s", organization_id)
         from integrations.models.models import Integration
         logger.warning("Starting sync for organization %s", organization_id)
         org_integrations = Integration.objects.filter(org=organization_id).order_by('-id')
@@ -297,7 +299,7 @@ def dispatcher(self):
             orgs_to_sync = list(Integration.objects.values_list("org", flat=True).distinct().order_by("-org"))[:MAX_CONCURRENT_ORG_SYNC_TASKS - active_org_tasks]
             for org in orgs_to_sync:
                 logger.info(f"Dispatching sync for organization {org}")
-                sync_organization.apply_async(args=[org])
+                sync_organization.apply_async(args=[org], queue="org_sync")
             log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
         else:
             logger.info("Maximum concurrent organization sync tasks reached; will try dispatching later.")
