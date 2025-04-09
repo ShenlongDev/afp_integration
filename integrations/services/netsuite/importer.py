@@ -629,10 +629,9 @@ class NetSuiteImporter:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
                     from integrations.models.netsuite.temp import NetSuiteTransactionLine1
                     NetSuiteTransactionLine1.objects.update_or_create(
-                        transaction_line_id= r.get("id"),
                         uniquekey=r.get("uniquekey"),
-                        transactionid= r.get("transaction"),
                         defaults={
+                            "transaction_line_id": r.get("id"),
                             "tenant_id": self.org.id,
                             "is_billable": r.get("isbillable") == 'T', 
                             "is_closed": r.get("isclosed") == 'T',
@@ -657,6 +656,7 @@ class NetSuiteImporter:
                             "subsidiaryid": r.get("subsidiaryid"),
                             "tax_line": r.get("taxline") == 'T',
                             "transaction_discount": r.get("transactiondiscount") == 'T',
+                            "transactionid": r.get("transaction"),
                             # New fields with proper handling:
                             "accountinglinetype": r.get("accountinglinetype"),
                             "cleared": r.get("cleared") == 'T',
