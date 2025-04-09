@@ -320,7 +320,12 @@ def daily_previous_day_sync():
     for all integrations and ALL their modules. Handles multiple integration
     types per integration record.
     """
-    yesterday = (timezone.now() - timedelta(days=1)).date()
+    # Use date.today() to get the local date, then subtract 1 day
+    yesterday = (datetime.date.today() - timedelta(days=1))
+    
+    # Or for better timezone handling:
+    # yesterday = timezone.localdate() - timedelta(days=1)
+    
     logger.info(f"Starting multi-type daily sync for previous day: {yesterday}")
     
     log_task_event(
