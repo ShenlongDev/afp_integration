@@ -356,20 +356,21 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     def import_transactions(self, last_import_date: Optional[str] = None):
         logger.info(
-            "Importing NetSuite Transactions "
-            + ("incrementally..." if (last_import_date or self.since_date) else "(full import)...")
+            "Importing NetSuite Transactions " +
+            ("incrementally..." if (last_import_date or self.since_date) else "(full import)...")
         )
-        
+
         batch_size = 500
         total_imported = 0
+        # Use numeric boundaries if Transaction.ID is numeric.
         min_id = 0
 
-        # Determine the start date and build the date filter clause
+        # Determine the start date and build the date filter clause.
         start_date = last_import_date or self.since_date
         date_filter_clause = self.build_date_clause("LASTMODIFIEDDATE", start_date, None)
         
         while True:
-            # Build query for the next batch
+            # Build query for the next batch.
             query = f"""
                 SELECT 
                     Transaction.ID,
@@ -429,10 +430,10 @@ class NetSuiteImporter:
             """
             
             rows = list(self.client.execute_suiteql(query))
-            print(f"fetched {len(rows)} transaction records at {min_id}")
+            print(f"Fetched {len(rows)} transaction records at min_id {min_id}")
             if not rows:
                 break
-            
+
             for r in rows:
                 txn_id = r.get("id")
                 if not txn_id:
@@ -443,7 +444,6 @@ class NetSuiteImporter:
                     continue
 
                 try:
-                    # print(f"Transaction ID: {txn_id}, Foreign Amount Paid: {r.get('foreignamountpaid')}, Foreign Amount Unpaid: {r.get('foreignamountunpaid')}")
                     NetSuiteTransactions.objects.update_or_create(
                         transactionid=str(txn_id),
                         tenant_id=self.org.id,
@@ -499,12 +499,14 @@ class NetSuiteImporter:
                     logger.error(f"Error importing transaction row: {e}", exc_info=True)
             
             total_imported += len(rows)
+            # Update min_id with the last row's ID.
             min_id = rows[-1].get("id")
             
             if len(rows) < batch_size:
                 break
-        
+
         logger.info(f"Completed importing transactions. Total imported: {total_imported}.")
+
 
     # ------------------------------------------------------------
     # 8) Transform General Ledger (from transformed transactions)
@@ -694,20 +696,20 @@ class NetSuiteImporter:
     # ------------------------------------------------------------
     # 10) Import Transaction Accounting Lines (with date filtering and keyset pagination)
     # ------------------------------------------------------------
-    def import_transaction_accounting_lines(self, min_id: Optional[str] = None,
-                                        last_modified_after: Optional[str] = None,
-                                        start_date: Optional[str] = None,
-                                        end_date: Optional[str] = None):
+    def import_transaction_accounting_lines(self, min_transaction: Optional[str] = None,
+                                          last_modified_after: Optional[str] = None,
+                                          start_date: Optional[str] = None,
+                                          end_date: Optional[str] = None):
         logger.info("Importing Transaction Accounting Lines...")
-        min_id = min_id or "0"
+        # Initialize composite boundaries. These must be orderable.
+        min_transaction = min_transaction or "0"
+        min_transactionline = "0"  # start boundary for transaction line
         limit = 500
         total_imported = 0
         start_date = start_date or self.since_date
-        end_date = end_date
-        
-        # Initialize date_filter_clause as an empty string
+
+        # Build the date clause for filtering based on LASTMODIFIEDDATE.
         date_filter_clause = ""
-        
         if last_modified_after:
             date_filter_clause += f" AND LASTMODIFIEDDATE > TO_DATE('{last_modified_after}', 'YYYY-MM-DD HH24:MI:SS')"
         else:
@@ -718,12 +720,13 @@ class NetSuiteImporter:
 
         while True:
             close_old_connections()
+            # Composite condition: return rows with a greater TRANSACTION or, if equal, a greater TRANSACTIONLINE.
             query = f"""
                 SELECT
                     TRANSACTION,
                     TRANSACTIONLINE,
                     ACCOUNT,
-                    BUILTIN.DF (ACCOUNTINGBOOK) AS ACCOUNTINGBOOK,
+                    BUILTIN.DF(ACCOUNTINGBOOK) AS ACCOUNTINGBOOK,
                     AMOUNT,
                     AMOUNTLINKED,
                     DEBIT,
@@ -737,30 +740,28 @@ class NetSuiteImporter:
                     LASTMODIFIEDDATE,
                     PROCESSEDBYREVCOMMIT
                 FROM TransactionAccountingLine
-                WHERE TRANSACTION > {min_id}
-                    {date_filter_clause}                    
-                ORDER BY TRANSACTION ASC
+                WHERE 
+                    (TRANSACTION > {min_transaction} 
+                    OR (TRANSACTION = {min_transaction} AND TRANSACTIONLINE > {min_transactionline}))
+                    {date_filter_clause}
+                ORDER BY TRANSACTION ASC, TRANSACTIONLINE ASC
                 FETCH NEXT {limit} ROWS ONLY
             """
             try:
                 rows = list(self.client.execute_suiteql(query))
-                print(f"fetched {len(rows)} transaction accounting line records at {min_id}")
-                logger.info(f"Fetched {len(rows)} transaction accounting line records with TRANSACTION > {min_id}{date_filter_clause}.")
+                print(f"Fetched {len(rows)} rows with boundaries: TRANSACTION {min_transaction} and TRANSACTIONLINE {min_transactionline}.")
+                logger.info(f"Fetched {len(rows)} rows with composite boundary (TRANSACTION > {min_transaction} or (TRANSACTION = {min_transaction} and TRANSACTIONLINE > {min_transactionline})) {date_filter_clause}.")
             except Exception as e:
                 logger.error(f"Error importing transaction accounting lines: {e}", exc_info=True)
                 return
 
             if not rows:
+                logger.info("No more rows to fetch, ending loop.")
                 break
 
             def process_accounting_line(r):
                 try:
-                    # print(f"debit: {r.get('debit')}, account: {r.get('account')}")
                     last_modified = self.parse_datetime(r.get("lastmodifieddate"))
-                    # if str(r.get("debit")) == "4.13" and str(r.get("account")) == "326":
-                    #     print(f"last_modified: {last_modified}, transaction: {r.get('transaction')}, transactionline: {r.get('transactionline')}, memo: {r.get('memo')}, netamount: {r.get('debit')}")
-
-                    # print(f"Debit: {r.get('debit')}, Credit: {r.get('credit')}, Net Amount: {r.get('netamount')}")
                     from integrations.models.netsuite.temp import NetSuiteTransactionAccountingLine1
                     NetSuiteTransactionAccountingLine1.objects.update_or_create(
                         transaction=r.get("transaction").lower(),
@@ -792,13 +793,32 @@ class NetSuiteImporter:
 
             BatchUtils.process_in_batches(rows, process_accounting_line, batch_size=limit)
             total_imported += len(rows)
-            max_transaction = max(r.get("transaction") for r in rows)
-            min_id = str(max_transaction)
-            logger.info(f"Processed batch. New min_id: {min_id}. Total imported: {total_imported}.")
-            if len(rows) < limit:
+
+            # Update composite boundaries using the last row.
+            last_row = rows[-1]
+            new_min_transaction = str(last_row.get("transaction"))
+            new_min_transactionline = str(last_row.get("transactionline"))
+
+            # Debug log to show new boundaries.
+            logger.info(f"Processed batch. New boundary: TRANSACTION {new_min_transaction}, TRANSACTIONLINE {new_min_transactionline}. Total imported: {total_imported}.")
+
+            # Safeguard: if the boundary does not change, break out of the loop to avoid infinite iteration.
+            if new_min_transaction == min_transaction and new_min_transactionline == min_transactionline:
+                logger.warning("Pagination boundaries did not change. Exiting loop to avoid infinite loop.")
                 break
+
+            # Update boundaries for the next iteration.
+            min_transaction, min_transactionline = new_min_transaction, new_min_transactionline
+
+            # End loop if fewer rows than the limit are returned.
+            if len(rows) < limit:
+                logger.info("Fewer rows than limit fetched. Likely reached end of records.")
+                break
+
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported Transaction Accounting Lines: {total_imported} records processed.")
+
+
         
     # ------------------------------------------------------------
     # 11) Import Budgets
