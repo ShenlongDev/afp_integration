@@ -623,7 +623,7 @@ class NetSuiteImporter:
                 line_counter += 1
                 unique_key = f"{self.integration.netsuite_account_id}_{line_counter}"
                 
-                if decimal_or_none(r.get("netamount")) == 51251.66:
+                if decimal_or_none(r.get("netamount")) == 51251.66 or r.get("id") == 1065 or r.get("id") == '1065':
                     print(f"transaction_line_id: {r.get('id')}, Net Amount: {decimal_or_none(r.get('netamount'))}")
                 
                 try:
