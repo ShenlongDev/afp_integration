@@ -117,6 +117,7 @@ class NetSuiteTransactionLine1(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['tenant_id', 'transaction_line_id']),
+            models.Index(fields=['uniquekey']),
         ]
 
 class NetSuiteTransactions1(models.Model):
