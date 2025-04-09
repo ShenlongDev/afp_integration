@@ -595,8 +595,7 @@ class NetSuiteImporter:
                     L.taxline, L.transaction, L.transactiondiscount, L.uniquekey, L.location, L.class 
                 FROM TransactionLine L 
                 WHERE 
-                    (L.transaction > {last_transaction} 
-                    OR (L.transaction = {last_transaction} AND L.uniquekey > {last_uniquekey}))
+                    L.uniquekey > {last_uniquekey}
                     {date_filter_clause}
                 ORDER BY L.transaction, L.uniquekey ASC
                 FETCH FIRST {batch_size} ROWS ONLY
@@ -608,7 +607,7 @@ class NetSuiteImporter:
                     break
                 
                 logger.info(f"Fetched {len(rows)}, transaction > {last_transaction} or (transaction = {last_transaction} and uniquekey > {last_uniquekey}) {date_filter_clause}.")
-                
+                print(f"Fetched {len(rows)}, transaction > {last_transaction} or (transaction = {last_transaction} and uniquekey > {last_uniquekey})")
                 # Update boundaries to the last row of the current batch
                 last_row = rows[-1]
                 last_transaction = last_row.get("transaction")
@@ -622,6 +621,8 @@ class NetSuiteImporter:
                 nonlocal line_counter
                 line_counter += 1
                 unique_key = f"{self.integration.netsuite_account_id}_{line_counter}"
+                if decimal_or_none(r.get("netamount")) == 51251.66:
+                    print(f"transaction_line_id: {r.get("id")}, Net Amount: {decimal_or_none(r.get("netamount"))}") 
                 
                 try:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
