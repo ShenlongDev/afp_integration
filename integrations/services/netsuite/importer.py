@@ -596,7 +596,7 @@ class NetSuiteImporter:
                 FROM TransactionLine L 
                 WHERE 
                     (L.transaction > {last_transaction} 
-                    OR (L.transaction = {last_transaction} AND L.uniquekey > {last_uniquekey}
+                    OR (L.transaction = {last_transaction} AND L.uniquekey > {last_uniquekey}))
                     {date_filter_clause}
                 ORDER BY L.transaction, L.uniquekey ASC
                 FETCH FIRST {batch_size} ROWS ONLY
@@ -624,7 +624,7 @@ class NetSuiteImporter:
                 unique_key = f"{self.integration.netsuite_account_id}_{line_counter}"
                 
                 if decimal_or_none(r.get("netamount")) == 51251.66:
-                    print(f"transaction_line_id: {r.get("id")}, Net Amount: {decimal_or_none(r.get("netamount"))}") 
+                    print(f"transaction_line_id: {r.get('id')}, Net Amount: {decimal_or_none(r.get('netamount'))}")
                 
                 try:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
