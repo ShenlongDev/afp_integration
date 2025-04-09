@@ -595,7 +595,8 @@ class NetSuiteImporter:
                     L.taxline, L.transaction, L.transactiondiscount, L.uniquekey, L.location, L.class 
                 FROM TransactionLine L 
                 WHERE 
-                    L.uniquekey > {last_uniquekey}
+                    (L.transaction > {last_transaction} 
+                    OR (L.transaction = {last_transaction} AND L.uniquekey > {last_uniquekey}
                     {date_filter_clause}
                 ORDER BY L.transaction, L.uniquekey ASC
                 FETCH FIRST {batch_size} ROWS ONLY
@@ -621,6 +622,7 @@ class NetSuiteImporter:
                 nonlocal line_counter
                 line_counter += 1
                 unique_key = f"{self.integration.netsuite_account_id}_{line_counter}"
+                
                 if decimal_or_none(r.get("netamount")) == 51251.66:
                     print(f"transaction_line_id: {r.get("id")}, Net Amount: {decimal_or_none(r.get("netamount"))}") 
                 
