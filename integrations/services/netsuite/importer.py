@@ -559,10 +559,16 @@ class NetSuiteImporter:
     # 9) Import Transaction Lines (with date filtering)
     # ------------------------------------------------------------
     def import_transaction_lines(self, min_id: Optional[str] = None, last_modified_after: Optional[str] = None,
-                                 start_date: Optional[str] = None, end_date: Optional[str] = None):
+                                            start_date: Optional[str] = None, end_date: Optional[str] = None):
         logger.info("Importing NetSuite Transaction Lines...")
         batch_size = 500
-        min_id = min_id or "0"
+
+        # The composite pagination will use two boundaries: a transaction and a unique key.
+        # Initialize the boundaries. Using "0" is typical if transactions and keys are numeric or lexically orderable.
+        last_transaction = min_id or "0"
+        last_uniquekey = "0"
+        
+        # Default dates
         start_date = start_date or self.since_date
         print(f"start_date: {start_date}")
         total_fetched = 0
@@ -571,6 +577,9 @@ class NetSuiteImporter:
         line_counter = 0
         while True:
             close_old_connections()
+            # Build query using composite conditions.
+            # It selects lines where either the transaction is greater than the last fetched
+            # or where the transaction equals the last fetched and the uniquekey is greater.
             query = f"""
                 SELECT L.memo, L.accountinglinetype, L.cleared, L.closedate, L.commitmentfirm, L.creditforeignamount, 
                     BUILTIN.DF( L.department ) AS department, L.department AS departmentid, L.documentnumber, 
@@ -583,7 +592,9 @@ class NetSuiteImporter:
                     L.quantityshiprecv, BUILTIN.DF( L.subsidiary ) AS subsidiary, L.subsidiary AS subsidiaryid, 
                     L.taxline, L.transaction, L.transactiondiscount, L.uniquekey, L.location, L.class 
                 FROM TransactionLine L 
-                WHERE L.transaction > {min_id}
+                WHERE 
+                    (L.transaction > {last_transaction} 
+                    OR (L.transaction = {last_transaction} AND L.uniquekey > {last_uniquekey}))
                     {date_filter_clause}
                 ORDER BY L.transaction, L.uniquekey ASC
                 FETCH FIRST {batch_size} ROWS ONLY
@@ -594,11 +605,12 @@ class NetSuiteImporter:
                 if not rows:
                     break
                 
-                print(f"fetched {len(rows)} transaction accounting line records at {min_id}")
-                logger.info(f"Fetched {len(rows)} transaction line records with transaction > {min_id}{date_filter_clause}.")
+                logger.info(f"Fetched {len(rows)}, transaction > {last_transaction} or (transaction = {last_transaction} and uniquekey > {last_uniquekey}) {date_filter_clause}.")
                 
-                # Get the last transaction ID for the next iteration
-                min_id = rows[-1].get("transaction")
+                # Update boundaries to the last row of the current batch
+                last_row = rows[-1]
+                last_transaction = last_row.get("transaction")
+                last_uniquekey = last_row.get("uniquekey")
                 
             except Exception as e:
                 logger.error(f"Error importing transaction lines: {e}", exc_info=True)
@@ -610,7 +622,6 @@ class NetSuiteImporter:
                 unique_key = f"{self.integration.netsuite_account_id}_{line_counter}"
                 
                 try:
-                    # print(f"Foreign Amount: {r.get('foreignamount')}, Foreign Credit Amount: {r.get('creditforeignamount')}")
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
                     from integrations.models.netsuite.temp import NetSuiteTransactionLine1
                     NetSuiteTransactionLine1.objects.update_or_create(
@@ -660,25 +671,25 @@ class NetSuiteImporter:
                             "creditforeignamount": decimal_or_none(r.get("creditforeignamount")),
                             "closedate": self.parse_date(r.get("closedate")),
                             "documentnumber": r.get("documentnumber"),
-                            "class_field": r.get("class"),  # Changed from class_field to class
+                            "class_field": r.get("class"),
                             "uniquekey": r.get("uniquekey"),
                             "consolidation_key": self.integration.netsuite_account_id,
                         }
                     )
                 except Exception as e:
                     logger.error(f"Error importing transaction line row: {e}", exc_info=True)
-        
+            
             BatchUtils.process_in_batches(rows, process_line, batch_size=batch_size)
             total_fetched += len(rows)
-            logger.info(f"Processed batch. New min_id (transaction): {min_id}. Total imported: {total_fetched}.")
+            logger.info(f"Processed batch. New boundary: transaction {last_transaction}, uniquekey {last_uniquekey}. Total imported: {total_fetched}.")
             
-            # Break if we got less than the batch size (meaning we're at the end)
+            # Break if we got less than the batch size (indicating we're at the end of the data)
             if len(rows) < batch_size:
                 break
-        
 
         self.log_import_event(module_name="netsuite_transaction_lines", fetched_records=total_fetched)
         logger.info("Transaction Line import complete.")
+
 
     # ------------------------------------------------------------
     # 10) Import Transaction Accounting Lines (with date filtering and keyset pagination)
