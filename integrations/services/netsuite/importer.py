@@ -690,6 +690,7 @@ class NetSuiteImporter:
                 break
 
         self.log_import_event(module_name="netsuite_transaction_lines", fetched_records=total_fetched)
+        print(f"total fetched: {total_fetched}")
         logger.info("Transaction Line import complete.")
 
 
