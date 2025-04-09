@@ -621,7 +621,6 @@ class NetSuiteImporter:
             def process_line(r):
                 nonlocal line_counter
                 line_counter += 1
-                unique_key = f"{self.integration.netsuite_account_id}_{line_counter}"
                 
                 if decimal_or_none(r.get("netamount")) == 51251.66 or r.get("id") == 1065 or r.get("id") == '1065':
                     print(f"transaction_line_id: {r.get('id')}, Net Amount: {decimal_or_none(r.get('netamount'))}")
@@ -630,9 +629,10 @@ class NetSuiteImporter:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
                     from integrations.models.netsuite.temp import NetSuiteTransactionLine1
                     NetSuiteTransactionLine1.objects.update_or_create(
-                        unique_key=unique_key,
+                        transaction_line_id= r.get("id"),
+                        uniquekey=r.get("uniquekey"),
+                        transactionid= r.get("transaction"),
                         defaults={
-                            "transaction_line_id": r.get("id"),
                             "tenant_id": self.org.id,
                             "is_billable": r.get("isbillable") == 'T', 
                             "is_closed": r.get("isclosed") == 'T',
@@ -657,7 +657,6 @@ class NetSuiteImporter:
                             "subsidiaryid": r.get("subsidiaryid"),
                             "tax_line": r.get("taxline") == 'T',
                             "transaction_discount": r.get("transactiondiscount") == 'T',
-                            "transactionid": r.get("transaction"),
                             # New fields with proper handling:
                             "accountinglinetype": r.get("accountinglinetype"),
                             "cleared": r.get("cleared") == 'T',
