@@ -107,6 +107,10 @@ class NetSuiteTransactionLine1(models.Model):
     consolidation_key = models.CharField(max_length=255, null=True)
     source_uri = models.TextField(null=True, blank=True)
     
+    # Timestamp fields for tracking creation and updates
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
     def __str__(self):
         return f"TransactionLine {self.id}"
   
