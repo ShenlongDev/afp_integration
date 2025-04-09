@@ -287,19 +287,20 @@ def dispatcher(self):
             logger.info("No high priority tasks found.")
         
         from integrations.models.models import Integration
-        org_ids = list(Integration.objects.values_list("org", flat=True).distinct().order_by("-org"))
-        max_org_sync = 3
-        active_count = get_active_org_sync_tasks()
-        logger.info(f"Currently active organization sync tasks: {active_count}")
-        for org_id in org_ids:
-            if get_active_org_sync_tasks() < max_org_sync:
-                from core.tasks.general import sync_organization
-                logger.info(f"Dispatching sync for organization {org_id}")
-                sync_organization.apply_async(args=[org_id])
-            else:
-                logger.info("Maximum concurrent organization sync tasks reached; will try dispatching later.")
-                break
-        log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
+        MAX_CONCURRENT_ORG_SYNC_TASKS = 4  # Adjust based on your system capacity
+        
+        active_org_tasks = get_active_org_sync_tasks()
+        logger.info(f"Currently active organization sync tasks: {active_org_tasks}")
+        
+        if active_org_tasks < MAX_CONCURRENT_ORG_SYNC_TASKS:
+            # Only dispatch a limited number of new tasks
+            orgs_to_sync = list(Integration.objects.values_list("org", flat=True).distinct().order_by("-org"))[:MAX_CONCURRENT_ORG_SYNC_TASKS - active_org_tasks]
+            for org in orgs_to_sync:
+                logger.info(f"Dispatching sync for organization {org}")
+                sync_organization.apply_async(args=[org])
+            log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
+        else:
+            logger.info("Maximum concurrent organization sync tasks reached; will try dispatching later.")
 
     except Exception as exc:
         logger.error("Dispatcher encountered an error: %s", exc, exc_info=True)

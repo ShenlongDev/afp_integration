@@ -53,16 +53,25 @@ app.conf.task_routes = {
 
 def get_active_org_sync_tasks():
     """
-    Returns the total number of active tasks of type 'core.tasks.general.sync_organization'.
+    Returns the total number of active and reserved tasks of type 'core.tasks.general.sync_organization'.
     """
     i = app.control.inspect()
     active = i.active() or {}
+    reserved = i.reserved() or {}
+    
     count = 0
+    # Count active tasks
     for worker_tasks in active.values():
         for task in worker_tasks:
-            # Adjust the name if necessary to match your task's full path.
             if task.get("name") == "core.tasks.general.sync_organization":
                 count += 1
+    
+    # Count reserved tasks
+    for worker_tasks in reserved.values():
+        for task in worker_tasks:
+            if task.get("name") == "core.tasks.general.sync_organization":
+                count += 1
+                
     return count
 
 @worker_ready.connect

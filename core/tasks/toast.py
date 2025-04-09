@@ -69,6 +69,27 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None, modu
         revenue_centers = importer.import_revenue_centers()
         results['revenue_centers'] = len(revenue_centers)
     
+    if 'service_areas' in modules:
+        logger.info("Syncing Toast service areas for integration %s", integration_id)
+        service_areas = importer.import_service_areas()
+        results['service_areas'] = len(service_areas)
+        
+    if 'restaurant_services' in modules:
+        logger.info("Syncing Toast restaurant services for integration %s", integration_id)
+        restaurant_services = importer.import_restaurant_services()
+        results['restaurant_services'] = len(restaurant_services)
+
+    if 'sales_categories' in modules:
+        logger.info("Syncing Toast sales categories for integration %s", integration_id)
+        sales_categories = importer.import_sales_categories()
+        results['sales_categories'] = len(sales_categories)
+        
+    if 'dining_options' in modules:
+        logger.info("Syncing Toast dining options for integration %s", integration_id)
+        dining_options = importer.import_dining_options()
+        results['dining_options'] = len(dining_options)    
+    
+    
     logger.info("Toast sync completed for integration %s: %s",
                 integration_id, results)
     

@@ -312,3 +312,87 @@ class ToastRevenueCenter(models.Model):
         
     def __str__(self):
         return f"ToastRevenueCenter: {self.name} ({self.revenue_center_guid})"
+
+class ToastRestaurantService(models.Model):
+    tenant_id = models.IntegerField(db_index=True)
+    integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
+    restaurant_guid = models.CharField(max_length=255, db_index=True)
+    service_guid = models.CharField(max_length=255, db_index=True)
+    name = models.CharField(max_length=255)
+    entity_type = models.CharField(max_length=100, null=True, blank=True)
+    
+    class Meta:
+        unique_together = ('tenant_id', 'service_guid')
+        indexes = [
+            models.Index(fields=["tenant_id"]),
+            models.Index(fields=["integration"]),
+            models.Index(fields=["restaurant_guid"]),
+        ]
+        
+    def __str__(self):
+        return f"ToastRestaurantService: {self.name} ({self.service_guid})"
+
+
+class ToastSalesCategory(models.Model):
+    tenant_id = models.IntegerField(db_index=True)
+    integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
+    restaurant_guid = models.CharField(max_length=255, db_index=True)
+    category_guid = models.CharField(max_length=255, db_index=True)
+    name = models.CharField(max_length=255)
+    entity_type = models.CharField(max_length=100, null=True, blank=True)
+    
+    class Meta:
+        unique_together = ('tenant_id', 'category_guid')
+        indexes = [
+            models.Index(fields=["tenant_id"]),
+            models.Index(fields=["integration"]),
+            models.Index(fields=["restaurant_guid"]),
+        ]
+        
+    def __str__(self):
+        return f"ToastSalesCategory: {self.name} ({self.category_guid})"
+
+
+class ToastDiningOption(models.Model):
+    tenant_id = models.IntegerField(db_index=True)
+    integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
+    restaurant_guid = models.CharField(max_length=255, db_index=True)
+    option_guid = models.CharField(max_length=255, db_index=True)
+    name = models.CharField(max_length=255)
+    entity_type = models.CharField(max_length=100, null=True, blank=True)
+    external_id = models.CharField(max_length=255, null=True, blank=True)
+    behavior = models.CharField(max_length=50, null=True, blank=True)
+    curbside = models.BooleanField(default=False)
+    
+    class Meta:
+        unique_together = ('tenant_id', 'option_guid')
+        indexes = [
+            models.Index(fields=["tenant_id"]),
+            models.Index(fields=["integration"]),
+            models.Index(fields=["restaurant_guid"]),
+        ]
+        
+    def __str__(self):
+        return f"ToastDiningOption: {self.name} ({self.option_guid})"
+
+
+class ToastServiceArea(models.Model):
+    tenant_id = models.IntegerField(db_index=True)
+    integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
+    restaurant_guid = models.CharField(max_length=255, db_index=True)
+    area_guid = models.CharField(max_length=255, db_index=True)
+    name = models.CharField(max_length=255)
+    entity_type = models.CharField(max_length=100, null=True, blank=True)
+    revenue_center_guid = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    
+    class Meta:
+        unique_together = ('tenant_id', 'area_guid')
+        indexes = [
+            models.Index(fields=["tenant_id"]),
+            models.Index(fields=["integration"]),
+            models.Index(fields=["restaurant_guid"]),
+            models.Index(fields=["revenue_center_guid"]),
+        ]
+        
+    def __str__(self):
+        return f"ToastServiceArea: {self.name} ({self.area_guid})"

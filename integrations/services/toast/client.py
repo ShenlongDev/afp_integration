@@ -9,7 +9,8 @@ from .auth import ToastAuthService
 from integrations.models.toast.raw import (
     ToastOrder, ToastCheck, ToastSelection,
     ToastGeneralLocation, ToastDaySchedule, 
-    ToastWeeklySchedule, ToastJoinedOpeningHours, ToastRevenueCenter
+    ToastWeeklySchedule, ToastJoinedOpeningHours, ToastRevenueCenter,
+    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea
 )
 from integrations.models.models import SyncTableLogs
 import time as timeclock  # Use a different name to avoid conflict
@@ -386,10 +387,10 @@ class ToastIntegrationService:
         )
 
     def process_orders(self, orders):
-        print(f"Starting to process {len(orders)} orders")
         
         for index, order_data in enumerate(orders):
             order_guid = order_data.get("guid", "unknown")
+            print(order_data)
             
             # Skip the order if it is marked as a refund    
             if order_data.get("refund"):
@@ -723,19 +724,6 @@ class ToastIntegrationService:
                     order.refund_business_date = refund_business_date
                 order.save()
 
-                # Extract revenue center guid and create basic record
-                revenue_center_guid = order_data.get("revenueCenter", {}).get("guid") if order_data.get("revenueCenter") else None
-                if revenue_center_guid and order_data.get("restaurant_guid"):
-                    # Create basic ToastRevenueCenter record with identifiers only
-                    ToastRevenueCenter.objects.update_or_create(
-                        tenant_id=self.integration.org.id,
-                        integration=self.integration,
-                        revenue_center_guid=revenue_center_guid,
-                        defaults={
-                            "restaurant_guid": order_data.get("restaurant_guid"),
-                        }
-                    )
-
                 order.payload = order_data
                 order.save()
 
@@ -753,47 +741,269 @@ class ToastIntegrationService:
         """
         Import revenue centers for all restaurants from Toast API
         """
-        all_revenue_centers = []
+        restaurant_guids = self.get_restaurant_guid()
+        if not restaurant_guids:
+            raise Exception("No restaurant GUIDs found.")
         
-        # Get revenue centers that don't have a name
-        revenue_centers_to_update = ToastRevenueCenter.objects.filter(
-            tenant_id=self.integration.org.id,
-            integration=self.integration,
-            name__isnull=True
-        ).select_related('integration')
+        total_centers = 0
         
-        logger.info(f"Found {revenue_centers_to_update.count()} revenue centers without names to update")
-        
-        for revenue_center in revenue_centers_to_update:
-            if not revenue_center.revenue_center_guid or not revenue_center.restaurant_guid:
-                continue
-                
+        for restaurant_guid in restaurant_guids:
+            logger.info(f"Importing revenue centers for restaurant with GUID: {restaurant_guid}")
+            
+            url = f"{self.hostname}/config/v2/revenueCenters/"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Toast-Restaurant-External-ID": restaurant_guid
+            }
+            
             try:
-                url = f"{self.hostname}/config/v2/revenueCenters/{revenue_center.revenue_center_guid}"
-                headers = {
-                    "Authorization": f"Bearer {self.access_token}",
-                    "Toast-Restaurant-External-ID": revenue_center.restaurant_guid
-                }
-                
                 response = requests.get(url, headers=headers)
                 response.raise_for_status()
-                data = response.json()
+                centers = response.json()
                 
-                # Update revenue center record
-                revenue_center.name = data.get("name")
-                revenue_center.description = data.get("description")
-                revenue_center.entity_type = data.get("entityType")
-                revenue_center.save()
-                
-                all_revenue_centers.append(revenue_center)
-                logger.info(f"Updated revenue center: {revenue_center.name} for restaurant {revenue_center.restaurant_guid}")
+                for center in centers:
+                    center_guid = center.get("guid")
+                    if not center_guid:
+                        continue
+                        
+                    ToastRevenueCenter.objects.update_or_create(
+                        revenue_center_guid=center_guid,
+                        tenant_id=self.integration.org.id,
+                        defaults={
+                            "integration": self.integration,
+                            "restaurant_guid": restaurant_guid,
+                            "name": center.get("name"),
+                            "description": center.get("description"),
+                            "entity_type": center.get("entityType")
+                        }
+                    )
+                    
+                total_centers += len(centers)
+                logger.info(f"Imported {len(centers)} revenue centers for restaurant {restaurant_guid}")
                 
             except requests.RequestException as e:
-                logger.error(f"Error fetching revenue center {revenue_center.revenue_center_guid}: {e}")
+                logger.error(f"Error fetching revenue centers for restaurant {restaurant_guid}: {e}")
         
-        logger.info(f"Updated {len(all_revenue_centers)} revenue centers")
-        self.log_import_event(module_name="toast_revenue_centers", fetched_records=len(all_revenue_centers))
-        return all_revenue_centers
+        self.log_import_event(module_name="toast_revenue_centers", fetched_records=total_centers)
+        return total_centers
+
+    def import_restaurant_services(self):
+        """
+        Import restaurant services for all restaurants from Toast API
+        """
+        restaurant_guids = self.get_restaurant_guid()
+        if not restaurant_guids:
+            raise Exception("No restaurant GUIDs found.")
+        
+        total_services = 0
+        
+        for restaurant_guid in restaurant_guids:
+            logger.info(f"Importing restaurant services for restaurant with GUID: {restaurant_guid}")
+            
+            url = f"{self.hostname}/config/v2/restaurantServices/"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Toast-Restaurant-External-ID": restaurant_guid
+            }
+            
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                services = response.json()
+                
+                for service in services:
+                    service_guid = service.get("guid")
+                    if not service_guid:
+                        continue
+                        
+                    ToastRestaurantService.objects.update_or_create(
+                        service_guid=service_guid,
+                        tenant_id=self.integration.org.id,
+                        defaults={
+                            "integration": self.integration,
+                            "restaurant_guid": restaurant_guid,
+                            "name": service.get("name"),
+                            "entity_type": service.get("entityType")
+                        }
+                    )
+                    
+                total_services += len(services)
+                logger.info(f"Imported {len(services)} restaurant services for restaurant {restaurant_guid}")
+                
+            except requests.RequestException as e:
+                logger.error(f"Error fetching restaurant services for restaurant {restaurant_guid}: {e}")
+        
+        self.log_import_event(module_name="toast_restaurant_services", fetched_records=total_services)
+        return total_services
+
+    def import_sales_categories(self):
+        """
+        Import sales categories for all restaurants from Toast API
+        """
+        restaurant_guids = self.get_restaurant_guid()
+        if not restaurant_guids:
+            raise Exception("No restaurant GUIDs found.")
+        
+        total_categories = 0
+        
+        for restaurant_guid in restaurant_guids:
+            logger.info(f"Importing sales categories for restaurant with GUID: {restaurant_guid}")
+            
+            url = f"{self.hostname}/config/v2/salesCategories"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Toast-Restaurant-External-ID": restaurant_guid
+            }
+            
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                categories = response.json()
+                
+                for category in categories:
+                    category_guid = category.get("guid")
+                    if not category_guid:
+                        continue
+                        
+                    ToastSalesCategory.objects.update_or_create(
+                        category_guid=category_guid,
+                        tenant_id=self.integration.org.id,
+                        defaults={
+                            "integration": self.integration,
+                            "restaurant_guid": restaurant_guid,
+                            "name": category.get("name"),
+                            "entity_type": category.get("entityType")
+                        }
+                    )
+                    
+                total_categories += len(categories)
+                logger.info(f"Imported {len(categories)} sales categories for restaurant {restaurant_guid}")
+                
+            except requests.RequestException as e:
+                logger.error(f"Error fetching sales categories for restaurant {restaurant_guid}: {e}")
+        
+        self.log_import_event(module_name="toast_sales_categories", fetched_records=total_categories)
+        return total_categories
+
+    def import_dining_options(self):
+        """
+        Import dining options for all restaurants from Toast API
+        """
+        restaurant_guids = self.get_restaurant_guid()
+        if not restaurant_guids:
+            raise Exception("No restaurant GUIDs found.")
+        
+        total_options = 0
+        
+        for restaurant_guid in restaurant_guids:
+            logger.info(f"Importing dining options for restaurant with GUID: {restaurant_guid}")
+            
+            url = f"{self.hostname}/config/v2/diningOptions"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Toast-Restaurant-External-ID": restaurant_guid
+            }
+            
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                options = response.json()
+                
+                for option in options:
+                    option_guid = option.get("guid")
+                    if not option_guid:
+                        continue
+                        
+                    ToastDiningOption.objects.update_or_create(
+                        option_guid=option_guid,
+                        tenant_id=self.integration.org.id,
+                        defaults={
+                            "integration": self.integration,
+                            "restaurant_guid": restaurant_guid,
+                            "name": option.get("name"),
+                            "entity_type": option.get("entityType"),
+                            "external_id": option.get("externalId"),
+                            "behavior": option.get("behavior"),
+                            "curbside": option.get("curbside", False)
+                        }
+                    )
+                    
+                total_options += len(options)
+                logger.info(f"Imported {len(options)} dining options for restaurant {restaurant_guid}")
+                
+            except requests.RequestException as e:
+                logger.error(f"Error fetching dining options for restaurant {restaurant_guid}: {e}")
+        
+        self.log_import_event(module_name="toast_dining_options", fetched_records=total_options)
+        return total_options
+
+    def import_service_areas(self):
+        """
+        Import service areas for all restaurants from Toast API and update revenue centers
+        """
+        restaurant_guids = self.get_restaurant_guid()
+        if not restaurant_guids:
+            raise Exception("No restaurant GUIDs found.")
+        
+        total_areas = 0
+        
+        for restaurant_guid in restaurant_guids:
+            logger.info(f"Importing service areas for restaurant with GUID: {restaurant_guid}")
+            
+            url = f"{self.hostname}/config/v2/serviceAreas"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Toast-Restaurant-External-ID": restaurant_guid
+            }
+            
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                areas = response.json()
+                
+                for area in areas:
+                    area_guid = area.get("guid")
+                    if not area_guid:
+                        continue
+                    
+                    # Extract revenue center info if present
+                    revenue_center_guid = None
+                    if area.get("revenueCenter") and area["revenueCenter"].get("guid"):
+                        revenue_center_guid = area["revenueCenter"]["guid"]
+                        
+                        # Update or create the revenue center
+                        ToastRevenueCenter.objects.update_or_create(
+                            revenue_center_guid=revenue_center_guid,
+                            tenant_id=self.integration.org.id,
+                            defaults={
+                                "integration": self.integration,
+                                "restaurant_guid": restaurant_guid,
+                                "entity_type": area["revenueCenter"].get("entityType"),
+                                "name": area["revenueCenter"].get("name", "Unknown")
+                            }
+                        )
+                        
+                    # Create or update the service area
+                    ToastServiceArea.objects.update_or_create(
+                        area_guid=area_guid,
+                        tenant_id=self.integration.org.id,
+                        defaults={
+                            "integration": self.integration,
+                            "restaurant_guid": restaurant_guid,
+                            "name": area.get("name"),
+                            "entity_type": area.get("entityType"),
+                            "revenue_center_guid": revenue_center_guid
+                        }
+                    )
+                    
+                total_areas += len(areas)
+                logger.info(f"Imported {len(areas)} service areas for restaurant {restaurant_guid}")
+                
+            except requests.RequestException as e:
+                logger.error(f"Error fetching service areas for restaurant {restaurant_guid}: {e}")
+        
+        self.log_import_event(module_name="toast_service_areas", fetched_records=total_areas)
+        return total_areas
 
 
 
