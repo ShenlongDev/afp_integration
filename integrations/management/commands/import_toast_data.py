@@ -45,6 +45,26 @@ class Command(BaseCommand):
             help='Import revenue centers data'
         )
         parser.add_argument(
+            '--restaurant-services',
+            action='store_true',
+            help='Import restaurant services data'
+        )
+        parser.add_argument(
+            '--sales-categories',
+            action='store_true',
+            help='Import sales categories data'
+        )
+        parser.add_argument(
+            '--dining-options',
+            action='store_true',
+            help='Import dining options data'
+        )
+        parser.add_argument(
+            '--service-areas',
+            action='store_true',
+            help='Import service areas data'
+        )
+        parser.add_argument(
             '--all',
             action='store_true',
             help='Import all available data types (default if no specific modules are selected)'
@@ -76,10 +96,16 @@ class Command(BaseCommand):
         run_orders = options.get('orders')
         run_restaurants = options.get('restaurants')
         run_revenue_centers = options.get('revenue_centers')
+        run_restaurant_services = options.get('restaurant_services')
+        run_sales_categories = options.get('sales_categories')
+        run_dining_options = options.get('dining_options')
+        run_service_areas = options.get('service_areas')
         run_all = options.get('all')
 
         # If no specific modules are selected, run all
-        if not (run_orders or run_restaurants or run_revenue_centers):
+        if not (run_orders or run_restaurants or run_revenue_centers or 
+                run_restaurant_services or run_sales_categories or 
+                run_dining_options or run_service_areas):
             run_all = True
 
         integrations = []
@@ -121,6 +147,30 @@ class Command(BaseCommand):
                     self.stdout.write(f"Importing revenue centers for integration ID {integration.id}...")
                     revenue_centers = service.import_revenue_centers()
                     self.stdout.write(self.style.SUCCESS(f"Imported revenue centers for integration ID {integration.id}"))
+                
+                # Import restaurant services if selected
+                if run_all or run_restaurant_services:
+                    self.stdout.write(f"Importing restaurant services for integration ID {integration.id}...")
+                    services_count = service.import_restaurant_services()
+                    self.stdout.write(self.style.SUCCESS(f"Imported {services_count} restaurant services for integration ID {integration.id}"))
+                
+                # Import sales categories if selected
+                if run_all or run_sales_categories:
+                    self.stdout.write(f"Importing sales categories for integration ID {integration.id}...")
+                    categories_count = service.import_sales_categories()
+                    self.stdout.write(self.style.SUCCESS(f"Imported {categories_count} sales categories for integration ID {integration.id}"))
+                
+                # Import dining options if selected
+                if run_all or run_dining_options:
+                    self.stdout.write(f"Importing dining options for integration ID {integration.id}...")
+                    options_count = service.import_dining_options()
+                    self.stdout.write(self.style.SUCCESS(f"Imported {options_count} dining options for integration ID {integration.id}"))
+                
+                # Import service areas if selected
+                if run_all or run_service_areas:
+                    self.stdout.write(f"Importing service areas for integration ID {integration.id}...")
+                    areas_count = service.import_service_areas()
+                    self.stdout.write(self.style.SUCCESS(f"Imported {areas_count} service areas for integration ID {integration.id}"))
                 
             except Exception as e:
                 logger.error("Error importing Toast data for integration ID %s: %s", integration.id, e, exc_info=True)

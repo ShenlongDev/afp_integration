@@ -95,6 +95,22 @@ def netsuite_import_locations(importer):
 def netsuite_import_budgets(importer):
     return importer.import_budgets()
 
+def toast_import_service_areas(importer):
+    return importer.import_service_areas()
+
+def toast_import_restaurant_services(importer):
+    return importer.import_restaurant_services()
+
+def toast_import_sales_categories(importer):
+    return importer.import_sales_categories()
+
+def toast_import_dining_options(importer):
+    return importer.import_dining_options()
+
+
+
+
+
 MODULES = {
     "xero": {
         "client": XeroDataImporter,
@@ -130,6 +146,10 @@ MODULES = {
             "orders": toast_import_orders,
             "restaurant_info": toast_import_restaurant_data,
             "revenue_centers": toast_import_revenue_centers,
+            "service_areas": toast_import_service_areas,
+            "restaurant_services": toast_import_restaurant_services,
+            "sales_categories": toast_import_sales_categories,
+            "dining_options": toast_import_dining_options,
         },
     },
 }

@@ -8,6 +8,10 @@ from integrations.models.toast.raw import (
     ToastJoinedOpeningHours,
     ToastSelection,
     ToastRevenueCenter,
+    ToastServiceArea,
+    ToastRestaurantService,
+    ToastSalesCategory,
+    ToastDiningOption
 )
 
 class ToastRevenueCenterAdmin(admin.ModelAdmin):
@@ -49,6 +53,28 @@ class ToastJoinedOpeningHoursAdmin(admin.ModelAdmin):
     search_fields = ('restaurant__general_name',)
     ordering = ('restaurant__general_name',)
 
+class ToastServiceAreaAdmin(admin.ModelAdmin):
+    list_display = ('name', 'revenue_center_guid', 'entity_type')
+    search_fields = ('name', 'revenue_center_guid')
+    ordering = ('name',)
+    
+    
+class ToastRestaurantServiceAdmin(admin.ModelAdmin):
+    list_display = ('name', 'entity_type')
+    search_fields = ('name',)
+    ordering = ('name',)
+    
+class ToastSalesCategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'entity_type')
+    search_fields = ('name',)
+    ordering = ('name',)
+    
+class ToastDiningOptionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'entity_type')
+    search_fields = ('name',)
+    ordering = ('name',)
+
+
 admin.site.register(ToastOrder, ToastOrderAdmin)
 admin.site.register(ToastCheck, ToastCheckAdmin)
 admin.site.register(ToastGeneralLocation, ToastGeneralLocationAdmin)
@@ -57,4 +83,7 @@ admin.site.register(ToastWeeklySchedule, ToastWeeklyScheduleAdmin)
 admin.site.register(ToastJoinedOpeningHours, ToastJoinedOpeningHoursAdmin)
 admin.site.register(ToastSelection, ToastSelectionAdmin)
 admin.site.register(ToastRevenueCenter, ToastRevenueCenterAdmin)
-
+admin.site.register(ToastServiceArea, ToastServiceAreaAdmin)
+admin.site.register(ToastRestaurantService, ToastRestaurantServiceAdmin)
+admin.site.register(ToastSalesCategory, ToastSalesCategoryAdmin)
+admin.site.register(ToastDiningOption, ToastDiningOptionAdmin)
