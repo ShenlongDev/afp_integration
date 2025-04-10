@@ -4,7 +4,7 @@ from integrations.models.models import Organisation
 
 class NetSuiteAccounts(models.Model):
     tenant_id = models.IntegerField(null=True, blank=True)
-    account_id = models.CharField(max_length=255, null=True)
+    account_id = models.IntegerField(null=True, db_index=True)
     links = models.TextField(null=True, blank=True)
     accountsearchdisplayname = models.TextField(null=True, blank=True)
     accountsearchdisplaynamecopy = models.TextField(null=True, blank=True)
@@ -38,9 +38,14 @@ class NetSuiteAccounts(models.Model):
     def __str__(self):
         return f"Account {self.account_id}"
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['tenant_id', 'account_id']),
+        ]
+
 
 class NetSuiteTransactions(models.Model):
-    transactionid = models.CharField(max_length=50, null=True)
+    transactionid = models.IntegerField(null=True, db_index=True)
     tenant_id = models.IntegerField(null=True, blank=True)
     lastmodifieddate = models.DateTimeField(null=True, blank=True)
     
@@ -120,44 +125,6 @@ class NetSuiteTransactions(models.Model):
         indexes = [
             models.Index(fields=['tenant_id', 'transactionid']),
             models.Index(fields=['tenant_id', 'lastmodifieddate']),
-        ]
-
-
-class NetSuiteGeneralLedger(models.Model):
-    tenant_id = models.IntegerField(null=True, blank=True)
-    abbrevtype = models.CharField(max_length=255, null=True)
-    transactionid = models.CharField(max_length=255, null=True)
-    uniquekey = models.CharField(max_length=255, null=True)
-    linesequencenumber = models.IntegerField(null=True)
-    lineid = models.CharField(max_length=255, null=True)
-    approvalstatus = models.CharField(max_length=255, null=True)
-    postingperiod = models.CharField(max_length=255, null=True)
-    yearperiod = models.IntegerField(null=True)
-    trandate = models.DateTimeField(null=True)
-    subsidiary = models.CharField(max_length=255, null=True)
-    account_id = models.CharField(max_length=255, null=True)
-    acctnumber = models.CharField(max_length=255, null=True)
-    account_name = models.CharField(max_length=255, null=True)
-    subsidiary_name = models.CharField(max_length=255, null=True)
-    amount = models.DecimalField(max_digits=19, decimal_places=2, null=True)
-    debit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
-    credit = models.DecimalField(max_digits=19, decimal_places=2, null=True)
-    netamount = models.DecimalField(max_digits=19, decimal_places=2, null=True)
-    currency = models.CharField(max_length=3, null=True)
-    exchangerate = models.DecimalField(max_digits=19, decimal_places=6, null=True)
-    record_date = models.DateTimeField(null=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['tenant_id', 'transactionid', 'linesequencenumber'],
-                name='unique_netsuite_gl_entry'
-            )
-        ]
-        indexes = [
-            models.Index(fields=['tenant_id', 'transactionid']),
-            models.Index(fields=['trandate']),
-            models.Index(fields=['account_id']),
         ]
 
 
@@ -301,7 +268,7 @@ class NetSuiteTransactionAccountingLine(models.Model):
     processedbyrevcommit = models.TextField(null=True, blank=True)
     
     # Numeric fields
-    account = models.BigIntegerField(null=True, blank=True)
+    account = models.IntegerField(null=True, blank=True, db_index=True)
     amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     amountlinked = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     debit = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
@@ -312,9 +279,9 @@ class NetSuiteTransactionAccountingLine(models.Model):
     amountpaid = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     amountunpaid = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     
-    # Transaction identifiers – here we store them as strings to allow use of .lower() in transformations.
-    transaction = models.CharField(max_length=50, null=True, blank=True)
-    transaction_line = models.CharField(max_length=50, null=True, blank=True)
+    # Transaction identifiers - changed to BigIntegerField
+    transaction = models.IntegerField(null=True, blank=True, db_index=True)
+    transaction_line = models.IntegerField(null=True, blank=True, db_index=True)
     
     # Date/Time field
     lastmodifieddate = models.DateTimeField(null=True, blank=True)
@@ -332,6 +299,7 @@ class NetSuiteTransactionAccountingLine(models.Model):
             models.Index(fields=['tenant_id', 'transaction', 'transaction_line']),
             models.Index(fields=['lastmodifieddate']),
             models.Index(fields=['consolidation_key']),
+            models.Index(fields=['account']),
         ]
 
 
@@ -396,12 +364,17 @@ class NetSuiteTransactionLine(models.Model):
     consolidation_key = models.CharField(max_length=255, null=True)
     source_uri = models.TextField(null=True, blank=True)
     
+    # Timestamp fields for tracking creation and updates
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
     def __str__(self):
         return f"TransactionLine {self.id}"
-    
+  
     class Meta:
         indexes = [
             models.Index(fields=['tenant_id', 'transaction_line_id']),
+            models.Index(fields=['uniquekey']),
         ]
 
 

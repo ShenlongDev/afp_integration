@@ -20,7 +20,6 @@ from integrations.models.netsuite.analytics import (
     NetSuiteAccountingPeriods,
     NetSuiteAccounts,
     NetSuiteTransactions,
-    NetSuiteGeneralLedger,
     NetSuiteTransactionLine,
     NetSuiteTransactionAccountingLine,
     NetSuiteTransformedTransaction,
@@ -445,7 +444,7 @@ class NetSuiteImporter:
 
                 try:
                     NetSuiteTransactions.objects.update_or_create(
-                        transactionid=str(txn_id),
+                        transactionid=int(txn_id),
                         tenant_id=self.org.id,
                         defaults={
                             "abbrevtype": r.get("abbrevtype"),
@@ -507,55 +506,6 @@ class NetSuiteImporter:
 
         logger.info(f"Completed importing transactions. Total imported: {total_imported}.")
 
-
-    # ------------------------------------------------------------
-    # 8) Transform General Ledger (from transformed transactions)
-    # ------------------------------------------------------------
-    def transform_general_ledger(self):
-        logger.info("Starting General Ledger transformation from transformed transactions...")
-        total_mapped = 0
-        transformed_records = NetSuiteTransformedTransaction.objects.all().order_by("transactionid", "linesequencenumber")
-
-        def process_gl(rec):
-            nonlocal total_mapped
-            try:
-                trandate_dt = rec.trandate
-                gl_defaults = {
-                    "tenant_id": rec.tenant_id,
-                    "subsidiary_name": rec.subsidiary,
-                    "account_name": NetSuiteAccounts.objects.get(account_id=rec.account, tenant_id=rec.tenant_id).name,
-                    "abbrevtype": rec.abbrevtype,
-                    "uniquekey": f"{rec.transactionid}-{rec.linesequencenumber}",
-                    "linesequencenumber": rec.linesequencenumber,
-                    "lineid": rec.lineid,
-                    "approvalstatus": rec.approvalstatus,
-                    "postingperiod": rec.postingperiod,
-                    "yearperiod": rec.yearperiod,
-                    "trandate": trandate_dt,
-                    "subsidiary": rec.subsidiary,
-                    "account_id": rec.account,
-                    "acctnumber": rec.acctnumber,
-                    "amount": rec.amount,
-                    "debit": rec.debit,
-                    "credit": rec.credit,
-                    "netamount": rec.netamount,
-                    "currency": rec.currency,
-                    "exchangerate": rec.exchangerate,
-                    "record_date": rec.record_date,
-                }
-                NetSuiteGeneralLedger.objects.update_or_create(
-                    tenant_id=rec.tenant_id,
-                    transactionid=rec.transactionid,
-                    linesequencenumber=rec.linesequencenumber,
-                    defaults=gl_defaults
-                )
-                total_mapped += 1
-            except Exception as e:
-                logger.error(f"Error mapping transformed transaction {rec.transactionid} line {rec.linesequencenumber}: {e}", exc_info=True)
-
-        BatchUtils.process_in_batches(list(transformed_records), process_gl, batch_size=1000)
-        logger.info(f"General Ledger transformation complete: {total_mapped} entries processed.")
-        self.log_import_event(module_name="netsuite_general_ledger", fetched_records=total_mapped)
 
     # ------------------------------------------------------------
     # 9) Import Transaction Lines (with date filtering)
@@ -627,8 +577,7 @@ class NetSuiteImporter:
                 
                 try:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
-                    from integrations.models.netsuite.temp import NetSuiteTransactionLine1
-                    NetSuiteTransactionLine1.objects.update_or_create(
+                    NetSuiteTransactionLine.objects.update_or_create(
                         uniquekey=r.get("uniquekey"),
                         defaults={
                             "transaction_line_id": r.get("id"),
@@ -765,15 +714,14 @@ class NetSuiteImporter:
             def process_accounting_line(r):
                 try:
                     last_modified = self.parse_datetime(r.get("lastmodifieddate"))
-                    from integrations.models.netsuite.temp import NetSuiteTransactionAccountingLine1
-                    NetSuiteTransactionAccountingLine1.objects.update_or_create(
-                        transaction=r.get("transaction").lower(),
-                        transaction_line=r.get("transactionline").lower(),
+                    NetSuiteTransactionAccountingLine.objects.update_or_create(
+                        transaction=int(r.get("transaction")),
+                        transaction_line=int(r.get("transactionline")),
                         tenant_id=self.org.id,
                         defaults={
                             "links": r.get("links"),
-                            "accountingbook": r.get("accountingbook").lower() if r.get("accountingbook") else None,
-                            "account": r.get("account").lower() if r.get("account") else None,
+                            "accountingbook": r.get("accountingbook") if r.get("accountingbook") else None,
+                            "account": int(r.get("account")) if r.get("account") else None,
                             "amount": decimal_or_none(r.get("amount")),
                             "amountlinked": decimal_or_none(r.get("amountlinked")),
                             "debit": decimal_or_none(r.get("debit")),

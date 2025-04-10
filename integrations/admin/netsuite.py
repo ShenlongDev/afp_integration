@@ -6,13 +6,14 @@ from integrations.models.netsuite.analytics import (
     NetSuiteTransactions,
     NetSuiteSubsidiaries,
     NetSuiteDepartments,
-    NetSuiteGeneralLedger,
     NetSuiteJournals,
     NetSuiteEntity,
     NetSuiteAccountingPeriods,
     NetSuiteTransformedTransaction,
     NetSuiteBudgets,
     NetSuiteLocations,
+    NetSuiteTransactionLine,
+    NetSuiteTransactionAccountingLine
 )
 
 class NetSuiteLocationsAdmin(admin.ModelAdmin):
@@ -69,13 +70,20 @@ class NetSuiteTransformedTransactionAdmin(admin.ModelAdmin):
     list_display = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate', 'entity_id')
     search_fields = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate', 'entity_id')
 
+class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
+    list_display = ('tenant_id', 'transaction', 'account', 'amount', 'lastmodifieddate', 'transaction_line')
+    search_fields = ('transaction', 'account', 'amount')
+
+class NetSuiteTransactionLineAdmin(admin.ModelAdmin):
+    list_display = ('transaction_line_id', 'subsidiary', 'transactionid', 'closedate')
+    search_fields = ('transaction_line_id', 'transactionid', 'subsidiary')
+
+
 # Register Netsuite related models
 admin.site.register(NetSuiteVendors, NetSuiteVendorsAdmin)
 admin.site.register(NetSuiteAccounts, NetSuiteAccountsAdmin)
-# admin.site.register(NetSuiteTransactions, NetSuiteTransactionsAdmin)
 admin.site.register(NetSuiteSubsidiaries, NetSuiteSubsidiariesAdmin)
 admin.site.register(NetSuiteDepartments, NetSuiteDepartmentsAdmin)
-# admin.site.register(NetSuiteGeneralLedger, NetSuiteGeneralLedgerAdmin)
 admin.site.register(NetSuiteJournals, NetSuiteJournalsAdmin)
 admin.site.register(NetSuiteEntity, NetSuiteEntityAdmin)
 admin.site.register(NetSuiteAccountingPeriods, NetSuiteAccountingPeriodsAdmin)
@@ -83,3 +91,5 @@ admin.site.register(NetSuiteTransformedTransaction, NetSuiteTransformedTransacti
 admin.site.register(NetSuiteBudgets, NetSuiteBudgetsAdmin)
 admin.site.register(NetSuiteLocations, NetSuiteLocationsAdmin)
 admin.site.register(NetSuiteTransactions, NetSuiteTransactionsAdmin)
+admin.site.register(NetSuiteTransactionLine, NetSuiteTransactionLineAdmin)
+admin.site.register(NetSuiteTransactionAccountingLine, NetSuiteTransactionAccountingLineAdmin)
