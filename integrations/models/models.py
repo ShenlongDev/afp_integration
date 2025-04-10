@@ -101,3 +101,56 @@ class HighPriorityTask(models.Model):
             return self.processed_at - self.in_progress_since
         return None
     
+    
+class GenericIntegration(models.Model):
+    """
+    Generic integration model that can be used with any external service.
+    Specific credentials are stored in the related IntegrationCredential model.
+    """
+    org = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name="generic_integrations")
+    name = models.CharField(max_length=255)
+    integration_type = models.CharField(max_length=50)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.integration_type}) - {self.org.name}"
+    
+    def get_credential(self, key):
+        """Helper method to get a credential value by key"""
+        try:
+            return self.credentials.get(key=key).value
+        except IntegrationCredential.DoesNotExist:
+            return None
+    
+    def set_credential(self, key, value):
+        """Helper method to set a credential value"""
+        IntegrationCredential.objects.update_or_create(
+            integration=self,
+            key=key,
+            defaults={'value': value}
+        )
+
+
+class IntegrationCredential(models.Model):
+    """
+    Stores credentials for integrations in a key-value format.
+    This allows for flexible credential storage for any integration type.
+    """
+    integration = models.ForeignKey(
+        GenericIntegration, 
+        on_delete=models.CASCADE,
+        related_name="credentials"
+    )
+    key = models.CharField(max_length=255)
+    value = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('integration', 'key')
+        
+    def __str__(self):
+        return f"{self.integration.name} - {self.key}"
+    
