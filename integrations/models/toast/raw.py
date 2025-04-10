@@ -3,9 +3,9 @@ from django.db.models import JSONField
 from decimal import Decimal
 
 class ToastOrder(models.Model):
+    order_guid = models.CharField(primary_key=True, max_length=255)
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE, related_name="toast_orders")
     tenant_id = models.IntegerField(db_index=True)
-    order_guid = models.CharField(max_length=255, unique=True, db_index=True)
     restaurant_guid = models.CharField(max_length=255, null=True, blank=True)
     payload = JSONField(help_text="Raw order data from Toast")
     order_net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
@@ -64,6 +64,7 @@ class ToastOrder(models.Model):
             models.Index(fields=["closed_date"]),
             models.Index(fields=["modified_date"]),
         ]
+        unique_together = ('order_guid', 'tenant_id')
 
 class ToastCheck(models.Model):
     order = models.ForeignKey(ToastOrder, on_delete=models.CASCADE, related_name="checks")
@@ -117,6 +118,7 @@ class ToastSelection(models.Model):
     net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
     voided = models.BooleanField(default=False, db_index=True)
+    business_date = models.DateField(null=True, blank=True, db_index=True)
     # Additional selection-level fields:
     external_id = models.CharField(max_length=255, null=True, blank=True)
     entity_type = models.CharField(max_length=100, null=True, blank=True)
@@ -157,7 +159,9 @@ class ToastSelection(models.Model):
             models.Index(fields=["toast_check"]),
             models.Index(fields=["selection_guid"]),
             models.Index(fields=["voided"]),
+            models.Index(fields=["business_date"]),
         ]
+        unique_together = ('tenant_id', 'selection_guid')
 
 
 class ToastGeneralLocation(models.Model):
@@ -198,6 +202,7 @@ class ToastGeneralLocation(models.Model):
             models.Index(fields=["archived"]),
             models.Index(fields=["management_group_guid"]),
         ]
+        unique_together = ('tenant_id', 'guid')
 
 
 class ToastDaySchedule(models.Model):
@@ -220,6 +225,7 @@ class ToastDaySchedule(models.Model):
             models.Index(fields=["restaurant"]),
             models.Index(fields=["property_name"]),
         ]
+        unique_together = ('tenant_id', 'guid')
 
 
 class ToastWeeklySchedule(models.Model):
@@ -243,6 +249,7 @@ class ToastWeeklySchedule(models.Model):
             models.Index(fields=["integration"]),
             models.Index(fields=["restaurant"]),
         ]
+        unique_together = ('tenant_id', 'restaurant')
 
 
 class ToastJoinedOpeningHours(models.Model):
@@ -294,6 +301,7 @@ class ToastJoinedOpeningHours(models.Model):
             models.Index(fields=["saturday_start_time", "saturday_end_time"]),
             models.Index(fields=["sunday_start_time", "sunday_end_time"]),
         ]
+        unique_together = ('tenant_id', 'restaurant')
 
 class ToastRevenueCenter(models.Model):
     tenant_id = models.IntegerField(db_index=True)
