@@ -389,6 +389,7 @@ class ToastIntegrationService:
     def process_orders(self, orders):
         
         for index, order_data in enumerate(orders):
+            print(order_data)
             order_guid = order_data.get("guid", "unknown")            
             # Skip the order if it is marked as a refund    
             if order_data.get("refund"):
