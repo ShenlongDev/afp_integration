@@ -3,7 +3,7 @@ from django.db.models import JSONField
 from decimal import Decimal
 
 class ToastOrder(models.Model):
-    order_guid = models.CharField(max_length=255, db_index=True, unique=True)
+    order_guid = models.CharField(max_length=255, unique=True, db_index=True)
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE, related_name="toast_orders")
     tenant_id = models.IntegerField(db_index=True)
     restaurant_guid = models.CharField(max_length=255, null=True, blank=True)
@@ -64,7 +64,6 @@ class ToastOrder(models.Model):
             models.Index(fields=["closed_date"]),
             models.Index(fields=["modified_date"]),
         ]
-        unique_together = ('order_guid', 'tenant_id')
 
 class ToastCheck(models.Model):
     order = models.ForeignKey(ToastOrder, on_delete=models.CASCADE, related_name="checks")
