@@ -19,9 +19,9 @@ from integrations.models.netsuite.analytics import (
     NetSuiteEntity,
     NetSuiteAccountingPeriods,
     NetSuiteAccounts,
-    NetSuiteTransactions,
-    NetSuiteTransactionLine,
-    NetSuiteTransactionAccountingLine,
+    # NetSuiteTransactions,
+    # NetSuiteTransactionLine,
+    # NetSuiteTransactionAccountingLine,
     NetSuiteTransformedTransaction,
     NetSuiteBudgets,
     NetSuiteLocations,
@@ -442,60 +442,60 @@ class NetSuiteImporter:
                 if not last_mod:
                     continue
 
-                try:
-                    NetSuiteTransactions.objects.update_or_create(
-                        transactionid=int(txn_id),
-                        tenant_id=self.org.id,
-                        defaults={
-                            "abbrevtype": r.get("abbrevtype"),
-                            "approvalstatus": r.get("approvalstatus"),
-                            "balsegstatus": r.get("balsegstatus"),
-                            "billingstatus": r.get("billingstatus"),
-                            "closedate": self.parse_date(r.get("closedate")),
-                            "createdby": r.get("createdBy"),
-                            "createddate": self.parse_date(r.get("createddate")),
-                            "currency": r.get("currency"),
-                            "customtype": r.get("customtype"),
-                            "daysopen": r.get("daysopen"),
-                            "daysoverduesearch": r.get("daysoverduesearch"),
-                            "duedate": self.parse_date(r.get("duedate")),
-                            "entity": r.get("Entity"),
-                            "exchangerate": decimal_or_none(r.get("exchangerate")),
-                            "externalid": r.get("externalid"),
-                            "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
-                            "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
-                            "foreigntotal": decimal_or_none(r.get("foreigntotal")),
-                            "number": decimal_or_none(r.get("number")),
-                            "isfinchrg": r.get("isfinchrg"),
-                            "isreversal": r.get("isreversal"),
-                            "lastmodifiedby": r.get("lastmodifiedby"),
-                            "lastmodifieddate": last_mod,
-                            "nexus": r.get("nexus"),
-                            "ordpicked": r.get("ordpicked"),
-                            "paymenthold": r.get("paymenthold"),
-                            "posting": r.get("posting"),
-                            "postingperiod": r.get("postingperiod"),
-                            "printedpickingticket": r.get("printedpickingticket"),
-                            "recordtype": r.get("recordtype"),
-                            "source": r.get("source"),
-                            "status": r.get("status"),
-                            "terms": r.get("terms"),
-                            "tobeprinted": r.get("tobeprinted"),
-                            "trandate": self.parse_date(r.get("trandate")),
-                            "trandisplayname": r.get("trandisplayname"),
-                            "tranid": r.get("tranid"),
-                            "transactionnumber": r.get("transactionnumber"),
-                            "type": r.get("type"),
-                            "visibletocustomer": r.get("visibletocustomer"),
-                            "void_field": r.get("void"),
-                            "voided": r.get("voided"),
-                            "memo": r.get("memo"),
-                            "record_date": last_mod,
-                            "consolidation_key": self.integration.netsuite_account_id,
-                        }
-                    )
-                except Exception as e:
-                    logger.error(f"Error importing transaction row: {e}", exc_info=True)
+                # try:
+                #     NetSuiteTransactions.objects.update_or_create(
+                #         transactionid=int(txn_id),
+                #         tenant_id=self.org.id,
+                #         defaults={
+                #             "abbrevtype": r.get("abbrevtype"),
+                #             "approvalstatus": r.get("approvalstatus"),
+                #             "balsegstatus": r.get("balsegstatus"),
+                #             "billingstatus": r.get("billingstatus"),
+                #             "closedate": self.parse_date(r.get("closedate")),
+                #             "createdby": r.get("createdBy"),
+                #             "createddate": self.parse_date(r.get("createddate")),
+                #             "currency": r.get("currency"),
+                #             "customtype": r.get("customtype"),
+                #             "daysopen": r.get("daysopen"),
+                #             "daysoverduesearch": r.get("daysoverduesearch"),
+                #             "duedate": self.parse_date(r.get("duedate")),
+                #             "entity": r.get("Entity"),
+                #             "exchangerate": decimal_or_none(r.get("exchangerate")),
+                #             "externalid": r.get("externalid"),
+                #             "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
+                #             "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
+                #             "foreigntotal": decimal_or_none(r.get("foreigntotal")),
+                #             "number": decimal_or_none(r.get("number")),
+                #             "isfinchrg": r.get("isfinchrg"),
+                #             "isreversal": r.get("isreversal"),
+                #             "lastmodifiedby": r.get("lastmodifiedby"),
+                #             "lastmodifieddate": last_mod,
+                #             "nexus": r.get("nexus"),
+                #             "ordpicked": r.get("ordpicked"),
+                #             "paymenthold": r.get("paymenthold"),
+                #             "posting": r.get("posting"),
+                #             "postingperiod": r.get("postingperiod"),
+                #             "printedpickingticket": r.get("printedpickingticket"),
+                #             "recordtype": r.get("recordtype"),
+                #             "source": r.get("source"),
+                #             "status": r.get("status"),
+                #             "terms": r.get("terms"),
+                #             "tobeprinted": r.get("tobeprinted"),
+                #             "trandate": self.parse_date(r.get("trandate")),
+                #             "trandisplayname": r.get("trandisplayname"),
+                #             "tranid": r.get("tranid"),
+                #             "transactionnumber": r.get("transactionnumber"),
+                #             "type": r.get("type"),
+                #             "visibletocustomer": r.get("visibletocustomer"),
+                #             "void_field": r.get("void"),
+                #             "voided": r.get("voided"),
+                #             "memo": r.get("memo"),
+                #             "record_date": last_mod,
+                #             "consolidation_key": self.integration.netsuite_account_id,
+                #         }
+                #     )
+                # except Exception as e:
+                #     logger.error(f"Error importing transaction row: {e}", exc_info=True)
             
             total_imported += len(rows)
             # Update min_id with the last row's ID.
@@ -575,62 +575,62 @@ class NetSuiteImporter:
                 if decimal_or_none(r.get("netamount")) == 51251.66 or r.get("id") == 1065 or r.get("id") == '1065':
                     print(f"transaction_line_id: {r.get('id')}, Net Amount: {decimal_or_none(r.get('netamount'))}")
                 
-                try:
-                    last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
-                    NetSuiteTransactionLine.objects.update_or_create(
-                        uniquekey=r.get("uniquekey"),
-                        defaults={
-                            "transaction_line_id": r.get("id"),
-                            "tenant_id": self.org.id,
-                            "is_billable": r.get("isbillable") == 'T', 
-                            "is_closed": r.get("isclosed") == 'T',
-                            "is_cogs": r.get("iscogs") == 'T',
-                            "is_custom_gl_line": r.get("iscustomglline") == 'T',
-                            "is_fully_shipped": r.get("isfullyshipped") == 'T',
-                            "is_fx_variance": r.get("isfxvariance") == 'T',
-                            "is_inventory_affecting": r.get("isinventoryaffecting") == 'T',
-                            "is_rev_rec_transaction": r.get("isrevrectransaction") == 'T',
-                            "line_last_modified_date": last_modified.date() if last_modified else None,
-                            "line_sequence_number": r.get("linesequencenumber"),
-                            "location": r.get("location"),
-                            "main_line": r.get("mainline") == 'T',
-                            "match_bill_to_receipt": r.get("matchbilltoreceipt") == 'T',
-                            "memo": r.get("memo"),
-                            "net_amount": decimal_or_none(r.get("netamount")),
-                            "old_commitment_firm": r.get("oldcommitmentfirm") == 'T',
-                            "quantity_billed": decimal_or_none(r.get("quantitybilled")),
-                            "quantity_rejected": decimal_or_none(r.get("quantityrejected")),
-                            "quantity_ship_recv": decimal_or_none(r.get("quantityshiprecv")),
-                            "subsidiary": r.get("subsidiary"),
-                            "subsidiaryid": r.get("subsidiaryid"),
-                            "tax_line": r.get("taxline") == 'T',
-                            "transaction_discount": r.get("transactiondiscount") == 'T',
-                            "transactionid": r.get("transaction"),
-                            # New fields with proper handling:
-                            "accountinglinetype": r.get("accountinglinetype"),
-                            "cleared": r.get("cleared") == 'T',
-                            "commitmentfirm": r.get("commitmentfirm") == 'T',
-                            "department": r.get("department"),
-                            "departmentid": r.get("departmentid"),
-                            "donotdisplayline": r.get("donotdisplayline") == 'T',
-                            "eliminate": r.get("eliminate") == 'T',
-                            "entity": r.get("entity"),
-                            "entityid": r.get("entityid"),
-                            "expenseaccount": r.get("expenseaccount"),
-                            "expenseaccountid": r.get("expenseaccountid"),
-                            "foreignamount": decimal_or_none(r.get("foreignamount")),
-                            "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
-                            "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
-                            "creditforeignamount": decimal_or_none(r.get("creditforeignamount")),
-                            "closedate": self.parse_date(r.get("closedate")),
-                            "documentnumber": r.get("documentnumber"),
-                            "class_field": r.get("class"),
-                            "uniquekey": r.get("uniquekey"),
-                            "consolidation_key": self.integration.netsuite_account_id,
-                        }
-                    )
-                except Exception as e:
-                    logger.error(f"Error importing transaction line row: {e}", exc_info=True)
+                # try:
+                #     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
+                #     NetSuiteTransactionLine.objects.update_or_create(
+                #         uniquekey=r.get("uniquekey"),
+                #         defaults={
+                #             "transaction_line_id": r.get("id"),
+                #             "tenant_id": self.org.id,
+                #             "is_billable": r.get("isbillable") == 'T', 
+                #             "is_closed": r.get("isclosed") == 'T',
+                #             "is_cogs": r.get("iscogs") == 'T',
+                #             "is_custom_gl_line": r.get("iscustomglline") == 'T',
+                #             "is_fully_shipped": r.get("isfullyshipped") == 'T',
+                #             "is_fx_variance": r.get("isfxvariance") == 'T',
+                #             "is_inventory_affecting": r.get("isinventoryaffecting") == 'T',
+                #             "is_rev_rec_transaction": r.get("isrevrectransaction") == 'T',
+                #             "line_last_modified_date": last_modified.date() if last_modified else None,
+                #             "line_sequence_number": r.get("linesequencenumber"),
+                #             "location": r.get("location"),
+                #             "main_line": r.get("mainline") == 'T',
+                #             "match_bill_to_receipt": r.get("matchbilltoreceipt") == 'T',
+                #             "memo": r.get("memo"),
+                #             "net_amount": decimal_or_none(r.get("netamount")),
+                #             "old_commitment_firm": r.get("oldcommitmentfirm") == 'T',
+                #             "quantity_billed": decimal_or_none(r.get("quantitybilled")),
+                #             "quantity_rejected": decimal_or_none(r.get("quantityrejected")),
+                #             "quantity_ship_recv": decimal_or_none(r.get("quantityshiprecv")),
+                #             "subsidiary": r.get("subsidiary"),
+                #             "subsidiaryid": r.get("subsidiaryid"),
+                #             "tax_line": r.get("taxline") == 'T',
+                #             "transaction_discount": r.get("transactiondiscount") == 'T',
+                #             "transactionid": r.get("transaction"),
+                #             # New fields with proper handling:
+                #             "accountinglinetype": r.get("accountinglinetype"),
+                #             "cleared": r.get("cleared") == 'T',
+                #             "commitmentfirm": r.get("commitmentfirm") == 'T',
+                #             "department": r.get("department"),
+                #             "departmentid": r.get("departmentid"),
+                #             "donotdisplayline": r.get("donotdisplayline") == 'T',
+                #             "eliminate": r.get("eliminate") == 'T',
+                #             "entity": r.get("entity"),
+                #             "entityid": r.get("entityid"),
+                #             "expenseaccount": r.get("expenseaccount"),
+                #             "expenseaccountid": r.get("expenseaccountid"),
+                #             "foreignamount": decimal_or_none(r.get("foreignamount")),
+                #             "foreignamountpaid": decimal_or_none(r.get("foreignamountpaid")),
+                #             "foreignamountunpaid": decimal_or_none(r.get("foreignamountunpaid")),
+                #             "creditforeignamount": decimal_or_none(r.get("creditforeignamount")),
+                #             "closedate": self.parse_date(r.get("closedate")),
+                #             "documentnumber": r.get("documentnumber"),
+                #             "class_field": r.get("class"),
+                #             "uniquekey": r.get("uniquekey"),
+                #             "consolidation_key": self.integration.netsuite_account_id,
+                #         }
+                #     )
+                # except Exception as e:
+                #     logger.error(f"Error importing transaction line row: {e}", exc_info=True)
             
             BatchUtils.process_in_batches(rows, process_line, batch_size=batch_size)
             total_fetched += len(rows)
@@ -712,35 +712,36 @@ class NetSuiteImporter:
                 break
 
             def process_accounting_line(r):
-                try:
-                    last_modified = self.parse_datetime(r.get("lastmodifieddate"))
-                    NetSuiteTransactionAccountingLine.objects.update_or_create(
-                        transaction=int(r.get("transaction")),
-                        transaction_line=int(r.get("transactionline")),
-                        tenant_id=self.org.id,
-                        defaults={
-                            "links": r.get("links"),
-                            "accountingbook": r.get("accountingbook") if r.get("accountingbook") else None,
-                            "account": int(r.get("account")) if r.get("account") else None,
-                            "amount": decimal_or_none(r.get("amount")),
-                            "amountlinked": decimal_or_none(r.get("amountlinked")),
-                            "debit": decimal_or_none(r.get("debit")),
-                            "netamount": decimal_or_none(r.get("netamount")),
-                            "paymentamountunused": decimal_or_none(r.get("paymentamountunused")),
-                            "paymentamountused": decimal_or_none(r.get("paymentamountused")),
-                            "posting": r.get("posting"),
-                            "credit": decimal_or_none(r.get("credit")),
-                            "amountpaid": decimal_or_none(r.get("amountpaid")),
-                            "amountunpaid": decimal_or_none(r.get("amountunpaid")),
-                            "lastmodifieddate": last_modified,
-                            "processedbyrevcommit": r.get("processedbyrevcommit"),
-                            # New fields:
-                            "consolidation_key": self.integration.netsuite_account_id,
-                            "source_uri": r.get("source_uri"),
-                        }
-                    )
-                except Exception as e:
-                    logger.error(f"Error importing transaction accounting line row: {e}", exc_info=True)
+                print(r)
+                # try:
+                #     last_modified = self.parse_datetime(r.get("lastmodifieddate"))
+                #     NetSuiteTransactionAccountingLine.objects.update_or_create(
+                #         transaction=int(r.get("transaction")),
+                #         transaction_line=int(r.get("transactionline")),
+                #         tenant_id=self.org.id,
+                #         defaults={
+                #             "links": r.get("links"),
+                #             "accountingbook": r.get("accountingbook") if r.get("accountingbook") else None,
+                #             "account": int(r.get("account")) if r.get("account") else None,
+                #             "amount": decimal_or_none(r.get("amount")),
+                #             "amountlinked": decimal_or_none(r.get("amountlinked")),
+                #             "debit": decimal_or_none(r.get("debit")),
+                #             "netamount": decimal_or_none(r.get("netamount")),
+                #             "paymentamountunused": decimal_or_none(r.get("paymentamountunused")),
+                #             "paymentamountused": decimal_or_none(r.get("paymentamountused")),
+                #             "posting": r.get("posting"),
+                #             "credit": decimal_or_none(r.get("credit")),
+                #             "amountpaid": decimal_or_none(r.get("amountpaid")),
+                #             "amountunpaid": decimal_or_none(r.get("amountunpaid")),
+                #             "lastmodifieddate": last_modified,
+                #             "processedbyrevcommit": r.get("processedbyrevcommit"),
+                #             # New fields:
+                #             "consolidation_key": self.integration.netsuite_account_id,
+                #             "source_uri": r.get("source_uri"),
+                #         }
+                #     )
+                # except Exception as e:
+                #     logger.error(f"Error importing transaction accounting line row: {e}", exc_info=True)
 
             BatchUtils.process_in_batches(rows, process_accounting_line, batch_size=limit)
             total_imported += len(rows)

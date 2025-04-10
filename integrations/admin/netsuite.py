@@ -3,7 +3,7 @@ from integrations.models.models import Integration
 from integrations.models.netsuite.analytics import (
     NetSuiteVendors,
     NetSuiteAccounts,
-    NetSuiteTransactions,
+    # NetSuiteTransactions,
     NetSuiteSubsidiaries,
     NetSuiteDepartments,
     NetSuiteJournals,
@@ -12,8 +12,8 @@ from integrations.models.netsuite.analytics import (
     NetSuiteTransformedTransaction,
     NetSuiteBudgets,
     NetSuiteLocations,
-    NetSuiteTransactionLine,
-    NetSuiteTransactionAccountingLine
+    # NetSuiteTransactionLine,
+    # NetSuiteTransactionAccountingLine
 )
 
 class NetSuiteLocationsAdmin(admin.ModelAdmin):
@@ -35,12 +35,12 @@ class NetSuiteVendorsAdmin(admin.ModelAdmin):
     )
 
 class NetSuiteAccountsAdmin(admin.ModelAdmin):
-    list_display = ('account_id', 'is_inactive', 'accountsearchdisplayname', 'accountsearchdisplaynamecopy')
-    search_fields = ('account_id', 'is_inactive', 'accountsearchdisplayname', 'accountsearchdisplaynamecopy')
+    list_display = ( 'is_inactive', 'accountsearchdisplayname', 'accountsearchdisplaynamecopy')
+    search_fields = ('is_inactive', 'accountsearchdisplayname', 'accountsearchdisplaynamecopy')
 
-class NetSuiteTransactionsAdmin(admin.ModelAdmin):
-    list_display = ('tenant_id', 'approvalstatus', 'createdby', 'transactionid', 'createddate', 'memo')
-    search_fields = ('abbrevtype', 'createdby', 'transactionid', 'memo', 'transactionnumber')
+# class NetSuiteTransactionsAdmin(admin.ModelAdmin):
+#     list_display = ('tenant_id', 'approvalstatus', 'createdby', 'transactionid', 'createddate', 'memo')
+#     search_fields = ('abbrevtype', 'createdby', 'transactionid', 'memo', 'transactionnumber')
 
 class NetSuiteSubsidiariesAdmin(admin.ModelAdmin):
     list_display = ('subsidiary_id', 'name', 'name_nohi', 'full_name', 'legal_name', 'federal_number', 'is_elimination', 'currency', 'country', 'record_date')
@@ -70,13 +70,13 @@ class NetSuiteTransformedTransactionAdmin(admin.ModelAdmin):
     list_display = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate', 'entity_id')
     search_fields = ('consolidation_key', 'transactionid', 'createdby', 'createddate', 'lastmodifieddate', 'entity_id')
 
-class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
-    list_display = ('tenant_id', 'transaction', 'account', 'amount', 'lastmodifieddate', 'transaction_line')
-    search_fields = ('transaction', 'account', 'amount')
+# class NetSuiteTransactionAccountingLineAdmin(admin.ModelAdmin):
+#     list_display = ('tenant_id', 'transaction', 'account', 'amount', 'lastmodifieddate', 'transaction_line')
+#     search_fields = ('transaction', 'account', 'amount')
 
-class NetSuiteTransactionLineAdmin(admin.ModelAdmin):
-    list_display = ('transaction_line_id', 'subsidiary', 'transactionid', 'closedate')
-    search_fields = ('transaction_line_id', 'transactionid', 'subsidiary')
+# class NetSuiteTransactionLineAdmin(admin.ModelAdmin):
+#     list_display = ('transaction_line_id', 'subsidiary', 'transactionid', 'closedate')
+#     search_fields = ('transaction_line_id', 'transactionid', 'subsidiary')
 
 
 # Register Netsuite related models
@@ -90,6 +90,6 @@ admin.site.register(NetSuiteAccountingPeriods, NetSuiteAccountingPeriodsAdmin)
 admin.site.register(NetSuiteTransformedTransaction, NetSuiteTransformedTransactionAdmin)
 admin.site.register(NetSuiteBudgets, NetSuiteBudgetsAdmin)
 admin.site.register(NetSuiteLocations, NetSuiteLocationsAdmin)
-admin.site.register(NetSuiteTransactions, NetSuiteTransactionsAdmin)
-admin.site.register(NetSuiteTransactionLine, NetSuiteTransactionLineAdmin)
-admin.site.register(NetSuiteTransactionAccountingLine, NetSuiteTransactionAccountingLineAdmin)
+# admin.site.register(NetSuiteTransactions, NetSuiteTransactionsAdmin)
+# admin.site.register(NetSuiteTransactionLine, NetSuiteTranintegrations.NetSuiteAccountssactionLineAdmin)
+# admin.site.register(NetSuiteTransactionAccountingLine, NetSuiteTransactionAccountingLineAdmin)
