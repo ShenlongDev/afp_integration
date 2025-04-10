@@ -7,9 +7,10 @@ from integrations.models.models import (
     Integration,
     IntegrationAccessToken,
     SyncTableLogs,
-    HighPriorityTask
+    HighPriorityTask,
+    GenericIntegration,
+    IntegrationCredential
 )
-from integrations.services.xero.xero_client import XeroDataImporter
 
 
 class IntegrationAdmin(admin.ModelAdmin):
@@ -25,6 +26,47 @@ class IntegrationAccessTokenAdmin(admin.ModelAdmin):
 class SyncTableLogsAdmin(admin.ModelAdmin):
     list_display = ('module_name', 'integration', 'organization', 'fetched_records', 'last_updated_time', 'last_updated_date')
     search_fields = ('module_name', 'organization__name')
+
+
+class IntegrationCredentialInline(admin.TabularInline):
+    model = IntegrationCredential
+    extra = 1
+    fields = ('key', 'value', 'created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+class GenericIntegrationAdmin(admin.ModelAdmin):
+    list_display = ('name', 'integration_type', 'org', 'is_active', 'created_at')
+    list_filter = ('integration_type', 'is_active', 'created_at')
+    search_fields = ('name', 'integration_type', 'org__name')
+    inlines = [IntegrationCredentialInline]
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'integration_type', 'org', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+    readonly_fields = ('created_at', 'updated_at')
+
+
+class IntegrationCredentialAdmin(admin.ModelAdmin):
+    list_display = ('key', 'masked_value', 'created_at', 'updated_at')
+    list_filter = ('integration__is_active', 'integration__integration_type')
+    search_fields = ('integration__name', 'key', 'integration__org__name')
+    readonly_fields = ('created_at', 'updated_at')
+    
+    def masked_value(self, obj):
+        """Returns a masked version of the credential value for security"""
+        if not obj.value:
+            return ""
+        if len(obj.value) <= 8:
+            return "********"
+        return obj.value[:4] + "****" + obj.value[-4:]
+    
+    masked_value.short_description = "Value"
 
 
 class ImportToolsMixin:
@@ -131,3 +173,5 @@ admin.site.register(Integration, IntegrationAdmin)
 admin.site.register(IntegrationAccessToken, IntegrationAccessTokenAdmin)
 admin.site.register(SyncTableLogs, SyncTableLogsAdmin) 
 admin.site.register(HighPriorityTask, HighPriorityTaskAdmin)
+admin.site.register(GenericIntegration, GenericIntegrationAdmin)
+admin.site.register(IntegrationCredential, IntegrationCredentialAdmin)
