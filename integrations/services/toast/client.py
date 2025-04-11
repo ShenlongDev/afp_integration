@@ -389,7 +389,6 @@ class ToastIntegrationService:
     def process_orders(self, orders):
         
         for index, order_data in enumerate(orders):
-            print(order_data)
             order_guid = order_data.get("guid", "unknown")            
             # Skip the order if it is marked as a refund    
             if order_data.get("refund"):
@@ -607,14 +606,7 @@ class ToastIntegrationService:
                                 "pre_modifier": selection_data.get("preModifier"),
                                 "modified_date": parse_datetime(selection_data.get("modifiedDate")) if selection_data.get("modifiedDate") else None,
                             }
-                            # Convert business_date string to date object if it exists in the order data
-                            business_date = None
-                            if "businessDate" in order_data:
-                                try:
-                                    # Assuming format like "2023-04-01"
-                                    business_date = datetime.strptime(order_data["businessDate"], "%Y-%m-%d").date()
-                                except (ValueError, TypeError):
-                                    logger.warning(f"Invalid business date format in order {order_data.get('guid')}")
+                         
                             ToastSelection.objects.update_or_create(
                                 selection_guid=selection_guid,
                                 toast_check=check_obj,
@@ -626,11 +618,11 @@ class ToastIntegrationService:
                                     "discount_total": discount_total,
                                     "net_sales": selection_net,
                                     "quantity": quantity,
-                                    "business_date": business_date,
+                                    "business_date": order_data["businessDate"],
                                     **selection_defaults,
                                 }
                             )
-
+    
                             # Track selection refunds specifically for tax refunds
                             refund_details = selection_data.get("refundDetails")
                             if refund_details:

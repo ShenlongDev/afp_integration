@@ -44,9 +44,6 @@ def xero_import_xero_bank_transactions(importer):
 def xero_import_xero_budgets(importer):
     return importer.import_xero_budgets()
 
-def xero_map_xero_general_ledger(importer):
-    return importer.map_xero_general_ledger()
-
 def xero_import_xero_data(importer):
     return importer.import_xero_data()
 
