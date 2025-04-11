@@ -1,0 +1,38 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]   
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # 2. Add the private key to the ssh-agent
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+    # 3. Copy source to the server (rsync deletes files that vanished locally)
+    - name: Sync code to VPS
+      run: |
+        rsync -az --delete \
+          --exclude '.git*' \
+          ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/WS-Insights/
+
+    # 4. Re‑create the .env file on the server
+    - name: Upload .env
+      run: |
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+          "echo '${{ secrets.ENV_FILE }}' > /var/www/WS-Insights/requirements/.env"
+
+    # 5. Run your deploy script
+    - name: Run deploy.sh
+      run: |
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+          'chmod +x /var/www/WS-Insights/deploy.sh && /var/www/WS-Insights/deploy.sh'
