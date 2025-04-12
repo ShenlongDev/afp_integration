@@ -88,7 +88,11 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None, modu
         logger.info("Syncing Toast dining options for integration %s", integration_id)
         dining_options = importer.import_dining_options()
         results['dining_options'] = len(dining_options)    
-    
+        
+    if 'payments' in modules:
+        logger.info("Syncing Toast payments for integration %s", integration_id)
+        payments = importer.import_payment_details()
+        results['payments'] = len(payments)
     
     logger.info("Toast sync completed for integration %s: %s",
                 integration_id, results)
