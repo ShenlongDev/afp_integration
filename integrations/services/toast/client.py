@@ -10,7 +10,8 @@ from integrations.models.toast.raw import (
     ToastOrder, ToastCheck, ToastSelection,
     ToastGeneralLocation, ToastDaySchedule, 
     ToastWeeklySchedule, ToastJoinedOpeningHours, ToastRevenueCenter,
-    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea
+    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea,
+    ToastPayment
 )
 from integrations.models.models import SyncTableLogs
 import time as timeclock  # Use a different name to avoid conflict
@@ -396,6 +397,12 @@ class ToastIntegrationService:
                 continue
             
             try:
+                # Extract payments from checks to store in order
+                all_payments = []
+                for check_data in order_data.get("checks", []):
+                    if check_data.get("payments"):
+                        all_payments.extend(check_data.get("payments", []))
+
                 # Process in smaller chunks, breaking the transaction
                 order_defaults = {
                     "integration": self.integration,
@@ -439,6 +446,7 @@ class ToastIntegrationService:
                     "void_business_date": order_data.get("voidBusinessDate"),
                     # Add restaurant_guid to store with the order
                     "restaurant_guid": order_data.get("restaurant_guid"),
+                    "payments": all_payments if all_payments else None
                 }
                     
                 order, created = ToastOrder.objects.update_or_create(
@@ -607,21 +615,44 @@ class ToastIntegrationService:
                                 "modified_date": parse_datetime(selection_data.get("modifiedDate")) if selection_data.get("modifiedDate") else None,
                             }
                          
-                            ToastSelection.objects.update_or_create(
-                                selection_guid=selection_guid,
-                                toast_check=check_obj,
-                                tenant_id=self.integration.org.id,
-                                defaults={
-                                    "order_guid": order_guid,
-                                    "display_name": selection_data.get("displayName"),
-                                    "pre_discount_price": pre_discount_price,
-                                    "discount_total": discount_total,
-                                    "net_sales": selection_net,
-                                    "quantity": quantity,
-                                    "business_date": order_data["businessDate"],
-                                    **selection_defaults,
-                                }
-                            )
+                            try:
+                                # Try to get existing selection
+                                selection_obj = ToastSelection.objects.get(
+                                    selection_guid=selection_guid,
+                                    tenant_id=self.integration.org.id
+                                )
+                                
+                                # Update fields
+                                for key, value in selection_defaults.items():
+                                    setattr(selection_obj, key, value)
+                                    
+                                # Add additional fields
+                                selection_obj.order_guid = order_guid
+                                selection_obj.display_name = selection_data.get("displayName")
+                                selection_obj.pre_discount_price = pre_discount_price
+                                selection_obj.discount_total = discount_total
+                                selection_obj.net_sales = selection_net
+                                selection_obj.quantity = quantity
+                                selection_obj.business_date = order_data["businessDate"]
+                                
+                                # Save the updated object
+                                selection_obj.save()
+                                
+                            except ToastSelection.DoesNotExist:
+                                # Create new selection if it doesn't exist
+                                ToastSelection.objects.create(
+                                    selection_guid=selection_guid,
+                                    toast_check=check_obj,
+                                    tenant_id=self.integration.org.id,
+                                    order_guid=order_guid,
+                                    display_name=selection_data.get("displayName"),
+                                    pre_discount_price=pre_discount_price,
+                                    discount_total=discount_total,
+                                    net_sales=selection_net,
+                                    quantity=quantity,
+                                    business_date=order_data["businessDate"],
+                                    **selection_defaults
+                                )
     
                             # Track selection refunds specifically for tax refunds
                             refund_details = selection_data.get("refundDetails")
@@ -1038,6 +1069,96 @@ class ToastIntegrationService:
         
         self.log_import_event(module_name="toast_service_areas", fetched_records=total_areas)
         return total_areas
+
+    def import_payment_details(self):
+        """
+        Import payment details for orders that have payment data
+        """
+        query_filters = {
+            'integration': self.integration,
+            'tenant_id': self.integration.org.id,
+            'payments__isnull': False,
+            'business_date': self.start_date.strftime("%Y%m%d")
+        }
+        orders_with_payments = ToastOrder.objects.filter(**query_filters)
+        
+        total_payments = 0
+        
+        for order in orders_with_payments:
+            restaurant_guid = order.restaurant_guid
+            if not restaurant_guid:
+                logger.warning(f"Order {order.order_guid} has no restaurant GUID, skipping payment import")
+                continue
+            
+            payments = order.payments   
+            if not payments:
+                continue
+            
+            for payment_data in payments:
+                payment_guid = payment_data.get("guid")
+                if not payment_guid:
+                    continue
+                
+                # Basic data from order payment data
+                check_guid = payment_data.get("checkGuid")
+                amount = Decimal(str(payment_data.get("amount", "0.00")))
+                tip_amount = Decimal(str(payment_data.get("tipAmount", "0.00")))
+                
+                # Try to get detailed payment info from API
+                detailed_payment = self.get_payment_details(restaurant_guid, payment_guid)
+                
+                # Use the most detailed data available (API response or embedded data)
+                payment_info = detailed_payment if detailed_payment else payment_data
+                
+                payment_defaults = {
+                    "integration": self.integration,
+                    "restaurant_guid": restaurant_guid,
+                    "order_guid": order.order_guid,
+                    "check_guid": check_guid,
+                    "type": payment_info.get("type"),
+                    "amount": amount,
+                    "tip_amount": tip_amount,
+                    "card_type": payment_info.get("cardType"),
+                    "last4_digits": payment_info.get("last4Digits"),
+                    "paid_date": parse_datetime(payment_info.get("paidDate")) if payment_info.get("paidDate") else None,
+                    "paid_business_date": payment_info.get("paidBusinessDate"),
+                    "refund_status": payment_info.get("refundStatus"),
+                    "payment_status": payment_info.get("paymentStatus"),
+                    "card_entry_mode": payment_info.get("cardEntryMode"),
+                    "server_guid": payment_info.get("server", {}).get("guid") if payment_info.get("server") else None,
+                    "created_device_id": payment_info.get("createdDevice", {}).get("id") if payment_info.get("createdDevice") else None,
+                    "last_modified_device_id": payment_info.get("lastModifiedDevice", {}).get("id") if payment_info.get("lastModifiedDevice") else None,
+                    "raw_payload": payment_info
+                }
+                
+                ToastPayment.objects.update_or_create(
+                    payment_guid=payment_guid,
+                    tenant_id=self.integration.org.id,
+                    defaults=payment_defaults
+                )
+                
+                total_payments += 1
+            
+        self.log_import_event(module_name="toast_payments", fetched_records=total_payments)
+        return total_payments
+
+    def get_payment_details(self, restaurant_guid, payment_guid):
+        """
+        Get detailed payment information from Toast API
+        """
+        url = f"{self.hostname}/orders/v2/payments/{payment_guid}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Toast-Restaurant-External-ID": restaurant_guid
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            logger.error(f"Error fetching payment details for {payment_guid}: {e}")
+            return None
 
 
 
