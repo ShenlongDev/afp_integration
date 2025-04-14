@@ -10,8 +10,7 @@ from integrations.models.toast.raw import (
     ToastOrder, ToastCheck, ToastSelection,
     ToastGeneralLocation, ToastDaySchedule, 
     ToastWeeklySchedule, ToastJoinedOpeningHours, ToastRevenueCenter,
-    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea,
-    ToastPayment
+    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea
 )
 from integrations.models.models import SyncTableLogs
 import time as timeclock  # Use a different name to avoid conflict
@@ -408,7 +407,7 @@ class ToastIntegrationService:
                     "integration": self.integration,
                     # Don't save full payload initially
                     "payload": {},  # Empty temporarily
-                    "order_net_sales": Decimal("0.00"),
+                    "order_net_sales": Decimal("0.00"), # Will be updated below
                     "import_id": self.integration.id,
                     "ws_import_date": timezone.now(),
                     "created_date": parse_datetime(order_data.get("createdDate")) if order_data.get("createdDate") else None,
@@ -456,22 +455,23 @@ class ToastIntegrationService:
                 )
                 
                 # Initialize totals
-                total_revenue = Decimal("0.00")    
-                total_net_sales = Decimal("0.00")  
-                total_refund_amount = Decimal("0.00")
+                total_revenue = Decimal("0.00")    # This will become toast_sales
+                total_net_sales = Decimal("0.00")  # This will become order_net_sales
+                total_refund_amount = Decimal("0.00") # Accumulates only from payment refunds now
                 total_tip_total = Decimal("0.00")    
                 total_service_charge_total = Decimal("0.00")
-                # Initialize discount tracking  
+                # Initialize discount tracking (Keep this new logic)
                 total_discount_amount = Decimal("0.00")
                 discount_count = 0
                 refund_business_date = None
 
                 # Process all checks for this order
                 for check_index, check_data in enumerate(order_data.get("checks", [])):
+                    # Skip check if voided, deleted, or refund
                     if check_data.get("voided") or check_data.get("deleted") or check_data.get("refund"):
                         continue
 
-                    # Calculate check discount total and count
+                    # Calculate check discount total and count (Keep this new logic)
                     check_discount_total = Decimal("0.00")
                     check_discount_count = 0
                     applied_discounts = check_data.get("appliedDiscounts", [])
@@ -483,11 +483,12 @@ class ToastIntegrationService:
                             for d in applied_discounts
                         )
                     
-                    # Add check discounts to order totals
+                    # Add check discounts to order totals (Keep this new logic)
                     total_discount_amount += check_discount_total
                     discount_count += check_discount_count
 
                     check_guid = check_data.get("guid")
+                    # Assume check_subtotal is the base amount (already reflects discounts).
                     check_subtotal = Decimal(str(check_data.get("amount", "0.00")))
                     tax_amount = Decimal(str(check_data.get("taxAmount", "0.00")))
                     tip_total = sum(
@@ -498,25 +499,29 @@ class ToastIntegrationService:
                         Decimal(str(sc.get("chargeAmount", "0.00")))
                         for sc in check_data.get("appliedServiceCharges", [])
                     )
+                    # Accumulate order-level totals
                     total_tip_total += tip_total
                     total_service_charge_total += service_charge_total
 
+                    # Calculate revenue for the check (subtotal + tax + tip + service charges)
                     check_revenue = check_subtotal + tax_amount + tip_total + service_charge_total
                     total_revenue += check_revenue
+                    # Net sales is based only on the check subtotal
                     total_net_sales += check_subtotal
 
-                    # Process refunds on this check - use payment refunds for total_refund_amount
+                    # Process refunds *only from payments* for the total refund amount calculation
                     check_refund = Decimal("0.00")
                     for payment in check_data.get("payments", []):
                         if payment.get("refund"):
                             refund_amt = Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00")))
                             check_refund += refund_amt
-                            total_refund_amount += refund_amt
+                            total_refund_amount += refund_amt # Add to order total refund
                             # Capture refund business date
                             rbd = payment.get("refund", {}).get("refundBusinessDate")
                             if rbd:
                                 refund_business_date = rbd
                     
+                    # Prepare check defaults (including calculated check-level refund)
                     check_defaults = {
                         "external_id": check_data.get("externalId"),
                         "entity_type": check_data.get("entityType"),
@@ -538,10 +543,10 @@ class ToastIntegrationService:
                         "display_number": check_data.get("displayNumber"),
                         "net_sales": check_subtotal,
                         "service_charge_total": service_charge_total,
-                        "discount_total": check_discount_total,
+                        "discount_total": check_discount_total, # Save check-level discount
                         "opened_date": parse_datetime(check_data.get("openedDate")) if check_data.get("openedDate") else None,
                         "closed_date": parse_datetime(check_data.get("closedDate")) if check_data.get("closedDate") else None,
-                        "check_refund": check_refund
+                        "check_refund": check_refund # Save calculated check refund amount
                     })
                     check_obj, _ = ToastCheck.objects.update_or_create(
                         check_guid=check_guid,
@@ -554,35 +559,31 @@ class ToastIntegrationService:
                     selection_count = len(check_data.get("selections", []))
                     
                     selection_index = 0
+                    # Process selections (mostly for saving selection details, not impacting order totals directly here)
                     for selection_data in check_data.get("selections", []):
                         try:
                             selection_index += 1
+                            # Skip voided, gift cards, or refunded items
                             if (selection_data.get("voided") or 
                                 selection_data.get("displayName", "").strip().lower() == "gift card" or 
                                 selection_data.get("refund")):
                                 continue
+                            
                             selection_guid = selection_data.get("guid")
                             pre_discount_price = Decimal(str(selection_data.get("preDiscountPrice", "0.00")))
-                            discount_total = sum(
+                            # Calculate selection-level discount (used for saving selection record)
+                            selection_discount_total = sum(
                                 Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
                                 for d in selection_data.get("appliedDiscounts", [])
                             )
                             quantity = Decimal(str(selection_data.get("quantity", "1")))
-                            selection_net = (pre_discount_price - discount_total) * quantity
+                            selection_net = (pre_discount_price - selection_discount_total) * quantity
 
-                            # Process selection discounts
-                            selection_discounts = selection_data.get("appliedDiscounts", [])
-                            if selection_discounts:
-                                selection_discount_count = len(selection_discounts)
-                                selection_discount_total = sum(
-                                    Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
-                                    for d in selection_discounts
-                                )
-                                
-                                # Add to order totals (only count either check-level or item-level, not both)
-                                # Only add the amount as check-level might not include item-level discounts
+                            # Accumulate order-level discount amount from item-level discounts
+                            # (Keep this new logic)
+                            if selection_data.get("appliedDiscounts"):
                                 total_discount_amount += selection_discount_total
-                            
+
                             selection_defaults = {
                                 "external_id": selection_data.get("externalId"),
                                 "entity_type": selection_data.get("entityType"),
@@ -605,7 +606,7 @@ class ToastIntegrationService:
                                 "tax_inclusion": selection_data.get("taxInclusion"),
                                 "receipt_line_price": selection_data.get("receiptLinePrice"),
                                 "unit_of_measure": selection_data.get("unitOfMeasure"),
-                                "refund_details": selection_data.get("refundDetails"),
+                                "refund_details": selection_data.get("refundDetails"), # Store details, but don't use for total_refund_amount here
                                 "toast_gift_card": selection_data.get("toastGiftCard"),
                                 "tax": selection_data.get("tax"),
                                 "dining_option": selection_data.get("diningOption"),
@@ -615,31 +616,24 @@ class ToastIntegrationService:
                                 "modified_date": parse_datetime(selection_data.get("modifiedDate")) if selection_data.get("modifiedDate") else None,
                             }
                          
+                            # Update or Create Selection logic (using try/except DoesNotExist)
                             try:
-                                # Try to get existing selection
                                 selection_obj = ToastSelection.objects.get(
                                     selection_guid=selection_guid,
                                     tenant_id=self.integration.org.id
                                 )
-                                
-                                # Update fields
                                 for key, value in selection_defaults.items():
                                     setattr(selection_obj, key, value)
-                                    
-                                # Add additional fields
                                 selection_obj.order_guid = order_guid
+                                selection_obj.toast_check = check_obj # Ensure check is linked
                                 selection_obj.display_name = selection_data.get("displayName")
                                 selection_obj.pre_discount_price = pre_discount_price
-                                selection_obj.discount_total = discount_total
-                                selection_obj.net_sales = selection_net
+                                selection_obj.discount_total = selection_discount_total # Save selection discount
+                                selection_obj.net_sales = selection_net # Save selection net sales
                                 selection_obj.quantity = quantity
                                 selection_obj.business_date = order_data["businessDate"]
-                                
-                                # Save the updated object
                                 selection_obj.save()
-                                
                             except ToastSelection.DoesNotExist:
-                                # Create new selection if it doesn't exist
                                 ToastSelection.objects.create(
                                     selection_guid=selection_guid,
                                     toast_check=check_obj,
@@ -647,152 +641,53 @@ class ToastIntegrationService:
                                     order_guid=order_guid,
                                     display_name=selection_data.get("displayName"),
                                     pre_discount_price=pre_discount_price,
-                                    discount_total=discount_total,
+                                    discount_total=selection_discount_total,
                                     net_sales=selection_net,
                                     quantity=quantity,
                                     business_date=order_data["businessDate"],
                                     **selection_defaults
                                 )
-    
-                            # Track selection refunds specifically for tax refunds
-                            refund_details = selection_data.get("refundDetails")
-                            if refund_details:
-                                tax_refund = Decimal(str(refund_details.get("taxRefundAmount", "0.00")))
-                                if tax_refund > 0:
-                                    total_refund_amount += tax_refund
-                                    # Get refund business date if not already set
-                                    if not refund_business_date:
-                                        for payment in check_data.get("payments", []):
-                                            if payment.get("refund"):
-                                                rbd = payment.get("refund", {}).get("refundBusinessDate")
-                                                if rbd:
-                                                    refund_business_date = rbd
-                                                    break
+                            
+                            # REMOVED: Logic that added item-level tax refunds to total_refund_amount
+                            # total_refund_amount now only comes from payment refunds
+
                         except Exception as e:
                             print(f"Error processing selection {selection_index} in check {check_index+1}: {str(e)}")
                             logger.error(f"Error processing selection in order {order_guid}: {e}", exc_info=True)
                 
+                # --- Start of Reverted Refund Logic ---
                 business_date = order_data.get("businessDate")
+                # Apply refunds if they occurred on the same business day
                 if refund_business_date and business_date and str(refund_business_date) == str(business_date):
-                        if (selection_data.get("voided") or 
-                            selection_data.get("displayName", "").strip().lower() == "gift card" or 
-                            selection_data.get("refund")):
-                            continue
-                        selection_guid = selection_data.get("guid")
-                        pre_discount_price = Decimal(str(selection_data.get("preDiscountPrice", "0.00")))
-                        discount_total = sum(
-                            Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
-                            for d in selection_data.get("appliedDiscounts", [])
-                        )
-                        quantity = Decimal(str(selection_data.get("quantity", "1")))
-                        selection_net = (pre_discount_price - discount_total) * quantity
-
-                        selection_defaults = {
-                            "external_id": selection_data.get("externalId"),
-                            "entity_type": selection_data.get("entityType"),
-                            "deferred": selection_data.get("deferred"),
-                            "void_reason": selection_data.get("voidReason"),
-                            "option_group": selection_data.get("optionGroup"),
-                            "modifiers": selection_data.get("modifiers"),
-                            "seat_number": selection_data.get("seatNumber"),
-                            "fulfillment_status": selection_data.get("fulfillmentStatus"),
-                            "option_group_pricing_mode": selection_data.get("optionGroupPricingMode"),
-                            "gift_card_selection_info": selection_data.get("giftCardSelectionInfo"),
-                            "sales_category_guid": selection_data.get("salesCategory", {}).get("guid") if selection_data.get("salesCategory") else None,
-                            "split_origin": selection_data.get("splitOrigin"),
-                            "selection_type": selection_data.get("selectionType"),
-                            "price": selection_data.get("price"),
-                            "applied_taxes": selection_data.get("appliedTaxes"),
-                            "stored_value_transaction_id": selection_data.get("storedValueTransactionId"),
-                            "item_group": selection_data.get("itemGroup"),
-                            "item": selection_data.get("item"),
-                            "tax_inclusion": selection_data.get("taxInclusion"),
-                            "receipt_line_price": selection_data.get("receiptLinePrice"),
-                            "unit_of_measure": selection_data.get("unitOfMeasure"),
-                            "refund_details": selection_data.get("refundDetails"),
-                            "toast_gift_card": selection_data.get("toastGiftCard"),
-                            "tax": selection_data.get("tax"),
-                            "dining_option": selection_data.get("diningOption"),
-                            "void_business_date": selection_data.get("voidBusinessDate"),
-                            "created_date": parse_datetime(selection_data.get("createdDate")) if selection_data.get("createdDate") else None,
-                            "pre_modifier": selection_data.get("preModifier"),
-                            "modified_date": parse_datetime(selection_data.get("modifiedDate")) if selection_data.get("modifiedDate") else None,
-                        }
-                        ToastSelection.objects.update_or_create(
-                            selection_guid=selection_guid,
-                            toast_check=check_obj,
-                            tenant_id=self.integration.org.id,
-                            defaults={
-                                "order_guid": order_guid,
-                                "display_name": selection_data.get("displayName"),
-                                "pre_discount_price": pre_discount_price,
-                                "discount_total": discount_total,
-                                "net_sales": selection_net,
-                                "quantity": quantity,
-                                "business_date": business_date,
-                                **selection_defaults,
-                            }
-                        )
-
-                        # Track selection refunds specifically for tax refunds
-                        refund_details = selection_data.get("refundDetails")
-                        if refund_details:
-                            tax_refund = Decimal(str(refund_details.get("taxRefundAmount", "0.00")))
-                            if tax_refund > 0:
-                                total_refund_amount += tax_refund
-                                # Get refund business date if not already set
-                                if not refund_business_date:
-                                    for payment in check_data.get("payments", []):
-                                        if payment.get("refund"):
-                                            rbd = payment.get("refund", {}).get("refundBusinessDate")
-                                            if rbd:
-                                                refund_business_date = rbd
-                                                break
-
-                business_date = order_data.get("businessDate")
-                if refund_business_date and business_date and str(refund_business_date) == str(business_date):
-                    # Always apply refunds to total_revenue
+                    # Reduce total revenue by the total refund amount (from payments)
                     total_revenue -= total_refund_amount
                     
-                    # For net sales, check if we have item-level refundDetails
-                    refund_without_tax = Decimal("0.00")
-                    has_item_refunds = False
+                    # Reduce net sales by the total refund amount (from payments)
+                    total_net_sales -= total_refund_amount
                     
-                    # Check each selection for refundDetails to adjust net sales correctly
-                    for check_data in order_data.get("checks", []):
-                        for selection_data in check_data.get("selections", []):
-                            refund_details = selection_data.get("refundDetails")
-                            if refund_details:
-                                # Found item-level refund details
-                                has_item_refunds = True
-                                refund_amount = Decimal(str(refund_details.get("refundAmount", "0.00")))
-                                refund_without_tax += refund_amount
-                    
-                    # If no item refunds were found but we have payment refunds,
-                    # use the payment refund amount for net sales
-                    if not has_item_refunds and total_refund_amount > 0:
-                        refund_without_tax = total_refund_amount
-                    
-                    total_net_sales -= refund_without_tax
+                    # Ensure net sales doesn't go below zero (as per previous logic)
+                    if total_net_sales < Decimal("0.00"):
+                        total_net_sales = Decimal("0.00")
+                # --- End of Reverted Refund Logic ---
                 
-                # Save all accumulated totals including discounts
-                order.tip = total_tip_total
-                order.service_charges = total_service_charge_total
-                order.toast_sales = total_revenue
-                order.total_amount = total_revenue
-                order.order_net_sales = total_net_sales
-                order.total_refunds = total_refund_amount
-                # Save discount information
-                order.total_discount_amount = total_discount_amount
+                # Save final calculated totals to the order object
+                order.tip = total_tip_total # Keep saving tips
+                order.service_charges = total_service_charge_total # Keep saving service charges
+                order.toast_sales = total_revenue # Save calculated toast_sales
+                order.total_amount = total_revenue # Typically total_amount mirrors toast_sales in this context
+                order.order_net_sales = total_net_sales # Save calculated order_net_sales
+                order.total_refunds = total_refund_amount # Save total refund amount
+                # Keep saving new discount fields
+                order.total_discount_amount = total_discount_amount 
                 order.discount_count = discount_count
                 if refund_business_date:
                     order.refund_business_date = refund_business_date
-                order.save()
+                order.save() # Save calculated fields
 
+                # Save the full payload separately after calculations
                 order.payload = order_data
-                order.save()
+                order.save(update_fields=['payload'])
 
-                
             except Exception as e:
                 print(f"ERROR processing order {order_guid}: {str(e)}")
                 logger.error(f"Error processing order {order_guid}: {e}", exc_info=True)
@@ -1069,96 +964,6 @@ class ToastIntegrationService:
         
         self.log_import_event(module_name="toast_service_areas", fetched_records=total_areas)
         return total_areas
-
-    def import_payment_details(self):
-        """
-        Import payment details for orders that have payment data
-        """
-        query_filters = {
-            'integration': self.integration,
-            'tenant_id': self.integration.org.id,
-            'payments__isnull': False,
-            'business_date': self.start_date.strftime("%Y%m%d")
-        }
-        orders_with_payments = ToastOrder.objects.filter(**query_filters)
-        
-        total_payments = 0
-        
-        for order in orders_with_payments:
-            restaurant_guid = order.restaurant_guid
-            if not restaurant_guid:
-                logger.warning(f"Order {order.order_guid} has no restaurant GUID, skipping payment import")
-                continue
-            
-            payments = order.payments   
-            if not payments:
-                continue
-            
-            for payment_data in payments:
-                payment_guid = payment_data.get("guid")
-                if not payment_guid:
-                    continue
-                
-                # Basic data from order payment data
-                check_guid = payment_data.get("checkGuid")
-                amount = Decimal(str(payment_data.get("amount", "0.00")))
-                tip_amount = Decimal(str(payment_data.get("tipAmount", "0.00")))
-                
-                # Try to get detailed payment info from API
-                detailed_payment = self.get_payment_details(restaurant_guid, payment_guid)
-                
-                # Use the most detailed data available (API response or embedded data)
-                payment_info = detailed_payment if detailed_payment else payment_data
-                
-                payment_defaults = {
-                    "integration": self.integration,
-                    "restaurant_guid": restaurant_guid,
-                    "order_guid": order.order_guid,
-                    "check_guid": check_guid,
-                    "type": payment_info.get("type"),
-                    "amount": amount,
-                    "tip_amount": tip_amount,
-                    "card_type": payment_info.get("cardType"),
-                    "last4_digits": payment_info.get("last4Digits"),
-                    "paid_date": parse_datetime(payment_info.get("paidDate")) if payment_info.get("paidDate") else None,
-                    "paid_business_date": payment_info.get("paidBusinessDate"),
-                    "refund_status": payment_info.get("refundStatus"),
-                    "payment_status": payment_info.get("paymentStatus"),
-                    "card_entry_mode": payment_info.get("cardEntryMode"),
-                    "server_guid": payment_info.get("server", {}).get("guid") if payment_info.get("server") else None,
-                    "created_device_id": payment_info.get("createdDevice", {}).get("id") if payment_info.get("createdDevice") else None,
-                    "last_modified_device_id": payment_info.get("lastModifiedDevice", {}).get("id") if payment_info.get("lastModifiedDevice") else None,
-                    "raw_payload": payment_info
-                }
-                
-                ToastPayment.objects.update_or_create(
-                    payment_guid=payment_guid,
-                    tenant_id=self.integration.org.id,
-                    defaults=payment_defaults
-                )
-                
-                total_payments += 1
-            
-        self.log_import_event(module_name="toast_payments", fetched_records=total_payments)
-        return total_payments
-
-    def get_payment_details(self, restaurant_guid, payment_guid):
-        """
-        Get detailed payment information from Toast API
-        """
-        url = f"{self.hostname}/orders/v2/payments/{payment_guid}"
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Toast-Restaurant-External-ID": restaurant_guid
-        }
-        
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            logger.error(f"Error fetching payment details for {payment_guid}: {e}")
-            return None
 
 
 
