@@ -17,11 +17,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 env_path = Path(__file__).resolve().parent.parent / 'requirements/.env'
 if not env_path.exists():
-    # Try the root directory instead
     env_path = Path(__file__).resolve().parent.parent / '.env'
-    print(f"Using .env from root directory: {env_path}")
-else:
-    print(f"Using .env from requirements: {env_path}")
 
 load_dotenv(dotenv_path=env_path)
 

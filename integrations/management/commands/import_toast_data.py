@@ -65,6 +65,11 @@ class Command(BaseCommand):
             help='Import service areas data'
         )
         parser.add_argument(
+            '--payments',
+            action='store_true',
+            help='Import payments data'
+        )
+        parser.add_argument(
             '--all',
             action='store_true',
             help='Import all available data types (default if no specific modules are selected)'
@@ -100,12 +105,13 @@ class Command(BaseCommand):
         run_sales_categories = options.get('sales_categories')
         run_dining_options = options.get('dining_options')
         run_service_areas = options.get('service_areas')
+        run_payments = options.get('payments')
         run_all = options.get('all')
 
         # If no specific modules are selected, run all
         if not (run_orders or run_restaurants or run_revenue_centers or 
                 run_restaurant_services or run_sales_categories or 
-                run_dining_options or run_service_areas):
+                run_dining_options or run_service_areas or run_payments):
             run_all = True
 
         integrations = []
@@ -172,6 +178,10 @@ class Command(BaseCommand):
                     areas_count = service.import_service_areas()
                     self.stdout.write(self.style.SUCCESS(f"Imported {areas_count} service areas for integration ID {integration.id}"))
                 
+                if run_all or run_payments:
+                    self.stdout.write(f"Importing payments for integration ID {integration.id}...")
+                    payments_count = service.import_payment_details()
+                    self.stdout.write(self.style.SUCCESS(f"Imported {payments_count} payments for integration ID {integration.id}"))
             except Exception as e:
                 logger.error("Error importing Toast data for integration ID %s: %s", integration.id, e, exc_info=True)
                 self.stdout.write(self.style.ERROR(f"Error importing data for integration ID {integration.id}: {str(e)}"))
