@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Organisation, TaskLog
+from .models import Client, Organisation, Site, TaskLog
 from core.forms import DataImportForm, BudgetImportForm
 from django.urls import path
 from django.shortcuts import render, redirect
@@ -86,17 +86,70 @@ class ImportToolsMixin:
         return render(request, "admin/budget_import_form.html", context)
 
 
-class OrganisationAdmin(admin.ModelAdmin):
-    list_display = ('name',)
-    search_fields = ('name',)
-    
+@admin.register(Client)
+class ClientAdmin(admin.ModelAdmin):
+    list_display = ('name', 'industry', 'status', 'billing_cycle', 'created_at')
+    list_filter = ('status', 'billing_cycle', 'industry')
+    search_fields = ('name', 'industry', 'primary_contact', 'billing_email')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'industry', 'timezone', 'primary_contact')
+        }),
+        ('Billing Information', {
+            'fields': ('subscription_plan', 'billing_email', 'billing_cycle')
+        }),
+        ('Status and Reporting', {
+            'fields': ('status', 'reporting_calendar')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
 
+
+@admin.register(Organisation)
+class OrganisationAdmin(admin.ModelAdmin):
+    list_display = ('name', 'client', 'status', 'created_at')
+    list_filter = ('status', 'client')
+    search_fields = ('name', 'client__name')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'client', 'status')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+
+@admin.register(Site)
+class SiteAdmin(admin.ModelAdmin):
+    list_display = ('name', 'organisation', 'postcode', 'region', 'status', 'opened_date')
+    list_filter = ('status', 'region', 'organisation')
+    search_fields = ('name', 'postcode', 'region', 'organisation__name')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'organisation', 'status')
+        }),
+        ('Location Information', {
+            'fields': ('postcode', 'region', 'opened_date')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+
+@admin.register(TaskLog)
 class TaskLogAdmin(admin.ModelAdmin):
     list_display = ('task_name', 'status', 'timestamp')
-    search_fields = ('task_name', 'status')
-    list_filter = ('status',)
-    
-# Register regular model admins
-admin.site.register(Organisation, OrganisationAdmin)
-admin.site.register(TaskLog, TaskLogAdmin)
+    list_filter = ('status', 'timestamp')
+    search_fields = ('task_name', 'detail')
+    readonly_fields = ('timestamp',)
 
