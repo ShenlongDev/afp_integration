@@ -7,17 +7,18 @@ from integrations.models.models import Integration
 from rest_framework.views import APIView
 from rest_framework import generics
 from integrations.models.xero.raw import XeroAccountsRaw
-from integrations.models.xero.transformations import XeroJournalLines
+from integrations.models.xero.transformations import XeroJournalLines, XeroJournalLineTrackingCategories, XeroInvoiceLineItems
 from rest_framework import viewsets
 from integrations.models.xero.analytics import XeroBudgetPeriodBalancesAnalytics
 from integrations.models.xero.raw import (
     XeroBankTransactionsRaw, XeroBudgetPeriodBalancesRaw, XeroBudgetsRaw,
-    XeroContactsRaw, XeroInvoicesRaw, XeroJournalsRaw
+    XeroContactsRaw, XeroInvoicesRaw, XeroJournalsRaw, 
 )
 from integrations.serializers.xero import (
     XeroBudgetPeriodBalancesAnalyticsSerializer, XeroAccountsRawSerializer, XeroBankTransactionsRawSerializer,
     XeroBudgetPeriodBalancesRawSerializer, XeroBudgetsRawSerializer, XeroContactsRawSerializer,
-    XeroInvoicesRawSerializer, XeroJournalsRawSerializer, XeroJournalLinesSerializer
+    XeroInvoicesRawSerializer, XeroJournalsRawSerializer, XeroJournalLinesSerializer, XeroJournalLineTrackingCategoriesSerializer,
+    XeroInvoiceLineItemsSerializer
 )
 
 
@@ -96,4 +97,14 @@ class XeroJournalsRawViewSet(viewsets.ModelViewSet):
     serializer_class = XeroJournalsRawSerializer
     filterset_fields = ['tenant_id', 'journal_id']
     
+
+class XeroJournalLineTrackingCategoriesViewSet(viewsets.ModelViewSet):
+    queryset = XeroJournalLineTrackingCategories.objects.all()
+    serializer_class = XeroJournalLineTrackingCategoriesSerializer
+    filterset_fields = ['tenant_id', 'jounal_line_id', 'tracking_category_id']
     
+    
+class XeroInvoiceLineItemsViewSet(viewsets.ModelViewSet):
+    queryset = XeroInvoiceLineItems.objects.all()
+    serializer_class = XeroInvoiceLineItemsSerializer
+    filterset_fields = ['tenant_id', 'invoice_id']

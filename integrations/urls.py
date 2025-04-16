@@ -1,11 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from integrations.views.general import IntegrationViewSet, IntegrationAuthView, IntegrationCallbackView
+from integrations.views.general import IntegrationAuthView, IntegrationCallbackView
 from integrations.views.toast_views import SalesSummaryAPIView
-from views import netsuite, xero, toast
+from integrations.views import (netsuite_views as netsuite, 
+                   xero_views as xero, 
+                   toast_views as toast)
 
 router = DefaultRouter()
-router.register(r'integrations', IntegrationViewSet, basename='integration')
 
 netsuite_router = DefaultRouter()
 netsuite_router.register(r'accounts', netsuite.NetSuiteAccountsViewSet)

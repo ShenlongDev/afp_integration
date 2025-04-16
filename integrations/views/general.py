@@ -1,6 +1,5 @@
 from rest_framework import viewsets
 from integrations.models.models import Integration, IntegrationAccessToken
-from integrations.serializers.general import IntegrationSerializer
 from integrations.services.netsuite.auth import NetSuiteAuthService
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,11 +9,6 @@ from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from urllib.parse import parse_qs
 
-
-
-class IntegrationViewSet(viewsets.ModelViewSet):
-    queryset = Integration.objects.all()
-    serializer_class = IntegrationSerializer
 
 
 class IntegrationAuthView(APIView):

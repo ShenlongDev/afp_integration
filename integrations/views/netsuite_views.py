@@ -14,7 +14,7 @@ from integrations.models.netsuite.analytics import (
     NetSuiteTransactionAccountingLine, NetSuiteTransactionLine,
     NetSuiteTransformedTransaction, NetSuiteBudgets, NetSuiteLocations
 )
-from serializers.netsuite import (
+from integrations.serializers.netsuite import (
     NetSuiteAccountsSerializer, NetSuiteTransactionsSerializer, NetSuiteAccountingPeriodsSerializer,
     NetSuiteDepartmentsSerializer, NetSuiteSubsidiariesSerializer, NetSuiteVendorsSerializer, 
     NetSuiteBudgetPeriodBalancesSerializer, NetSuiteEntitySerializer, NetSuiteJournalsSerializer,
