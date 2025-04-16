@@ -20,7 +20,7 @@ colorama==0.4.6
 contourpy==1.3.0
 cron-descriptor==1.4.5
 cycler==0.12.1
-dd-trace
+ddtrace==1.16.1
 Django==4.2
 django-celery-beat==2.7.0
 django-cors-headers==4.6.0
