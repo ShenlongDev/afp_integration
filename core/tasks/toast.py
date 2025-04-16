@@ -67,7 +67,7 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None, modu
     if 'revenue_centers' in modules:
         logger.info("Syncing Toast revenue centers for integration %s", integration_id)
         revenue_centers = importer.import_revenue_centers()
-        results['revenue_centers'] = len(revenue_centers)
+        results['revenue_centers'] = revenue_centers
     
     if 'service_areas' in modules:
         logger.info("Syncing Toast service areas for integration %s", integration_id)

@@ -495,13 +495,19 @@ class ToastIntegrationService:
                         Decimal(str(p.get("tipAmount", "0.00")))
                         for p in check_data.get("payments", [])
                     )
-                    service_charge_total = sum(
-                        Decimal(str(sc.get("chargeAmount", "0.00")))
-                        for sc in check_data.get("appliedServiceCharges", [])
-                    )
+
+                    service_charge_total = Decimal("0.00")
+                    service_charge_total_exclude_refunds = Decimal("0.00")
+                    
+                    for sc in check_data.get("appliedServiceCharges", []):
+                        charge_amount = Decimal(str(sc.get("chargeAmount", "0.00")))
+                        service_charge_total += charge_amount
+                        if not sc.get("refundDetails"):
+                            service_charge_total_exclude_refunds += charge_amount
+                    
                     # Accumulate order-level totals
                     total_tip_total += tip_total
-                    total_service_charge_total += service_charge_total
+                    total_service_charge_total += service_charge_total_exclude_refunds
 
                     # Calculate revenue for the check (subtotal + tax + tip + service charges)
                     check_revenue = check_subtotal + tax_amount + tip_total + service_charge_total
@@ -514,6 +520,8 @@ class ToastIntegrationService:
                     for payment in check_data.get("payments", []):
                         if payment.get("refund"):
                             refund_amt = Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00")))
+                            tip_refund_amt = Decimal(str(payment.get("refund", {}).get("tipRefundAmount", "0.00")))
+                            
                             check_refund += refund_amt
                             total_refund_amount += refund_amt # Add to order total refund
                             # Capture refund business date
@@ -548,6 +556,7 @@ class ToastIntegrationService:
                         "closed_date": parse_datetime(check_data.get("closedDate")) if check_data.get("closedDate") else None,
                         "check_refund": check_refund # Save calculated check refund amount
                     })
+
                     check_obj, _ = ToastCheck.objects.update_or_create(
                         check_guid=check_guid,
                         order=order,
