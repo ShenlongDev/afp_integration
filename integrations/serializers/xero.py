@@ -1,14 +1,32 @@
 from rest_framework import serializers
+from integrations.models.xero.transformations import (
+    XeroJournalLines, XeroJournalLineTrackingCategories, XeroInvoiceLineItems
+)
+from integrations.models.xero.analytics import XeroBudgetPeriodBalancesAnalytics
 from integrations.models.xero.raw import (
-    XeroAccountsRaw,
-    XeroBankTransactionsRaw,
-    XeroBudgetPeriodBalancesRaw,
-    XeroBudgetsRaw,
-    XeroContactsRaw,
-    XeroInvoicesRaw,
-    XeroJournalsRaw
+    XeroAccountsRaw, XeroBankTransactionsRaw, XeroBudgetPeriodBalancesRaw,
+    XeroBudgetsRaw, XeroContactsRaw, XeroInvoicesRaw, XeroJournalsRaw
 )
 
+class XeroJournalLinesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = XeroJournalLines
+        fields = '__all__'
+
+class XeroJournalLineTrackingCategoriesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = XeroJournalLineTrackingCategories
+        fields = '__all__'
+
+class XeroInvoiceLineItemsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = XeroInvoiceLineItems
+        fields = '__all__'
+
+class XeroBudgetPeriodBalancesAnalyticsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = XeroBudgetPeriodBalancesAnalytics
+        fields = '__all__'
 
 class XeroAccountsRawSerializer(serializers.ModelSerializer):
     class Meta:

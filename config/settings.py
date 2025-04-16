@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'integrations',
     'api',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
@@ -325,6 +326,8 @@ BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # REST Framework Settings
 REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 30,
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],

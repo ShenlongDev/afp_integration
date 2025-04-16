@@ -29,18 +29,72 @@ jobs:
 
     - name: Upload .env
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-          "echo '${{ secrets.ENV_FILE }}' > /var/www/insights/.env"
+        echo "Creating .env file with individual secrets..."
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cat > /var/www/insights/.env" << 'EOL'
+        SECRET_KEY=${{ secrets.SECRET_KEY }}
+        DEBUG=${{ secrets.DEBUG }}
+        ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS }}
+        DB_NAME=${{ secrets.DB_NAME }}
+        DB_USER=${{ secrets.DB_USER }}
+        DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+        DB_HOST=${{ secrets.DB_HOST }}
+        DB_PORT=${{ secrets.DB_PORT }}
+        DB_SSL_MODE=${{ secrets.DB_SSL_MODE }}
+        BACKEND_URL=${{ secrets.BACKEND_URL }}
+        ENVIRONMENT=${{ secrets.ENVIRONMENT }}
+        CELERY_BROKER_URL=${{ secrets.CELERY_BROKER_URL }}
+        CELERY_RESULT_BACKEND=${{ secrets.CELERY_RESULT_BACKEND }}
+        CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
+        EOL
+
+    - name: Verify .env file
+      run: |
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
+        cd /var/www/insights
+        echo "Verifying .env file..."
+        if [ ! -s ".env" ]; then
+          echo "ERROR: .env file is empty!"
+          exit 1
+        fi
+        
+        echo "File size: $(wc -c < .env) bytes"
+        echo "Number of lines: $(wc -l < .env) lines"
+        echo "First few variable names in .env:"
+        grep -v '^#' .env | cut -d'=' -f1 | head -n 5
+        ENDSSH
 
     - name: Remote deploy commands
       run: |
         ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<'EOSSH'
         set -e
         cd /var/www/insights
+        # Verify .env file before proceeding
+        echo "Verifying .env file..."
+        if [ ! -f ".env" ]; then
+          echo "ERROR: .env file not found in $(pwd)"
+          exit 1
+        fi
+        
+        echo "Content of .env directory:"
+        ls -la .env
 
-        echo "Pulling latest code..."
-        git pull origin main
+                
+        echo "Ensuring static directory exists..."
+        if [ ! -d "static" ]; then
+          echo "Creating static directory..."
+          mkdir -p static
+          chmod 755 static
+        fi
 
+        
+        echo "Skipping git pull as files were synced with rsync..."
+        
+        echo "Checking virtual environment..."
+        if [ ! -d "venv" ]; then
+          echo "Creating virtual environment..."
+          python3 -m venv venv
+        fi
+        
         echo "Activating virtual environment..."
         source venv/bin/activate
 

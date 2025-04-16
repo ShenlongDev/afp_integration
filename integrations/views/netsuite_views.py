@@ -6,45 +6,90 @@ from integrations.models.models import Integration
 from integrations.services.netsuite.importer import NetSuiteImporter
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from rest_framework import viewsets
+from integrations.models.netsuite.analytics import (
+    NetSuiteAccounts, NetSuiteTransactions, NetSuiteAccountingPeriods,
+    NetSuiteDepartments, NetSuiteSubsidiaries, NetSuiteVendors, 
+    NetSuiteBudgetPeriodBalances, NetSuiteEntity, NetSuiteJournals,
+    NetSuiteTransactionAccountingLine, NetSuiteTransactionLine,
+    NetSuiteTransformedTransaction, NetSuiteBudgets, NetSuiteLocations
+)
+from serializers.netsuite import (
+    NetSuiteAccountsSerializer, NetSuiteTransactionsSerializer, NetSuiteAccountingPeriodsSerializer,
+    NetSuiteDepartmentsSerializer, NetSuiteSubsidiariesSerializer, NetSuiteVendorsSerializer, 
+    NetSuiteBudgetPeriodBalancesSerializer, NetSuiteEntitySerializer, NetSuiteJournalsSerializer,
+    NetSuiteTransactionAccountingLineSerializer, NetSuiteTransactionLineSerializer,
+    NetSuiteTransformedTransactionSerializer, NetSuiteBudgetsSerializer, NetSuiteLocationsSerializer
+)
 
-class NetsuiteImportDataView(APIView):
-    """
-    POST /api/integrations/<int:pk>/netsuite-import-data/?since=YYYY-MM-DD
-    Triggers the import of NetSuite data for the specified integration.
-    """
 
-    def post(self, request, pk=None):
-        integration = get_object_or_404(Integration, pk=pk)
-        since_param = request.query_params.get("since")
-        since_date = None
-        if since_param:
-            try:
-                since_date = timezone.datetime.strptime(since_param, "%Y-%m-%d")
-            except ValueError:
-                return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-        importer = NetSuiteImporter(integration)
-        try:
-            # importer.import_vendors(load_type="drop_and_reload")
-            # importer.import_accounts()
-            # importer.import_transactions()
-            # importer.import_vendors()
-            # importer.import_subsidiaries()
-            # importer.import_departments()
-            # importer.import_entities()
-            # importer.import_accounting_periods()
+class NetSuiteAccountsViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteAccounts.objects.all()
+    serializer_class = NetSuiteAccountsSerializer
+    filterset_fields = ['tenant_id', 'account_id']
 
-            
-            # After importing raw data, transform it
-            # transformer = NetSuiteTransformer()
-            
-            # transformer.transform_general_ledger(integration)
-            # transformer.transform_accounts()
-            # Example: transformer.transform_transactions()
-            # Example: transformer.transform_vendors()
-            
-            return Response({
-                "detail": "NetSuite data imported successfully",
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+class NetSuiteTransactionsViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteTransactions.objects.all()
+    serializer_class = NetSuiteTransactionsSerializer
+    filterset_fields = ['tenant_id', 'transactionid']
+
+class NetSuiteAccountingPeriodsViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteAccountingPeriods.objects.all()
+    serializer_class = NetSuiteAccountingPeriodsSerializer
+    filterset_fields = ['tenant_id', 'period_id']
+
+class NetSuiteDepartmentsViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteDepartments.objects.all()
+    serializer_class = NetSuiteDepartmentsSerializer
+    filterset_fields = ['tenant_id', 'department_id']
+
+class NetSuiteSubsidiariesViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteSubsidiaries.objects.all()
+    serializer_class = NetSuiteSubsidiariesSerializer
+    filterset_fields = ['tenant_id', 'subsidiary_id']
+
+class NetSuiteVendorsViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteVendors.objects.all()
+    serializer_class = NetSuiteVendorsSerializer
+    filterset_fields = ['tenant_id', 'vendor_id']
+
+class NetSuiteBudgetPeriodBalancesViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteBudgetPeriodBalances.objects.all()
+    serializer_class = NetSuiteBudgetPeriodBalancesSerializer
+    filterset_fields = ['tenant_id', 'budget_id', 'account_id']
+
+class NetSuiteEntityViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteEntity.objects.all()
+    serializer_class = NetSuiteEntitySerializer
+    filterset_fields = ['tenant_id', 'entity_id']
+
+class NetSuiteJournalsViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteJournals.objects.all()
+    serializer_class = NetSuiteJournalsSerializer
+    filterset_fields = ['tenant_id', 'journal_id']
+
+class NetSuiteTransactionAccountingLineViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteTransactionAccountingLine.objects.all()
+    serializer_class = NetSuiteTransactionAccountingLineSerializer
+    filterset_fields = ['tenant_id', 'transaction', 'account']
+
+class NetSuiteTransactionLineViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteTransactionLine.objects.all()
+    serializer_class = NetSuiteTransactionLineSerializer
+    filterset_fields = ['tenant_id', 'transaction_line_id']
+
+class NetSuiteTransformedTransactionViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteTransformedTransaction.objects.all()
+    serializer_class = NetSuiteTransformedTransactionSerializer
+    filterset_fields = ['tenant_id', 'transactionid']
+
+class NetSuiteBudgetsViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteBudgets.objects.all()
+    serializer_class = NetSuiteBudgetsSerializer
+    filterset_fields = ['tenant_id', 'budget_id']
+
+class NetSuiteLocationsViewSet(viewsets.ModelViewSet):
+    queryset = NetSuiteLocations.objects.all()
+    serializer_class = NetSuiteLocationsSerializer
+    filterset_fields = ['tenant_id', 'location_id']

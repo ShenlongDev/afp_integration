@@ -8,46 +8,18 @@ from rest_framework.views import APIView
 from rest_framework import generics
 from integrations.models.xero.raw import XeroAccountsRaw
 from integrations.models.xero.transformations import XeroJournalLines
-from integrations.serializers.xero.raw import XeroAccountsRawSerializer
-from integrations.serializers.xero.transformations import (
-    XeroJournalLinesSerializer
+from rest_framework import viewsets
+from integrations.models.xero.analytics import XeroBudgetPeriodBalancesAnalytics
+from integrations.models.xero.raw import (
+    XeroBankTransactionsRaw, XeroBudgetPeriodBalancesRaw, XeroBudgetsRaw,
+    XeroContactsRaw, XeroInvoicesRaw, XeroJournalsRaw
+)
+from integrations.serializers.xero import (
+    XeroBudgetPeriodBalancesAnalyticsSerializer, XeroAccountsRawSerializer, XeroBankTransactionsRawSerializer,
+    XeroBudgetPeriodBalancesRawSerializer, XeroBudgetsRawSerializer, XeroContactsRawSerializer,
+    XeroInvoicesRawSerializer, XeroJournalsRawSerializer, XeroJournalLinesSerializer
 )
 
-
-class XeroDataImportView(APIView):
-    """
-    POST /api/integrations/<int:pk>/xero-import-data/?since=YYYY-MM-DD
-    """
-    def post(self, request, pk=None):
-        integration = get_object_or_404(Integration, pk=pk)
-        if not (integration.xero_client_id and integration.xero_client_secret):
-            return Response({"error": "Xero credentials not fully set."}, status=400)
-
-        since_param = request.query_params.get("since")
-        since_date = None
-        if since_param:
-            try:
-                since_date = datetime.strptime(since_param, "%Y-%m-%d")
-            except ValueError:
-                return Response({"error": f"Invalid date: {since_param}"}, status=400)
-
-        try:
-            xero_client = XeroDataImporter(integration, since_date)
-            xero_client.import_xero_data()
-            return Response({
-                "detail": "Xero data imported successfully",
-                "components": [
-                    "chart_of_accounts",
-                    "journals",
-                    "invoices",
-                    "bank_transactions",
-                    "contacts",
-                    "budgets"
-                ]
-            }, status=200)
-            
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
 
 class XeroAccountsListCreateView(generics.ListCreateAPIView):
     queryset = XeroAccountsRaw.objects.all()
@@ -69,5 +41,59 @@ class XeroJournalLinesDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = XeroJournalLines.objects.all()
     serializer_class = XeroJournalLinesSerializer
     lookup_field = 'journal_line_id'
+
+
+class XeroJournalLinesViewSet(viewsets.ModelViewSet):
+    queryset = XeroJournalLines.objects.all()
+    serializer_class = XeroJournalLinesSerializer
+    filterset_fields = ['tenant_id', 'journal_id', 'journal_date']
+
+
+class XeroBudgetPeriodBalancesAnalyticsViewSet(viewsets.ModelViewSet):
+    queryset = XeroBudgetPeriodBalancesAnalytics.objects.all()
+    serializer_class = XeroBudgetPeriodBalancesAnalyticsSerializer
+    filterset_fields = ['tenant_id', 'budget_id', 'account_id']
+
+
+class XeroAccountsRawViewSet(viewsets.ModelViewSet):
+    queryset = XeroAccountsRaw.objects.all()
+    serializer_class = XeroAccountsRawSerializer
+    filterset_fields = ['tenant_id', 'account_id']
+
+
+class XeroBankTransactionsRawViewSet(viewsets.ModelViewSet):
+    queryset = XeroBankTransactionsRaw.objects.all()
+    serializer_class = XeroBankTransactionsRawSerializer
+    filterset_fields = ['tenant_id', 'bank_transaction_id']
+
+
+class XeroBudgetPeriodBalancesRawViewSet(viewsets.ModelViewSet):
+    queryset = XeroBudgetPeriodBalancesRaw.objects.all()
+    serializer_class = XeroBudgetPeriodBalancesRawSerializer
+    filterset_fields = ['tenant_id', 'budget_id', 'account_id']
+
+
+class XeroBudgetsRawViewSet(viewsets.ModelViewSet):
+    queryset = XeroBudgetsRaw.objects.all()
+    serializer_class = XeroBudgetsRawSerializer
+    filterset_fields = ['tenant_id', 'budget_id']
+
+
+class XeroContactsRawViewSet(viewsets.ModelViewSet):
+    queryset = XeroContactsRaw.objects.all()
+    serializer_class = XeroContactsRawSerializer
+    filterset_fields = ['tenant_id', 'contact_id']
+
+
+class XeroInvoicesRawViewSet(viewsets.ModelViewSet):
+    queryset = XeroInvoicesRaw.objects.all()
+    serializer_class = XeroInvoicesRawSerializer
+    filterset_fields = ['tenant_id', 'invoice_id']
+
+
+class XeroJournalsRawViewSet(viewsets.ModelViewSet):
+    queryset = XeroJournalsRaw.objects.all()
+    serializer_class = XeroJournalsRawSerializer
+    filterset_fields = ['tenant_id', 'journal_id']
     
     
