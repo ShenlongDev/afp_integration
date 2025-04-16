@@ -1,5 +1,6 @@
 from django.db import transaction, close_old_connections
 import hashlib
+from core.models import Organisation
 
 class BatchUtils:
     @staticmethod
