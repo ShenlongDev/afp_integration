@@ -8,11 +8,12 @@ from django.db import transaction
 from .auth import ToastAuthService
 from integrations.models.toast.raw import (
     ToastOrder, ToastCheck, ToastSelection,
-    ToastGeneralLocation, ToastDaySchedule, 
-    ToastWeeklySchedule, ToastJoinedOpeningHours, ToastRevenueCenter,
+    ToastDaySchedule, ToastWeeklySchedule, 
+    ToastJoinedOpeningHours, ToastRevenueCenter,
     ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea
 )
 from integrations.models.models import SyncTableLogs
+from core.models import Site, IntegrationSiteMapping
 import time as timeclock  # Use a different name to avoid conflict
 
 logger = logging.getLogger(__name__)
@@ -117,7 +118,8 @@ class ToastIntegrationService:
     def import_restaurant_and_schedule_data(self):
         """
         Fetches restaurant info (including schedules) for all restaurants from Toast and updates/creates:
-         - ToastGeneralLocation,
+         - Site,
+         - IntegrationSiteMapping,
          - ToastDaySchedule,
          - ToastWeeklySchedule, and
          - ToastJoinedOpeningHours.
@@ -146,24 +148,14 @@ class ToastIntegrationService:
             urls = data.get("urls", {})
             location_data = data.get("location", {})
 
-            general_location_defaults = {
-                "tenant_id": self.integration.org.id,
-                "guid": data.get("guid"),
-                "general_name": general.get("name"),
-                "location_name": general.get("locationName"),
-                "location_code": general.get("locationCode"),
+            # Create or update Site
+            site_defaults = {
+                "organisation": self.integration.org,
+                "name": general.get("name"),
+                "code": general.get("locationCode"),
                 "description": general.get("description"),
-                "timezone": general.get("timeZone"),
-                # Convert the closeout hour (which is an integer) to a time object.
-                "closeout_hour": self.convert_int_to_time(general.get("closeoutHour")),
-                "management_group_guid": general.get("managementGroupGuid"),
-                "currency_code": general.get("currencyCode"),
-                "first_business_date": self.convert_to_date(general.get("firstBusinessDate")),
-                "archived": general.get("archived", False),
-                "url_website": urls.get("website"),
-                "url_facebook": urls.get("facebook"),
-                "url_twitter": urls.get("twitter"),
-                "url_order_online": urls.get("orderOnline"),
+                "postcode": location_data.get("zipCode"),
+                "region": location_data.get("stateCode"),
                 "address_line1": location_data.get("address1"),
                 "address_line2": location_data.get("address2"),
                 "city": location_data.get("city"),
@@ -171,15 +163,42 @@ class ToastIntegrationService:
                 "zip_code": location_data.get("zipCode"),
                 "country": location_data.get("country"),
                 "phone": location_data.get("phone"),
-                "latitude": location_data.get("latitude"),
-                "longitude": location_data.get("longitude"),
+                "timezone": general.get("timeZone"),
+                "currency_code": general.get("currencyCode"),
+                "opened_date": self.convert_to_date(general.get("firstBusinessDate")),
+                "is_active": not general.get("archived", False),
             }
-            location_obj, _ = ToastGeneralLocation.objects.update_or_create(
-                guid=general_location_defaults["guid"],
-                tenant_id=self.integration.org.id,
-                defaults=general_location_defaults
+            site, _ = Site.objects.update_or_create(
+                organisation=self.integration.org,
+                name=site_defaults["name"],
+                defaults=site_defaults
             )
-            logger.info("Imported restaurant location: %s", location_obj)
+
+            # Create or update IntegrationSiteMapping
+            mapping_defaults = {
+                "site": site,
+                "integration": self.integration,
+                "external_id": restaurant_guid,
+                "external_name": general.get("name"),
+                "settings": {
+                    "closeout_hour": general.get("closeoutHour"),
+                    "management_group_guid": general.get("managementGroupGuid"),
+                    "website": urls.get("website"),
+                    "facebook": urls.get("facebook"),
+                    "twitter": urls.get("twitter"),
+                    "order_online": urls.get("orderOnline"),
+                    "first_business_date": general.get("firstBusinessDate"),
+                    "latitude": location_data.get("latitude"),
+                    "longitude": location_data.get("longitude"),
+                }
+            }
+            mapping, _ = IntegrationSiteMapping.objects.update_or_create(
+                site=site,
+                integration=self.integration,
+                defaults=mapping_defaults
+            )
+
+            logger.info("Imported restaurant location: %s", site)
 
             # Process schedule data:
             schedules = data.get("schedules", {})
@@ -192,7 +211,7 @@ class ToastIntegrationService:
                 ds_defaults = {
                     "tenant_id": self.integration.org.id,
                     "integration": self.integration,
-                    "restaurant": location_obj,
+                    "restaurant": site,  # Changed from location_obj to site
                     "guid": ds_guid,
                     "property_name": ds.get("scheduleName"),
                     "open_time": self.convert_to_time(ds.get("openTime")),
@@ -211,7 +230,7 @@ class ToastIntegrationService:
             weekly_defaults = {
                 "tenant_id": self.integration.org.id,
                 "integration": self.integration,
-                "restaurant": location_obj,
+                "restaurant": site,  # Changed from location_obj to site
                 "monday": week_schedule_data.get("monday"),
                 "tuesday": week_schedule_data.get("tuesday"),
                 "wednesday": week_schedule_data.get("wednesday"),
@@ -222,11 +241,11 @@ class ToastIntegrationService:
             }
             weekly_obj, _ = ToastWeeklySchedule.objects.update_or_create(
                 integration=self.integration,
-                restaurant=location_obj,
+                restaurant=site,  # Changed from location_obj to site
                 tenant_id=self.integration.org.id,
                 defaults=weekly_defaults
             )
-            logger.info("Imported weekly schedule for restaurant: %s", location_obj)
+            logger.info("Imported weekly schedule for restaurant: %s", site)
 
             # Build joined opening hours (ToastJoinedOpeningHours)
             def get_day_schedule_info(schedule_id):
@@ -249,7 +268,7 @@ class ToastIntegrationService:
             joined_defaults = {
                 "tenant_id": self.integration.org.id,
                 "integration": self.integration,
-                "restaurant": location_obj,
+                "restaurant": site,  # Changed from location_obj to site
                 "monday_start_time": monday_start,
                 "monday_end_time": monday_end,
                 "monday_overnight": monday_overnight,
@@ -281,13 +300,14 @@ class ToastIntegrationService:
             }
             joined_obj, _ = ToastJoinedOpeningHours.objects.update_or_create(
                 integration=self.integration,
-                restaurant=location_obj,
+                restaurant=site,  # Changed from location_obj to site
                 tenant_id=self.integration.org.id,
                 defaults=joined_defaults
             )
-            logger.info("Imported joined opening hours for restaurant: %s", location_obj)
+            logger.info("Imported joined opening hours for restaurant: %s", site)
             results.append({
-                "location": location_obj,
+                "site": site,
+                "mapping": mapping,
                 "day_schedules": list(day_schedule_map.values()),
                 "weekly_schedule": weekly_obj,
                 "joined_opening_hours": joined_obj,
@@ -427,9 +447,7 @@ class ToastIntegrationService:
                     "paid_date": parse_datetime(order_data.get("paidDate")) if order_data.get("paidDate") else None,
                     "restaurant_service_guid": order_data.get("restaurantService", {}).get("guid") if order_data.get("restaurantService") else None,
                     "excess_food": order_data.get("excessFood"),
-                    # Store voided orders instead of skipping them.
                     "voided": order_data.get("voided"),
-                    # New: Store deleted orders by reading the value (default to False if missing).
                     "deleted": order_data.get("deleted", False),
                     "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
                     "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}) else None,
@@ -443,9 +461,9 @@ class ToastIntegrationService:
                     "applied_packaging_info": order_data.get("appliedPackagingInfo") if order_data.get("appliedPackagingInfo") else None,
                     "opened_date": parse_datetime(order_data.get("openedDate")) if order_data.get("openedDate") else None,
                     "void_business_date": order_data.get("voidBusinessDate"),
-                    # Add restaurant_guid to store with the order
                     "restaurant_guid": order_data.get("restaurant_guid"),
-                    "payments": all_payments if all_payments else None
+                    "payments": all_payments if all_payments else None,
+                    "site": self.integration.org.sites.filter(integration_mappings__external_id=order_data.get("restaurant_guid")).first(),
                 }
                     
                 order, created = ToastOrder.objects.update_or_create(

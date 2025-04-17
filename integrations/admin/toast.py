@@ -2,16 +2,15 @@ from django.contrib import admin
 from integrations.models.toast.raw import (
     ToastOrder,
     ToastCheck,
-    ToastGeneralLocation,
     ToastDaySchedule,
     ToastWeeklySchedule,
     ToastJoinedOpeningHours,
     ToastSelection,
     ToastRevenueCenter,
-    ToastServiceArea,
     ToastRestaurantService,
     ToastSalesCategory,
-    ToastDiningOption
+    ToastDiningOption,
+    ToastServiceArea
 )
 
 class ToastRevenueCenterAdmin(admin.ModelAdmin):
@@ -32,11 +31,6 @@ class ToastOrderAdmin(admin.ModelAdmin):
     list_display = ('order_guid', 'order_net_sales', 'import_id', 'opened_date','total_refunds')
     search_fields = ('order_guid',)
     ordering = ('-opened_date',)
-
-class ToastGeneralLocationAdmin(admin.ModelAdmin):
-    list_display = ('general_name', 'location_name', 'guid', 'archived')
-    search_fields = ('general_name', 'location_name', 'guid')
-    ordering = ('general_name',)
 
 class ToastDayScheduleAdmin(admin.ModelAdmin):
     list_display = ('guid', 'property_name', 'open_time', 'close_time', 'restaurant')
@@ -77,13 +71,12 @@ class ToastDiningOptionAdmin(admin.ModelAdmin):
 
 admin.site.register(ToastOrder, ToastOrderAdmin)
 admin.site.register(ToastCheck, ToastCheckAdmin)
-admin.site.register(ToastGeneralLocation, ToastGeneralLocationAdmin)
 admin.site.register(ToastDaySchedule, ToastDayScheduleAdmin)
 admin.site.register(ToastWeeklySchedule, ToastWeeklyScheduleAdmin)
 admin.site.register(ToastJoinedOpeningHours, ToastJoinedOpeningHoursAdmin)
 admin.site.register(ToastSelection, ToastSelectionAdmin)
 admin.site.register(ToastRevenueCenter, ToastRevenueCenterAdmin)
-admin.site.register(ToastServiceArea, ToastServiceAreaAdmin)
 admin.site.register(ToastRestaurantService, ToastRestaurantServiceAdmin)
 admin.site.register(ToastSalesCategory, ToastSalesCategoryAdmin)
 admin.site.register(ToastDiningOption, ToastDiningOptionAdmin)
+admin.site.register(ToastServiceArea, ToastServiceAreaAdmin)

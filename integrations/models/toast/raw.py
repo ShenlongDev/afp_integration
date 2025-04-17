@@ -1,11 +1,13 @@
 from django.db import models
 from django.db.models import JSONField
 from decimal import Decimal
+from core.models import Site
 
 class ToastOrder(models.Model):
     order_guid = models.CharField(max_length=255, primary_key=True)
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE, related_name="toast_orders")
     tenant_id = models.IntegerField(db_index=True)
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="toast_orders", null=True, blank=True)
     restaurant_guid = models.CharField(max_length=255, null=True, blank=True)
     payload = JSONField(help_text="Raw order data from Toast")
     order_net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
@@ -65,6 +67,7 @@ class ToastOrder(models.Model):
             models.Index(fields=["closed_date"]),
             models.Index(fields=["modified_date"]),
             models.Index(fields=["payments"]),
+            models.Index(fields=["site"]),
         ]
 
 class ToastCheck(models.Model):
@@ -165,51 +168,10 @@ class ToastSelection(models.Model):
         unique_together = ('tenant_id', 'selection_guid')
 
 
-class ToastGeneralLocation(models.Model):
-    tenant_id = models.IntegerField(db_index=True)
-    guid = models.CharField(max_length=255, unique=True, db_index=True)
-    general_name = models.CharField(max_length=255, db_index=True)
-    location_name = models.CharField(max_length=255, null=True, blank=True)
-    location_code = models.CharField(max_length=50, null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
-    timezone = models.CharField(max_length=50, null=True, blank=True)
-    closeout_hour = models.TimeField(null=True, blank=True)
-    management_group_guid = models.CharField(max_length=255, null=True, blank=True, db_index=True)
-    currency_code = models.CharField(max_length=10, null=True, blank=True)
-    first_business_date = models.DateField(null=True, blank=True)
-    archived = models.BooleanField(default=False, db_index=True)
-    # Example URL and address fields:
-    url_website = models.URLField(null=True, blank=True)
-    url_facebook = models.URLField(null=True, blank=True)
-    url_twitter = models.URLField(null=True, blank=True)
-    url_order_online = models.URLField(null=True, blank=True)
-    address_line1 = models.CharField(max_length=255, null=True, blank=True)
-    address_line2 = models.CharField(max_length=255, null=True, blank=True)
-    city = models.CharField(max_length=100, null=True, blank=True)
-    state_code = models.CharField(max_length=50, null=True, blank=True)
-    zip_code = models.CharField(max_length=20, null=True, blank=True)
-    country = models.CharField(max_length=100, null=True, blank=True)
-    phone = models.CharField(max_length=20, null=True, blank=True)
-    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-
-    def __str__(self):
-        return f"ToastGeneralLocation {self.general_name}"
-
-    class Meta:
-        indexes = [
-            models.Index(fields=["tenant_id"]),
-            models.Index(fields=["general_name"]),
-            models.Index(fields=["archived"]),
-            models.Index(fields=["management_group_guid"]),
-        ]
-        unique_together = ('tenant_id', 'guid')
-
-
 class ToastDaySchedule(models.Model):
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
     tenant_id = models.IntegerField(db_index=True)
-    restaurant = models.ForeignKey(ToastGeneralLocation, on_delete=models.CASCADE)
+    restaurant = models.ForeignKey(Site, on_delete=models.CASCADE)
     guid = models.CharField(max_length=255, unique=True, db_index=True)
     property_name = models.CharField(max_length=255, db_index=True)
     open_time = models.TimeField(null=True, blank=True)
@@ -232,7 +194,7 @@ class ToastDaySchedule(models.Model):
 class ToastWeeklySchedule(models.Model):
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
     tenant_id = models.IntegerField(db_index=True)
-    restaurant = models.ForeignKey(ToastGeneralLocation, on_delete=models.CASCADE)
+    restaurant = models.ForeignKey(Site, on_delete=models.CASCADE)
     monday = models.CharField(max_length=255, null=True, blank=True)
     tuesday = models.CharField(max_length=255, null=True, blank=True)
     wednesday = models.CharField(max_length=255, null=True, blank=True)
@@ -242,7 +204,7 @@ class ToastWeeklySchedule(models.Model):
     sunday = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
-        return f"ToastWeeklySchedule for {self.restaurant.general_name}"
+        return f"ToastWeeklySchedule for {self.restaurant.name}"
 
     class Meta:
         indexes = [
@@ -256,7 +218,7 @@ class ToastWeeklySchedule(models.Model):
 class ToastJoinedOpeningHours(models.Model):
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
     tenant_id = models.IntegerField(db_index=True)
-    restaurant = models.ForeignKey(ToastGeneralLocation, on_delete=models.CASCADE)
+    restaurant = models.ForeignKey(Site, on_delete=models.CASCADE)
     monday_start_time = models.TimeField(null=True, blank=True)
     monday_end_time = models.TimeField(null=True, blank=True)
     monday_overnight = models.BooleanField(default=False)
@@ -287,7 +249,7 @@ class ToastJoinedOpeningHours(models.Model):
     sunday_related_day_schedule = models.CharField(max_length=255, null=True, blank=True)
         
     def __str__(self):
-        return f"ToastJoinedOpeningHours for {self.restaurant.general_name}"
+        return f"ToastJoinedOpeningHours for {self.restaurant.name}"
 
     class Meta:
         indexes = [
