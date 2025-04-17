@@ -31,7 +31,7 @@ app.conf.task_soft_time_limit = 170000
 app.conf.beat_schedule = {
     'daily-previous-day-sync': {
         'task': 'core.tasks.general.daily_previous_day_sync',
-        'schedule': crontab(hour=8, minute=20),
+        'schedule': crontab(hour=0, minute=5),
         'options': {
             'queue': 'high_priority',
             'expires': None,

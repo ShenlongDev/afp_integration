@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 GLOBAL_TASK_LOCK_KEY = "global_task_lock"
 
 DISPATCHER_LOCK_KEY = "dispatcher_task_lock"
-DISPATCHER_LOCK_TIMEOUT = 60 # Lock expires after 60 seconds
-IN_FLIGHT_ORG_SYNC_COUNT_KEY = "in_flight_org_sync_count" # New Key
-COUNTER_TIMEOUT = 3600 # Cache timeout for the counter key (1 hour)
-ORG_OFFSET_CACHE_KEY = "dispatcher_org_offset" # Define globally for clarity
+DISPATCHER_LOCK_TIMEOUT = 60 
+IN_FLIGHT_ORG_SYNC_COUNT_KEY = "in_flight_org_sync_count" 
+COUNTER_TIMEOUT = 3600 
+ORG_OFFSET_CACHE_KEY = "dispatcher_org_offset" 
 
 def acquire_global_lock(timeout=600):
     """
@@ -135,14 +135,14 @@ def sync_organization(self, organization_id):
             if integration.xero_client_id and integration.xero_client_secret:
                 logger.info("Dispatching Xero sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.xero import sync_single_xero_data
-                sync_single_xero_data.apply_async(args=[integration.id]) # Assuming Xero tasks handle their own queues
+                sync_single_xero_data.apply_async(args=[integration.id]) 
                 integration_dispatched = True
 
             # Check NetSuite
             if integration.netsuite_account_id and integration.netsuite_consumer_key:
                 logger.info("Dispatching NetSuite sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.netsuite import sync_single_netsuite_data
-                sync_single_netsuite_data.apply_async(args=[integration.id]) # Assuming NetSuite tasks handle their own queues
+                sync_single_netsuite_data.apply_async(args=[integration.id])
                 integration_dispatched = True
 
             if not integration_dispatched and not (integration.toast_client_id or integration.xero_client_id or integration.netsuite_account_id):
@@ -160,23 +160,17 @@ def sync_organization(self, organization_id):
     except Exception as exc:
         logger.error("Error during sync_organization %s: %s", organization_id, exc, exc_info=True)
         log_task_event("sync_organization", "failed", f"Organization {organization_id} sync failed: {exc}")
-        # Let the finally block handle the decrement
     finally:
-        # Always release the specific org lock
         cache.delete(lock_key)
-        # <<< Robustly decrement the global in-flight counter >>>
         try:
-            # decr handles non-existent key by setting it to -1
             new_val = cache.decr(IN_FLIGHT_ORG_SYNC_COUNT_KEY)
-            # Touch to reset timeout, ensuring key persists
             cache.touch(IN_FLIGHT_ORG_SYNC_COUNT_KEY, COUNTER_TIMEOUT)
             logger.info(f"SYNC_ORGANIZATION_TASK: Decremented in-flight count for Org ID: {organization_id}. New count: {new_val}")
-            # Reset to 0 if it goes below zero (safety net)
             if new_val < 0:
                  logger.warning(f"In-flight count went below zero ({new_val}) for Org {organization_id}. Resetting to 0.")
                  cache.set(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0, timeout=COUNTER_TIMEOUT)
 
-        except Exception as e: # Catch broad exceptions
+        except Exception as e:
              logger.error(f"SYNC_ORGANIZATION_TASK: Failed to decrement or touch in-flight count for Org ID: {organization_id}. Error: {e}", exc_info=True)
 
 
@@ -329,7 +323,6 @@ def dispatcher(self):
         from integrations.models.models import Integration
         MAX_CONCURRENT_ORG_SYNC_TASKS = 3
 
-        # --- Robust Counter Check ---
         current_in_flight = cache.get(IN_FLIGHT_ORG_SYNC_COUNT_KEY)
         if current_in_flight is None:
             logger.info("In-flight counter key not found or expired. Initializing to 0.")
@@ -338,7 +331,6 @@ def dispatcher(self):
         else:
             try:
                 current_in_flight = int(current_in_flight)
-                 # Ensure timeout is refreshed even on reads if key exists
                 cache.touch(IN_FLIGHT_ORG_SYNC_COUNT_KEY, COUNTER_TIMEOUT)
             except (ValueError, TypeError):
                 logger.warning(f"Could not parse in-flight count '{current_in_flight}'. Resetting to 0.")
@@ -349,7 +341,6 @@ def dispatcher(self):
             logger.warning(f"In-flight count was negative ({current_in_flight}). Resetting to 0.")
             cache.set(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0, timeout=COUNTER_TIMEOUT)
             current_in_flight = 0
-        # --- End Robust Counter Check ---
 
         logger.info(f"Current in-flight organization sync tasks (from cache): {current_in_flight}")
 
@@ -362,19 +353,16 @@ def dispatcher(self):
 
             if total_orgs > 0:
                 logger.info(f"Dispatcher: Attempting to read offset. Key: {ORG_OFFSET_CACHE_KEY}")
-                org_offset = cache.get(ORG_OFFSET_CACHE_KEY, 0) # Still need offset
+                org_offset = cache.get(ORG_OFFSET_CACHE_KEY, 0) 
                 logger.info(f"Dispatcher: Read offset value: {org_offset}")
-                try: # Handle if offset isn't an int
+                try: 
                     org_offset = int(org_offset)
                 except (ValueError, TypeError):
                     org_offset = 0
 
                 orgs_dispatched_this_run = 0
 
-                # Loop trying to fill available slots
                 for i in range(slots_to_fill):
-                    # Check count *before* incrementing
-                    # Use cache.get for read, default to 0 if missing/error
                     count_before_incr = cache.get(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0)
                     try:
                          count_before_incr = int(count_before_incr)
@@ -383,11 +371,9 @@ def dispatcher(self):
                          count_before_incr = 0
 
                     if count_before_incr < MAX_CONCURRENT_ORG_SYNC_TASKS:
-                        # Increment FIRST, then dispatch
                         new_count = cache.incr(IN_FLIGHT_ORG_SYNC_COUNT_KEY)
-                        cache.touch(IN_FLIGHT_ORG_SYNC_COUNT_KEY, COUNTER_TIMEOUT) # Reset timeout after incr
+                        cache.touch(IN_FLIGHT_ORG_SYNC_COUNT_KEY, COUNTER_TIMEOUT) 
 
-                        # Calculate which org to dispatch *now*
                         current_index = (org_offset + orgs_dispatched_this_run) % total_orgs
                         org_to_dispatch = all_orgs[current_index]
 
@@ -395,35 +381,32 @@ def dispatcher(self):
                         sync_organization.apply_async(args=[org_to_dispatch], queue="org_sync")
                         orgs_dispatched_this_run += 1
                     else:
-                        # Stop trying if limit is already reached
                         logger.info(f"Limit ({MAX_CONCURRENT_ORG_SYNC_TASKS}) reached (Current: {count_before_incr}). Breaking dispatch loop.")
                         break
 
-                # Update the offset based on how many were dispatched
                 if orgs_dispatched_this_run > 0:
                     new_offset = (org_offset + orgs_dispatched_this_run) % total_orgs
                     logger.info(f"Dispatcher: Attempting to set offset. Key: {ORG_OFFSET_CACHE_KEY}, Value: {new_offset}")
-                    cache.set(ORG_OFFSET_CACHE_KEY, new_offset, timeout=None) # Use a reasonable timeout for offset
+                    cache.set(ORG_OFFSET_CACHE_KEY, new_offset, timeout=None) 
                     logger.info(f"Dispatcher: Set offset complete.")
                     log_task_event("dispatcher", "dispatched", f"Dispatched {orgs_dispatched_this_run} org tasks. Offset now {new_offset}.")
                 else:
                      logger.info("No new organization tasks were dispatched in this run (limit reached or no orgs).")
 
-            else: # No orgs found in DB
+            else: 
                  logger.info("No organizations found in database for dispatch.")
-        else: # Limit already met
+        else: 
              logger.info(f"In-flight count ({current_in_flight}) meets or exceeds limit ({MAX_CONCURRENT_ORG_SYNC_TASKS}). Waiting.")
 
     except Exception as exc:
         logger.error("Dispatcher encountered an error: %s", exc, exc_info=True)
         log_task_event("dispatcher", "failed", str(exc))
-        raise # Let Celery handle retries, lock release in finally
+        raise 
     finally:
-        # Always release the lock IF this instance acquired it, before rescheduling
         if lock_acquired:
             cache.delete(DISPATCHER_LOCK_KEY)
             logger.info("Dispatcher lock RELEASED.")
-            dispatcher.apply_async(countdown=5) # Reschedule
+            dispatcher.apply_async(countdown=5) 
 
 
 @shared_task
