@@ -1,42 +1,57 @@
 from django.db import models
-from core.models import Organisation
 
 
 INTEGRATION_TYPE_CHOICES = (
     ("XERO", "Xero"),
     ("NETSUITE", "NetSuite"),
     ("TOAST", "Toast"),
+    ("OTHER", "Other"),
 )   
 
 
 class Integration(models.Model):
     """
-    One record that can store credentials for multiple possible integrations
-    (Xero, NetSuite, etc.). Just fill the fields relevant to the integration_type.
+    Unified integration model with flexible settings storage
     """
-    org = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name="integrations")
-
-    xero_client_id = models.CharField(max_length=255, blank=True, null=True)
-    xero_client_secret = models.CharField(max_length=255, blank=True, null=True)
-
-    netsuite_account_id = models.CharField(max_length=255, blank=True, null=True)
-    netsuite_client_id = models.CharField(max_length=255, blank=True, null=True)
-    netsuite_client_secret = models.CharField(max_length=255, blank=True, null=True)
-    netsuite_consumer_key = models.CharField(max_length=255, blank=True, null=True)
-    netsuite_private_key = models.TextField(blank=True, null=True)
-    netsuite_certificate_id = models.CharField(max_length=255, blank=True, null=True)
+    INTEGRATION_TYPES = [
+        ('toast', 'Toast'),
+        ('xero', 'Xero'),
+        ('netsuite', 'NetSuite'),
+        ('other', 'Other'),
+    ]
     
-    toast_api_url = models.CharField(max_length=100, blank=True, null=True)
-    toast_client_id = models.CharField(max_length=255, blank=True, null=True)
-    toast_client_secret = models.CharField(max_length=255, blank=True, null=True)
-
+    organisation = models.ForeignKey('core.Organisation', on_delete=models.CASCADE, related_name="integrations")
+    integration_type = models.CharField(
+        max_length=50,
+        choices=INTEGRATION_TYPE_CHOICES,
+        default="TOAST"
+    )
+    name = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)
+    settings = models.JSONField(default=dict, help_text="Integration settings stored as key-value pairs")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = ('organisation', 'integration_type', 'name')
+        verbose_name = "Integration"
+        verbose_name_plural = "Integrations"
+        
     def __str__(self):
-        return f"{self.org.name}"
+        return f"{self.get_integration_type_display()} - {self.name} ({self.organisation.name})"
     
+    def get_setting(self, key, default=None):
+        """Get a setting value by key"""
+        return self.settings.get(key, default)
     
+    def set_setting(self, key, value):
+        """Set a setting value and save the model"""
+        if self.settings is None:
+            self.settings = {}
+        self.settings[key] = value
+        self.save(update_fields=['settings', 'updated_at'])
+
+
 class IntegrationAccessToken(models.Model):
     """
     Stores access tokens for integrations, with expiry and other metadata.
@@ -60,7 +75,7 @@ class IntegrationAccessToken(models.Model):
     def __str__(self):
         return (
             f"Token({self.integration_type} | "
-            f"{self.integration.org.name})"
+            f"{self.integration.organisation.name})"
         )
 
 
@@ -71,7 +86,7 @@ class SyncTableLogs(models.Model):
         choices=INTEGRATION_TYPE_CHOICES,
         default="XERO"
     )
-    organization = models.ForeignKey(Organisation, on_delete=models.CASCADE)
+    organisation = models.ForeignKey('core.Organisation', on_delete=models.CASCADE)
     fetched_records = models.IntegerField()
     last_updated_time = models.DateTimeField()
     last_updated_date = models.DateField()
@@ -100,57 +115,4 @@ class HighPriorityTask(models.Model):
         if self.in_progress_since and self.processed_at:
             return self.processed_at - self.in_progress_since
         return None
-    
-    
-class GenericIntegration(models.Model):
-    """
-    Generic integration model that can be used with any external service.
-    Specific credentials are stored in the related IntegrationCredential model.
-    """
-    org = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name="generic_integrations")
-    name = models.CharField(max_length=255)
-    integration_type = models.CharField(max_length=50)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"{self.name} ({self.integration_type}) - {self.org.name}"
-    
-    def get_credential(self, key):
-        """Helper method to get a credential value by key"""
-        try:
-            return self.credentials.get(key=key).value
-        except IntegrationCredential.DoesNotExist:
-            return None
-    
-    def set_credential(self, key, value):
-        """Helper method to set a credential value"""
-        IntegrationCredential.objects.update_or_create(
-            integration=self,
-            key=key,
-            defaults={'value': value}
-        )
-
-
-class IntegrationCredential(models.Model):
-    """
-    Stores credentials for integrations in a key-value format.
-    This allows for flexible credential storage for any integration type.
-    """
-    integration = models.ForeignKey(
-        GenericIntegration, 
-        on_delete=models.CASCADE,
-        related_name="credentials"
-    )
-    key = models.CharField(max_length=255)
-    value = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        unique_together = ('integration', 'key')
         
-    def __str__(self):
-        return f"{self.integration.name} - {self.key}"
-    

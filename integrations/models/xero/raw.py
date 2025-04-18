@@ -1,5 +1,5 @@
 from django.db import models
-from integrations.models.models import Organisation
+from core.models import Organisation
 
 
 class XeroAccountsRaw(models.Model):
