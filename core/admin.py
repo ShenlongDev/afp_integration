@@ -125,7 +125,6 @@ class OrganisationAdmin(admin.ModelAdmin):
         })
     )
 
-
 @admin.register(Site)
 class SiteAdmin(admin.ModelAdmin):
     list_display = ('name', 'organisation', 'postcode', 'region', 'status', 'opened_date')
@@ -149,7 +148,8 @@ class SiteAdmin(admin.ModelAdmin):
 @admin.register(TaskLog)
 class TaskLogAdmin(admin.ModelAdmin):
     list_display = ('task_name', 'status', 'timestamp')
-    list_filter = ('status', 'timestamp')
-    search_fields = ('task_name', 'detail')
-    readonly_fields = ('timestamp',)
+    search_fields = ('task_name', 'status')
+    list_filter = ('status',)
+    
+admin.site.register(TaskLog, TaskLogAdmin)
 

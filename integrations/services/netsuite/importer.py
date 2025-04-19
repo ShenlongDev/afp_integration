@@ -11,7 +11,7 @@ from dateutil.parser import parse as dateutil_parse
 from integrations.services.utils import BatchUtils, compute_unique_key
 
 from .client import NetSuiteClient
-from integrations.models.models import Integration, Organisation, SyncTableLogs
+from integrations.models.models import Integration, SyncTableLogs, Organisation
 from integrations.models.netsuite.analytics import (
     NetSuiteVendors,
     NetSuiteSubsidiaries,

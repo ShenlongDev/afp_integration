@@ -1,7 +1,7 @@
 # myapp/forms.py
 from django import forms
 from django.core.exceptions import ValidationError
-from integrations.models.models import Integration
+from integrations.models.models import Integration, Organisation
 from integrations.modules import MODULES
 from django.utils import timezone
 from datetime import datetime

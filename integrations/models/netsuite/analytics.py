@@ -1,5 +1,5 @@
 from django.db import models
-from integrations.models.models import Organisation 
+from integrations.models.models import Organisation
 
 
 class NetSuiteAccounts(models.Model):

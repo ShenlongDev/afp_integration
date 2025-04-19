@@ -1,0 +1,18 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const select = document.querySelector('[name="integration_type"]');
+
+      select.addEventListener("change", function () {
+        const url   = new URL(window.location.href);
+        url.searchParams.set("integration_type", this.value);  // keep others intact
+        window.location.href = url.toString();                 // reload
+      });
+    });
+  </script>
+{% endblock %}
+
+{% block content %}{{ block.super }}{% endblock %}

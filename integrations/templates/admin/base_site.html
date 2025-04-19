@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <!-- Integration Admin Custom JavaScript -->
+    {% if javascript %}{{ javascript|safe }}{% endif %}
+    {% if css %}{{ css|safe }}{% endif %}
+    <script>console.log("Custom admin template loaded");</script>
+{% endblock %}
+
+{% block branding %}
+    <h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }} (Custom Template)</a></h1>
+{% endblock %}
