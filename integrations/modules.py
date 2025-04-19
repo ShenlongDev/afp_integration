@@ -44,9 +44,6 @@ def xero_import_xero_bank_transactions(importer):
 def xero_import_xero_budgets(importer):
     return importer.import_xero_budgets()
 
-def xero_map_xero_general_ledger(importer):
-    return importer.map_xero_general_ledger()
-
 def xero_import_xero_data(importer):
     return importer.import_xero_data()
 
@@ -107,7 +104,8 @@ def toast_import_sales_categories(importer):
 def toast_import_dining_options(importer):
     return importer.import_dining_options()
 
-
+def toast_import_payments(importer):
+    return importer.import_payment_details()
 
 
 
@@ -150,6 +148,7 @@ MODULES = {
             "restaurant_services": toast_import_restaurant_services,
             "sales_categories": toast_import_sales_categories,
             "dining_options": toast_import_dining_options,
+            "payments": toast_import_payments,
         },
     },
 }

@@ -3,7 +3,7 @@ from django.db.models import JSONField
 from decimal import Decimal
 
 class ToastOrder(models.Model):
-    order_guid = models.CharField(max_length=255, unique=True, db_index=True)
+    order_guid = models.CharField(max_length=255, primary_key=True)
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE, related_name="toast_orders")
     tenant_id = models.IntegerField(db_index=True)
     restaurant_guid = models.CharField(max_length=255, null=True, blank=True)
@@ -51,6 +51,7 @@ class ToastOrder(models.Model):
     applied_packaging_info = JSONField(null=True, blank=True)
     opened_date = models.DateTimeField(null=True, blank=True)
     void_business_date = models.CharField(max_length=50, null=True, blank=True)
+    payments = JSONField(null=True, blank=True, help_text="Raw payment data from Toast")
 
     def __str__(self):
         return f"ToastOrder {self.order_guid}"
@@ -63,6 +64,7 @@ class ToastOrder(models.Model):
             models.Index(fields=["created_date"]),
             models.Index(fields=["closed_date"]),
             models.Index(fields=["modified_date"]),
+            models.Index(fields=["payments"]),
         ]
 
 class ToastCheck(models.Model):
@@ -117,7 +119,7 @@ class ToastSelection(models.Model):
     net_sales = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1)
     voided = models.BooleanField(default=False, db_index=True)
-    business_date = models.DateField(null=True, blank=True, db_index=True)
+    business_date = models.IntegerField(null=True, blank=True)
     # Additional selection-level fields:
     external_id = models.CharField(max_length=255, null=True, blank=True)
     entity_type = models.CharField(max_length=100, null=True, blank=True)
@@ -406,3 +408,42 @@ class ToastServiceArea(models.Model):
         
     def __str__(self):
         return f"ToastServiceArea: {self.name} ({self.area_guid})"
+
+class ToastPayment(models.Model):
+    payment_guid = models.CharField(max_length=255, db_index=True)
+    tenant_id = models.IntegerField(db_index=True)
+    order_guid = models.CharField(max_length=255, db_index=True)
+    restaurant_guid = models.CharField(max_length=255, db_index=True)
+    check_guid = models.CharField(max_length=255, db_index=True)
+    integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE, related_name="toast_payments")
+    
+    type = models.CharField(max_length=50, null=True, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    tip_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    card_type = models.CharField(max_length=50, null=True, blank=True)
+    last4_digits = models.CharField(max_length=10, null=True, blank=True)
+    paid_date = models.DateTimeField(null=True, blank=True, db_index=True)
+    paid_business_date = models.IntegerField(null=True, blank=True)
+    refund_status = models.CharField(max_length=50, null=True, blank=True)
+    payment_status = models.CharField(max_length=50, null=True, blank=True)
+    card_entry_mode = models.CharField(max_length=50, null=True, blank=True)
+    
+    server_guid = models.CharField(max_length=255, null=True, blank=True)
+    created_device_id = models.CharField(max_length=100, null=True, blank=True)
+    last_modified_device_id = models.CharField(max_length=100, null=True, blank=True)
+    
+    raw_payload = JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = (('tenant_id', 'payment_guid'),)
+        indexes = [
+            models.Index(fields=['tenant_id', 'order_guid']),
+            models.Index(fields=['tenant_id', 'restaurant_guid']),
+            models.Index(fields=['tenant_id', 'paid_business_date']),
+            models.Index(fields=['tenant_id', 'payment_status']),
+        ]
+        
+    def __str__(self):
+        return f"Payment {self.payment_guid}"

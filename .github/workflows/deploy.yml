@@ -1,0 +1,111 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+    - name: Add droplet to known_hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Sync code to VPS
+      run: |
+        rsync -az --delete \
+          --exclude '.git*' \
+          ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/insights/
+
+    - name: Upload .env
+      run: |
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+          "echo '${{ secrets.ENV_FILE }}' > /var/www/insights/.env"
+
+    - name: Remote deploy commands
+      run: |
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} <<'EOSSH'
+        set -e
+        cd /var/www/insights
+
+        echo "Pulling latest code..."
+        git pull origin main
+
+        echo "Activating virtual environment..."
+        source venv/bin/activate
+
+        echo "Installing dependencies..."
+        pip install -r requirements/requirements.txt
+
+        echo "Running migrations..."
+        python manage.py makemigrations --noinput
+        python manage.py migrate --noinput
+
+        echo "Collecting static files..."
+        python manage.py collectstatic --noinput
+
+        echo "Restarting Gunicorn..."
+        pkill -f "gunicorn config.wsgi:application --bind 0.0.0.0:8000" || true
+        gunicorn config.wsgi:application --bind 0.0.0.0:8000 --daemon
+
+        echo "Stopping Celery workers..."
+        celery -A config control shutdown || true
+        sleep 30
+        pkill -f celery || true
+        pkill -9 -f "celery worker" || true
+
+        echo "Cleaning up stale pidfiles..."
+        rm -f /var/run/celery/*.pid /tmp/celerybeat.pid
+
+        echo "Ensuring log directories exist..."
+        mkdir -p /var/log/celery
+        chmod 777 /var/log/celery
+        touch /var/log/celery/worker.log /var/log/celery/worker_high_priority.log \
+              /var/log/celery/beat.log   /var/log/celery/flower.log
+        chmod 666 /var/log/celery/*.log
+
+        echo "Checking Redis health..."
+        if ! redis-cli ping | grep -q PONG; then
+          echo "Redis down → restarting..."
+          sudo systemctl restart redis
+          sleep 5
+        fi
+        redis-cli flushall || true
+
+        echo "Starting Celery workers..."
+        celery -A config worker -n normal_worker@%h      -Q org_sync,celery -c 3 -l info \
+               --logfile=/var/log/celery/worker.log --detach
+        celery -A config worker -n high_priority_worker@%h -Q high_priority -c 1 -l info \
+               --logfile=/var/log/celery/worker_high_priority.log --detach
+
+        echo "Restarting Celery Beat..."
+        pkill -f "celery beat -A config" || true
+        rm -f /tmp/celerybeat.pid
+        celery -A config beat -l info --pidfile=/tmp/celerybeat.pid \
+               --logfile=/var/log/celery/beat.log --detach
+
+        echo "Restarting Flower..."
+        pkill -f "flower -A config" || true
+        sleep 3
+        fuser -k 5555/tcp || true
+        rm -f /tmp/flower.pid
+        nohup venv/bin/celery -A config flower --port=5555 \
+              > /var/log/celery/flower.log 2>&1 &
+
+        echo "Waiting for workers to initialise..."
+        sleep 10
+        celery -A config status
+        celery -A config inspect active_queues
+
+        echo "Deployment completed successfully!"
+        EOSSH
