@@ -9,312 +9,262 @@ from integrations.models.models import (
     SyncTableLogs,
     HighPriorityTask,
 )
+from integrations.models.models import Organisation
 from django import forms
 from django.utils.html import format_html
+from collections import OrderedDict
+import json
+
+CHAR  = forms.CharField
+URL   = forms.URLField
+TEXTA = {'type': forms.CharField, 'widget': forms.Textarea}
+
+CREDENTIALS = {
+    'toast': {
+        'api_url':        {'type': URL,  'label': 'API URL',        'req': True},
+        'client_id':      {'type': CHAR, 'label': 'Client ID',      'req': True},
+        'client_secret':  {'type': CHAR, 'label': 'Client Secret',  'req': True},
+        'webhook_secret': {'type': CHAR, 'label': 'Webhook Secret', 'req': True},
+    },
+    'xero': {
+        'client_id':     {'type': CHAR, 'label': 'Client ID',     'req': True},
+        'client_secret': {'type': CHAR, 'label': 'Client Secret', 'req': True},
+    },
+    'netsuite': {
+        'account_id':    {'type': CHAR,  'label': 'Account ID',    'req': True},
+        'client_id':     {'type': CHAR,  'label': 'Client ID',     'req': True},
+        'client_secret': {'type': CHAR, 'label': 'Client Secret',  'req': True},
+        'consumer_key':  {'type': CHAR,  'label': 'Consumer Key',  'req': True},
+        'private_key':   {'type': TEXTA['type'], 'label': 'Private Key',
+                         'req': True, 'widget': TEXTA['widget']},
+        'certificate_id':{'type': CHAR,  'label': 'Certificate ID','req': True},
+    },
+    'other': {},
+}
 
 
-class IntegrationAdminForm(forms.ModelForm):
-    # Toast specific fields
-    toast_api_url = forms.URLField(required=False, label="API URL")
-    toast_client_id = forms.CharField(required=False, label="Client ID")
-    toast_client_secret = forms.CharField(required=False, widget=forms.PasswordInput, label="Client Secret")
-    toast_webhook_secret = forms.CharField(required=False, widget=forms.PasswordInput, label="Webhook Secret")
-    
-    # Xero specific fields
-    xero_client_id = forms.CharField(required=False, label="Client ID")
-    xero_client_secret = forms.CharField(required=False, widget=forms.PasswordInput, label="Client Secret")
-    
-    # NetSuite specific fields
-    netsuite_account_id = forms.CharField(required=False, label="Account ID")
-    netsuite_client_id = forms.CharField(required=False, label="Client ID")
-    netsuite_client_secret = forms.CharField(required=False, widget=forms.PasswordInput, label="Client Secret")
-    netsuite_consumer_key = forms.CharField(required=False, label="Consumer Key")
-    netsuite_private_key = forms.CharField(required=False, widget=forms.Textarea, label="Private Key")
-    netsuite_certificate_id = forms.CharField(required=False, label="Certificate ID")
-    
-    # For 'other' type or additional settings
-    custom_settings = forms.CharField(required=False, widget=forms.Textarea, 
-                               help_text="Add settings in JSON format: {\"key1\": \"value1\", \"key2\": \"value2\"}")
-    
+class _BaseIntegrationForm(forms.ModelForm):
+    custom_settings = forms.CharField(
+        required=False, widget=forms.Textarea,
+        help_text='Enter extra settings as JSON. You can use key-value pairs like "key": "value" or a complete JSON object {"key": "value"}.'
+    )
+
     class Meta:
         model = Integration
-        exclude = ('organisation',)  # Exclude it from automatic form generation
-    
-    # Add a ModelChoiceField manually
-    organisation = forms.ModelChoiceField(
-        queryset=None,  # We'll set this in __init__
-        required=True,
-        label="Organisation"
-    )
-    
+        fields = ['organisation', 'integration_type', 'is_active']
+        exclude = ('settings', 'name')
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Import Organisation here to avoid circular imports
-        from core.models import Organisation
-        self.fields['organisation'].queryset = Organisation.objects.all()
         
-        # Set initial value if editing existing object
-        if self.instance and self.instance.pk:
-            self.fields['organisation'].initial = self.instance.organisation
+        self.fields['integration_type'].widget.attrs.update({
+            "onchange": "location.search='integration_type='+this.value.toLowerCase();"
+        })
         
-        # If we're editing an existing object
-        if self.instance and self.instance.pk and self.instance.settings:
-            # Populate type-specific fields
-            if self.instance.integration_type == 'toast':
-                self.fields['toast_api_url'].initial = self.instance.get_setting('api_url')
-                self.fields['toast_client_id'].initial = self.instance.get_setting('client_id')
-                self.fields['toast_client_secret'].initial = self.instance.get_setting('client_secret')
-                self.fields['toast_webhook_secret'].initial = self.instance.get_setting('webhook_secret')
-            elif self.instance.integration_type == 'xero':
-                self.fields['xero_client_id'].initial = self.instance.get_setting('client_id')
-                self.fields['xero_client_secret'].initial = self.instance.get_setting('client_secret')
-            elif self.instance.integration_type == 'netsuite':
-                self.fields['netsuite_account_id'].initial = self.instance.get_setting('account_id')
-                self.fields['netsuite_client_id'].initial = self.instance.get_setting('client_id')
-                self.fields['netsuite_client_secret'].initial = self.instance.get_setting('client_secret')
-                self.fields['netsuite_consumer_key'].initial = self.instance.get_setting('consumer_key')
-                self.fields['netsuite_private_key'].initial = self.instance.get_setting('private_key')
-                self.fields['netsuite_certificate_id'].initial = self.instance.get_setting('certificate_id')
+        if 'organisation' in self.fields:
+            self.fields['organisation'].queryset = Organisation.objects.all()
             
-            # For 'other' type or any additional settings not covered above
-            if self.instance.integration_type == 'other':
-                import json
-                self.fields['custom_settings'].initial = json.dumps(self.instance.settings, indent=2)
-    
-    def save(self, commit=True):
-        instance = super().save(commit=False)
+        current_type = None
+        if self.instance.pk:
+            current_type = self.instance.integration_type
+        elif 'initial' in kwargs and 'integration_type' in kwargs['initial']:
+            current_type = kwargs['initial']['integration_type']
         
-        # Set the organisation
-        if self.cleaned_data.get('organisation'):
-            instance.organisation = self.cleaned_data['organisation']
+        if current_type == 'other':
+            self.fields['name'] = forms.CharField(required=False, label='Name')
+            
+        if self.instance.pk and self.instance.settings:
+            if hasattr(self.instance, 'organisation') and self.instance.organisation:
+                self.initial['organisation'] = self.instance.organisation.pk
+                
+            kind = self.instance.integration_type
+            
+            if kind == 'other' and hasattr(self.instance, 'name') and self.instance.name:
+                self.initial['name'] = self.instance.name
+                
+            for key in CREDENTIALS.get(kind, {}):
+                if key in self.instance.settings:
+                    field_name = f'{kind}_{key}'
+                    if field_name in self.fields:
+                        self.fields[field_name].initial = self.instance.settings[key]
+            
+            extra_settings = {}
+            standard_keys = list(CREDENTIALS.get(kind, {}).keys())
+            
+            for key, value in self.instance.settings.items():
+                if key not in standard_keys:
+                    extra_settings[key] = value
+            
+            if extra_settings:
+                self.fields['custom_settings'].initial = json.dumps(
+                    extra_settings, indent=2
+                )
+
+    def clean_custom_settings(self):
+        """Validate and format custom_settings JSON"""
+        raw_data = self.cleaned_data.get('custom_settings')
+        if not raw_data:
+            return '{}'
+            
+        raw_data = raw_data.strip()
+        if not (raw_data.startswith('{') and raw_data.endswith('}')):
+            raw_data = '{' + raw_data + '}'
         
-        # Always start with empty settings to ensure no leakage between types
-        instance.settings = {}
-        
-        # Only save settings for the selected integration type
-        integration_type = instance.integration_type.lower()
-        
-        if integration_type == 'toast':
-            # Save Toast fields
-            if self.cleaned_data.get('toast_api_url'):
-                instance.settings['api_url'] = self.cleaned_data.get('toast_api_url')
-            if self.cleaned_data.get('toast_client_id'):
-                instance.settings['client_id'] = self.cleaned_data.get('toast_client_id')
-            if self.cleaned_data.get('toast_client_secret'):
-                instance.settings['client_secret'] = self.cleaned_data.get('toast_client_secret')
-            if self.cleaned_data.get('toast_webhook_secret'):
-                instance.settings['webhook_secret'] = self.cleaned_data.get('toast_webhook_secret')
-        elif integration_type == 'xero':
-            # Save Xero fields
-            if self.cleaned_data.get('xero_client_id'):
-                instance.settings['client_id'] = self.cleaned_data.get('xero_client_id')
-            if self.cleaned_data.get('xero_client_secret'):
-                instance.settings['client_secret'] = self.cleaned_data.get('xero_client_secret')
-        elif integration_type == 'netsuite':
-            # Save NetSuite fields
-            if self.cleaned_data.get('netsuite_account_id'):
-                instance.settings['account_id'] = self.cleaned_data.get('netsuite_account_id')
-            if self.cleaned_data.get('netsuite_client_id'):
-                instance.settings['client_id'] = self.cleaned_data.get('netsuite_client_id')
-            if self.cleaned_data.get('netsuite_client_secret'):
-                instance.settings['client_secret'] = self.cleaned_data.get('netsuite_client_secret')
-            if self.cleaned_data.get('netsuite_consumer_key'):
-                instance.settings['consumer_key'] = self.cleaned_data.get('netsuite_consumer_key')
-            if self.cleaned_data.get('netsuite_private_key'):
-                instance.settings['private_key'] = self.cleaned_data.get('netsuite_private_key')
-            if self.cleaned_data.get('netsuite_certificate_id'):
-                instance.settings['certificate_id'] = self.cleaned_data.get('netsuite_certificate_id')
-        elif integration_type == 'other':
-            # For 'other' type, only use custom_settings
-            try:
-                import json
-                if self.cleaned_data.get('custom_settings'):
-                    instance.settings = json.loads(self.cleaned_data.get('custom_settings'))
-            except json.JSONDecodeError:
-                # Fallback for invalid JSON
-                instance.settings = {'error': 'Invalid JSON format'}
-            # Return early to avoid mixing with other settings
-            if commit:
-                instance.save()
-            return instance
-        
-        # For all integration types besides 'other', allow custom_settings to be merged
-        if self.cleaned_data.get('custom_settings'):
-            try:
-                import json
-                custom_settings = json.loads(self.cleaned_data.get('custom_settings'))
-                # Merge custom settings with existing settings
-                instance.settings.update(custom_settings)
-            except json.JSONDecodeError:
-                # Skip invalid JSON
-                pass
-        
-        if commit:
-            instance.save()
-        return instance
+        try:
+            json_data = json.loads(raw_data)
+            return json.dumps(json_data, indent=2)
+        except json.JSONDecodeError as e:
+            raise forms.ValidationError(
+                f"Invalid JSON format: {str(e)}. Please check your syntax - make sure keys and values are quoted properly."
+            )
 
     def clean(self):
-        cleaned_data = super().clean()
-        integration_type = cleaned_data.get('integration_type', '').lower()
+        cd = super().clean()
+        kind = cd.get('integration_type')
         
-        # Check for credentials in fields not matching the selected type
-        if integration_type == 'toast':
-            # Required fields for Toast
-            if not cleaned_data.get('toast_client_id'):
-                self.add_error('toast_client_id', 'Client ID is required for Toast integration')
-            if not cleaned_data.get('toast_client_secret'):
-                self.add_error('toast_client_secret', 'Client Secret is required for Toast integration')
+        if kind == 'other':
+            if not cd.get('custom_settings') or cd.get('custom_settings') == '{}':
+                self.add_error('custom_settings', 'Custom settings are required for Other integration type.')
+        else:
+            for key, spec in CREDENTIALS.get(kind, {}).items():
+                if spec.get('req') and not cd.get(f'{kind}_{key}'):
+                    self.add_error(f'{kind}_{key}', f'{spec["label"]} is required.')
+                    
+        return cd
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        kind = obj.integration_type
+        
+        if kind == 'other' and 'name' in self.cleaned_data:
+            obj.name = self.cleaned_data['name']
+        
+        obj.settings = {}
+        
+        if kind == 'other':
+            try:
+                obj.settings = json.loads(self.cleaned_data.get('custom_settings') or '{}')
+            except json.JSONDecodeError:
+                obj.settings = {}
+        else:
+            obj.name = obj.name or kind.capitalize()
             
-            # Reject credentials for other types
-            if any([
-                cleaned_data.get('xero_client_id'), 
-                cleaned_data.get('xero_client_secret'),
-                cleaned_data.get('netsuite_account_id'),
-                cleaned_data.get('netsuite_client_id'),
-                cleaned_data.get('netsuite_client_secret'),
-                cleaned_data.get('netsuite_consumer_key'),
-                cleaned_data.get('netsuite_private_key'),
-                cleaned_data.get('netsuite_certificate_id'),
-                cleaned_data.get('custom_settings')
-            ]):
-                self.add_error(None, 'Only Toast credentials should be provided for Toast integration type')
-            
-        elif integration_type == 'xero':
-            # Required fields for Xero
-            if not cleaned_data.get('xero_client_id'):
-                self.add_error('xero_client_id', 'Client ID is required for Xero integration')
-            if not cleaned_data.get('xero_client_secret'):
-                self.add_error('xero_client_secret', 'Client Secret is required for Xero integration')
-            
-            # Reject credentials for other types
-            if any([
-                cleaned_data.get('toast_api_url'),
-                cleaned_data.get('toast_client_id'),
-                cleaned_data.get('toast_client_secret'),
-                cleaned_data.get('toast_webhook_secret'),
-                cleaned_data.get('netsuite_account_id'),
-                cleaned_data.get('netsuite_client_id'),
-                cleaned_data.get('netsuite_client_secret'),
-                cleaned_data.get('netsuite_consumer_key'),
-                cleaned_data.get('netsuite_private_key'),
-                cleaned_data.get('netsuite_certificate_id'),
-                cleaned_data.get('custom_settings')
-            ]):
-                self.add_error(None, 'Only Xero credentials should be provided for Xero integration type')
-            
-        elif integration_type == 'netsuite':
-            # Required fields for NetSuite
-            if not cleaned_data.get('netsuite_account_id'):
-                self.add_error('netsuite_account_id', 'Account ID is required for NetSuite integration')
-            
-            # Reject credentials for other types
-            if any([
-                cleaned_data.get('toast_api_url'),
-                cleaned_data.get('toast_client_id'),
-                cleaned_data.get('toast_client_secret'),
-                cleaned_data.get('toast_webhook_secret'),
-                cleaned_data.get('xero_client_id'),
-                cleaned_data.get('xero_client_secret'),
-                cleaned_data.get('custom_settings')
-            ]):
-                self.add_error(None, 'Only NetSuite credentials should be provided for NetSuite integration type')
-            
-        elif integration_type == 'other':
-            # For 'other' type, only custom_settings should be used
-            if not cleaned_data.get('custom_settings'):
-                self.add_error('custom_settings', 'Custom settings are required for Other integration type')
-            else:
-                try:
-                    import json
-                    json.loads(cleaned_data.get('custom_settings'))
-                except json.JSONDecodeError:
-                    self.add_error('custom_settings', 'Invalid JSON format')
+            for key in CREDENTIALS.get(kind, {}):
+                field_name = f'{kind}_{key}'
+                if field_name in self.cleaned_data:
+                    val = self.cleaned_data[field_name]
+                    if val not in (None, ''):
+                        obj.settings[key] = val
                 
-            # Reject credentials for specific types
-            if any([
-                cleaned_data.get('toast_api_url'),
-                cleaned_data.get('toast_client_id'),
-                cleaned_data.get('toast_client_secret'),
-                cleaned_data.get('toast_webhook_secret'),
-                cleaned_data.get('xero_client_id'),
-                cleaned_data.get('xero_client_secret'),
-                cleaned_data.get('netsuite_account_id'),
-                cleaned_data.get('netsuite_client_id'),
-                cleaned_data.get('netsuite_client_secret'),
-                cleaned_data.get('netsuite_consumer_key'),
-                cleaned_data.get('netsuite_private_key'),
-                cleaned_data.get('netsuite_certificate_id')
-            ]):
-                self.add_error(None, 'Only custom settings should be provided for Other integration type')
-        
-        return cleaned_data
+            if self.instance.pk and self.instance.settings:
+                for key in CREDENTIALS.get(kind, {}):
+                    field_name = f'{kind}_{key}'
+                    is_secret = any(x in key.lower() for x in ('secret', 'password', 'key', 'token'))
+                    
+                    if is_secret and field_name in self.cleaned_data and not self.cleaned_data[field_name]:
+                        if key in self.instance.settings:
+                            obj.settings[key] = self.instance.settings[key]
+                    
+            try:
+                extra_settings = json.loads(self.cleaned_data.get('custom_settings') or '{}')
+                obj.settings.update(extra_settings)
+            except json.JSONDecodeError:
+                pass
+                
+        if commit:
+            obj.save()
+        return obj
 
 
+@admin.register(Integration)
 class IntegrationAdmin(admin.ModelAdmin):
-    form = IntegrationAdminForm
-    list_display = ('name', 'integration_type', 'organisation', 'is_active', 'created_at')
-    list_filter = ('integration_type', 'is_active', 'created_at')
-    search_fields = ('name', 'organisation__name')
-    readonly_fields = ('created_at', 'updated_at', 'settings_display')
-    
-    fieldsets = [
-        (None, {
-            'fields': ('organisation', 'integration_type', 'name', 'is_active')
-        }),
-        ('Toast Settings', {
-            'classes': ('toast-fieldset',),
-            'fields': ('toast_api_url', 'toast_client_id', 'toast_client_secret', 'toast_webhook_secret'),
-        }),
-        ('Xero Settings', {
-            'classes': ('xero-fieldset',),
-            'fields': ('xero_client_id', 'xero_client_secret'),
-        }),
-        ('NetSuite Settings', {
-            'classes': ('netsuite-fieldset',),
-            'fields': ('netsuite_account_id', 'netsuite_client_id', 'netsuite_client_secret', 
-                     'netsuite_consumer_key', 'netsuite_private_key', 'netsuite_certificate_id'),
-        }),
-        ('Custom Settings', {
-            'classes': ('custom-fieldset',),
-            'fields': ('custom_settings',),
-        }),
-        ('Information', {
-            'fields': ('created_at', 'updated_at', 'settings_display'),
-            'classes': ('collapse',),
-        }),
-    ]
-    
-    def settings_display(self, obj):
-        """Display settings in a readable format"""
-        if not obj.settings:
-            return "No settings saved"
-            
-        html = ['<div style="max-height: 300px; overflow: auto;">']
-        html.append('<table style="width: 100%; border-collapse: collapse;">')
-        html.append('<tr><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Key</th><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Value</th></tr>')
+    form = _BaseIntegrationForm
+    add_form_template    = "admin/integration_form.html"
+    change_form_template = "admin/integration_form.html"
+
+    list_display    = ('name','integration_type','organisation','is_active','created_at')
+    list_filter     = ('integration_type','is_active','created_at')
+    search_fields   = ('name','organisation__name')
+    readonly_fields = ('created_at','updated_at','settings_view')
+
+    def get_form(self, request, obj=None, **kwargs):
+        current_type = (
+            request.GET.get('integration_type')
+            or (obj.integration_type if obj else 'toast')
+        )
+
+        dyn_fields = OrderedDict()
         
-        for key, value in obj.settings.items():
-            # Mask sensitive values
-            if any(sensitive in key.lower() for sensitive in ['secret', 'password', 'key', 'token']):
-                if value and len(str(value)) > 8:
-                    display_value = str(value)[:4] + "****" + str(value)[-4:]
-                else:
-                    display_value = "********"
-            else:
-                display_value = str(value)
-                
-            html.append(f'<tr><td style="border: 1px solid #ddd; padding: 8px;">{key}</td><td style="border: 1px solid #ddd; padding: 8px;">{display_value}</td></tr>')
-            
-        html.append('</table>')
-        html.append('</div>')
-        return format_html(''.join(html))
-    settings_display.short_description = "Settings Overview"
-    
-    class Media:
-        js = ('admin/js/vendor/jquery/jquery.min.js',)
-        css = {
-            'all': ('css/admin_integration.css',)
-        }
+        if current_type == 'other':
+            dyn_fields['name'] = forms.CharField(required=False, label='Name')
+        
+        for key, spec in CREDENTIALS.get(current_type, {}).items():
+            dyn_fields[f'{current_type}_{key}'] = spec['type'](
+                label = spec['label'],
+                required = False,
+                widget = spec.get('widget')
+            )
+
+        dyn_fields['custom_settings'] = _BaseIntegrationForm.base_fields['custom_settings']
+
+        return type(
+            'DynamicIntegrationForm',
+            (_BaseIntegrationForm,),
+            dyn_fields,
+        )
+
+    def get_fieldsets(self, request, obj=None):
+        current_type = (
+            request.GET.get('integration_type')
+            or (obj.integration_type if obj else 'toast')
+        )
+
+        if current_type == 'other':
+            main = ('organisation', 'integration_type', 'name', 'is_active')
+        else:
+            main = ('organisation', 'integration_type', 'is_active')
+
+        creds = [f'{current_type}_{k}' for k in CREDENTIALS.get(current_type, {})]
+
+        fs = [
+            (None, {'fields': main}),
+        ]
+
+        if creds:
+            fs.append((f'{current_type.capitalize()} Settings', {'fields': creds}))
+        if current_type == 'other':
+            fs.append(('Custom Settings', {'fields': ('custom_settings',)}))
+        else:
+            fs.append(('Extra JSON (optional)', {'fields': ('custom_settings',)}))
+
+        fs.append(('Info', {
+            'classes': ('collapse',),
+            'fields': ('created_at','updated_at','settings_view')
+        }))
+        return fs
+
+    def add_view(self, request, form_url='', extra_context=None):
+        ctx = extra_context or {}
+        ctx['types'] = list(CREDENTIALS.keys())
+        return super().add_view(request, form_url, ctx)
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        ctx = extra_context or {}
+        ctx['types'] = list(CREDENTIALS.keys())
+        return super().change_view(request, object_id, form_url, ctx)
+
+    def settings_view(self, obj):
+        if not obj.settings:
+            return '—'
+        rows = []
+        for k, v in obj.settings.items():
+            if any(w in k.lower() for w in ('secret','password','key','token')):
+                v = str(v)[:4] + '****' + str(v)[-4:]
+            rows.append(f'<tr><td>{k}</td><td>{v}</td></tr>')
+        return format_html('<table style="width:100%">{}</table>', ''.join(rows))
+    settings_view.short_description = "Stored settings"
+
+
 
 
 class IntegrationAccessTokenAdmin(admin.ModelAdmin):
@@ -427,7 +377,8 @@ class HighPriorityTaskAdmin(ImportToolsMixin, admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         return False
 
-admin.site.register(Integration, IntegrationAdmin)
+# admin.site.register(Integration, IntegrationAdmin)
 admin.site.register(IntegrationAccessToken, IntegrationAccessTokenAdmin)
 admin.site.register(SyncTableLogs, SyncTableLogsAdmin) 
 admin.site.register(HighPriorityTask, HighPriorityTaskAdmin)
+admin.site.register(Organisation)

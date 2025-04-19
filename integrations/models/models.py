@@ -8,7 +8,13 @@ INTEGRATION_TYPE_CHOICES = (
     ("OTHER", "Other"),
 )   
 
+class Organisation(models.Model):
+    name = models.CharField(max_length=255, unique=True)    
 
+    def __str__(self):
+        return self.name
+    
+    
 class Integration(models.Model):
     """
     Unified integration model with flexible settings storage
@@ -19,37 +25,24 @@ class Integration(models.Model):
         ('netsuite', 'NetSuite'),
         ('other', 'Other'),
     ]
-    
-    organisation = models.ForeignKey('core.Organisation', on_delete=models.CASCADE, related_name="integrations")
-    integration_type = models.CharField(
-        max_length=50,
-        choices=INTEGRATION_TYPE_CHOICES,
-        default="TOAST"
-    )
-    name = models.CharField(max_length=255)
+
+    organisation     = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name="integrations")
+    integration_type = models.CharField(max_length=50,
+                                        choices=INTEGRATION_TYPES,
+                                        default='toast')
+    name      = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
-    settings = models.JSONField(default=dict, help_text="Integration settings stored as key-value pairs")
+    settings  = models.JSONField(default=dict, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('organisation', 'integration_type', 'name')
-        verbose_name = "Integration"
-        verbose_name_plural = "Integrations"
-        
+        unique_together = ('organisation', 'integration_type')
+        verbose_name_plural = 'Integrations'
+
     def __str__(self):
-        return f"{self.get_integration_type_display()} - {self.name} ({self.organisation.name})"
-    
-    def get_setting(self, key, default=None):
-        """Get a setting value by key"""
-        return self.settings.get(key, default)
-    
-    def set_setting(self, key, value):
-        """Set a setting value and save the model"""
-        if self.settings is None:
-            self.settings = {}
-        self.settings[key] = value
-        self.save(update_fields=['settings', 'updated_at'])
+        return f'{self.get_integration_type_display()} – {self.name}'
 
 
 class IntegrationAccessToken(models.Model):
@@ -86,7 +79,7 @@ class SyncTableLogs(models.Model):
         choices=INTEGRATION_TYPE_CHOICES,
         default="XERO"
     )
-    organisation = models.ForeignKey('core.Organisation', on_delete=models.CASCADE)
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE)
     fetched_records = models.IntegerField()
     last_updated_time = models.DateTimeField()
     last_updated_date = models.DateField()

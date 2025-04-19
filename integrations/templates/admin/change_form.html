@@ -1,0 +1,6 @@
+{% extends "admin/change_form.html" %}
+
+{% block content %}
+    {{ block.super }}
+    {% if after_content %}{{ after_content|safe }}{% endif %}
+{% endblock %}

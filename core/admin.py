@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Organisation, TaskLog
+from .models import TaskLog
 from core.forms import DataImportForm, BudgetImportForm
 from django.urls import path
 from django.shortcuts import render, redirect
@@ -86,10 +86,6 @@ class ImportToolsMixin:
         return render(request, "admin/budget_import_form.html", context)
 
 
-class OrganisationAdmin(admin.ModelAdmin):
-    list_display = ('name',)
-    search_fields = ('name',)
-    
 
 class TaskLogAdmin(admin.ModelAdmin):
     list_display = ('task_name', 'status', 'timestamp')
@@ -97,6 +93,5 @@ class TaskLogAdmin(admin.ModelAdmin):
     list_filter = ('status',)
     
 # Register regular model admins
-admin.site.register(Organisation, OrganisationAdmin)
 admin.site.register(TaskLog, TaskLogAdmin)
 
