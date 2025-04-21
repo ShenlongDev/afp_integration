@@ -151,5 +151,3 @@ class TaskLogAdmin(admin.ModelAdmin):
     search_fields = ('task_name', 'status')
     list_filter = ('status',)
     
-admin.site.register(TaskLog, TaskLogAdmin)
-

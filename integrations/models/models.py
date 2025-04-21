@@ -26,13 +26,30 @@ class Integration(models.Model):
         ('other', 'Other'),
     ]
 
-    organisation     = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name="integrations")
+    organisation     = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name="integrations_org")
     integration_type = models.CharField(max_length=50,
                                         choices=INTEGRATION_TYPES,
                                         default='toast')
     name      = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
     settings  = models.JSONField(default=dict, blank=True)
+    
+    # old fields
+    org = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name="integrations")
+
+    xero_client_id = models.CharField(max_length=255, blank=True, null=True)
+    xero_client_secret = models.CharField(max_length=255, blank=True, null=True)
+
+    netsuite_account_id = models.CharField(max_length=255, blank=True, null=True)
+    netsuite_client_id = models.CharField(max_length=255, blank=True, null=True)
+    netsuite_client_secret = models.CharField(max_length=255, blank=True, null=True)
+    netsuite_consumer_key = models.CharField(max_length=255, blank=True, null=True)
+    netsuite_private_key = models.TextField(blank=True, null=True)
+    netsuite_certificate_id = models.CharField(max_length=255, blank=True, null=True)
+    
+    toast_api_url = models.CharField(max_length=100, blank=True, null=True)
+    toast_client_id = models.CharField(max_length=255, blank=True, null=True)
+    toast_client_secret = models.CharField(max_length=255, blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -68,7 +85,6 @@ class IntegrationAccessToken(models.Model):
     def __str__(self):
         return (
             f"Token({self.integration_type} | "
-            f"{self.integration.organisation.name})"
         )
 
 
