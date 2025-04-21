@@ -381,4 +381,3 @@ class HighPriorityTaskAdmin(ImportToolsMixin, admin.ModelAdmin):
 admin.site.register(IntegrationAccessToken, IntegrationAccessTokenAdmin)
 admin.site.register(SyncTableLogs, SyncTableLogsAdmin) 
 admin.site.register(HighPriorityTask, HighPriorityTaskAdmin)
-admin.site.register(Organisation)
