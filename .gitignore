@@ -2,6 +2,7 @@
 *.py[cod]
 __pycache__/
 *.so
+*.pyc
 
 # Django
 *.log
