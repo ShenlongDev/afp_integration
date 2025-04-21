@@ -166,7 +166,7 @@ class POSSales(models.Model):
     modified = models.DateTimeField(blank=True, null=True)
     automation = models.CharField(max_length=255, blank=True, null=True)
     item_voided = models.BooleanField(blank=True, null=True)
-    organization_id = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
+    organisation_id = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
     client_id = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
     site_id = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
     item_id = models.CharField(max_length=255, blank=True, null=True)
