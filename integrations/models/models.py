@@ -1,4 +1,5 @@
 from django.db import models
+from core.models import Organisation
 
 
 INTEGRATION_TYPE_CHOICES = (
@@ -7,12 +8,6 @@ INTEGRATION_TYPE_CHOICES = (
     ("TOAST", "Toast"),
     ("OTHER", "Other"),
 )   
-
-class Organisation(models.Model):
-    name = models.CharField(max_length=255, unique=True)    
-
-    def __str__(self):
-        return self.name
     
     
 class Integration(models.Model):
@@ -125,3 +120,62 @@ class HighPriorityTask(models.Model):
             return self.processed_at - self.in_progress_since
         return None
         
+
+class POSSales(models.Model):
+    order_id = models.CharField(max_length=255, blank=True, null=True)
+    date_ntz = models.DateTimeField(blank=True, null=True)
+    staff_name = models.CharField(max_length=255, blank=True, null=True)
+    sales_area = models.CharField(max_length=255, blank=True, null=True)
+    service = models.CharField(max_length=255, blank=True, null=True)
+    sale_type = models.CharField(max_length=255, blank=True, null=True)
+    currency = models.CharField(max_length=3, blank=True, null=True)
+    net_amount = models.FloatField(blank=True, null=True)
+    gross_amount = models.FloatField(blank=True, null=True)
+    tax = models.FloatField(blank=True, null=True)
+    discount = models.FloatField(blank=True, null=True)
+    gratuity = models.FloatField(blank=True, null=True)
+    refund = models.FloatField(blank=True, null=True)
+    void = models.BooleanField(blank=True, null=True)
+    item_type = models.CharField(max_length=255, blank=True, null=True)
+    item_category = models.CharField(max_length=255, blank=True, null=True)
+    item_product_name = models.CharField(max_length=255, blank=True, null=True)
+    item_quantity = models.FloatField(blank=True, null=True)
+    item_variation = models.CharField(max_length=255, blank=True, null=True)
+    item_net_amount = models.FloatField(blank=True, null=True)
+    item_gross_amount = models.FloatField(blank=True, null=True)
+    item_tax = models.FloatField(blank=True, null=True)
+    item_line_discount = models.FloatField(blank=True, null=True)
+    item_refunded = models.BooleanField(blank=True, null=True)
+    item_index = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
+    outlet_name = models.CharField(max_length=255, blank=True, null=True)
+    location = models.CharField(max_length=255, blank=True, null=True)
+    register_name = models.CharField(max_length=255, blank=True, null=True)
+    dining_options = models.CharField(max_length=255, blank=True, null=True)
+    covers = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
+    receipt_no = models.CharField(max_length=255, blank=True, null=True)
+    checks = models.CharField(max_length=255, blank=True, null=True)
+    duration = models.FloatField(blank=True, null=True)
+    order_status = models.CharField(max_length=255, blank=True, null=True)
+    client_name = models.CharField(max_length=255, blank=True, null=True)
+    source_system = models.CharField(max_length=255, blank=True, null=True)
+    business_date = models.DateField(blank=True, null=True)
+    date = models.DateTimeField(blank=True, null=True)
+    opened = models.DateTimeField(blank=True, null=True)
+    paid = models.DateTimeField(blank=True, null=True)
+    closed = models.DateTimeField(blank=True, null=True)
+    modified = models.DateTimeField(blank=True, null=True)
+    automation = models.CharField(max_length=255, blank=True, null=True)
+    item_voided = models.BooleanField(blank=True, null=True)
+    organization_id = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
+    client_id = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
+    site_id = models.DecimalField(max_digits=38, decimal_places=0, blank=True, null=True)
+    item_id = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        unique_together = ('order_id', 'item_id')
+        indexes = [
+            models.Index(fields=['order_id', 'item_id']),
+        ]
+
+    def __str__(self):
+        return f"Order {self.order_id}" if self.order_id else "POS Sale" 
