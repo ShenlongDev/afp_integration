@@ -167,6 +167,45 @@ class ToastSelection(models.Model):
         ]
         unique_together = ('tenant_id', 'selection_guid')
 
+class ToastGeneralLocation(models.Model):
+    tenant_id = models.IntegerField(db_index=True)
+    guid = models.CharField(max_length=255, unique=True, db_index=True)
+    general_name = models.CharField(max_length=255, db_index=True)
+    location_name = models.CharField(max_length=255, null=True, blank=True)
+    location_code = models.CharField(max_length=50, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    timezone = models.CharField(max_length=50, null=True, blank=True)
+    closeout_hour = models.TimeField(null=True, blank=True)
+    management_group_guid = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    currency_code = models.CharField(max_length=10, null=True, blank=True)
+    first_business_date = models.DateField(null=True, blank=True)
+    archived = models.BooleanField(default=False, db_index=True)
+    # Example URL and address fields:
+    url_website = models.URLField(null=True, blank=True)
+    url_facebook = models.URLField(null=True, blank=True)
+    url_twitter = models.URLField(null=True, blank=True)
+    url_order_online = models.URLField(null=True, blank=True)
+    address_line1 = models.CharField(max_length=255, null=True, blank=True)
+    address_line2 = models.CharField(max_length=255, null=True, blank=True)
+    city = models.CharField(max_length=100, null=True, blank=True)
+    state_code = models.CharField(max_length=50, null=True, blank=True)
+    zip_code = models.CharField(max_length=20, null=True, blank=True)
+    country = models.CharField(max_length=100, null=True, blank=True)
+    phone = models.CharField(max_length=20, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
+    def __str__(self):
+        return f"ToastGeneralLocation {self.general_name}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["tenant_id"]),
+            models.Index(fields=["general_name"]),
+            models.Index(fields=["archived"]),
+            models.Index(fields=["management_group_guid"]),
+        ]
+        unique_together = ('tenant_id', 'guid')
 
 class ToastDaySchedule(models.Model):
     integration = models.ForeignKey("integrations.Integration", on_delete=models.CASCADE)
