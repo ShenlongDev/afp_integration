@@ -46,7 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles',
+    'django.contrib.static',
     'django_celery_beat',
     'core',
     'rest_framework',
@@ -310,7 +310,7 @@ JAZZMIN_UI_TWEAKS = {
 STATIC_URL = '/static/'
 
 # Directory where static files will be collected
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
 # Additional locations the staticfiles app will traverse
 STATICFILES_DIRS = [
