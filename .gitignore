@@ -57,8 +57,12 @@ db.sqlite3-journal
 # Static and media files
 /staticfiles/
 /media/
-/static/
+/static/*
+!static/.gitkeep
 
+# Logs
+/logs/*
+!logs/.gitkeep
 
 # VS Code
 .vscode/
