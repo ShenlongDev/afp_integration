@@ -178,10 +178,10 @@ class Command(BaseCommand):
                     areas_count = service.import_service_areas()
                     self.stdout.write(self.style.SUCCESS(f"Imported {areas_count} service areas for integration ID {integration.id}"))
                 
-                if run_all or run_payments:
-                    self.stdout.write(f"Importing payments for integration ID {integration.id}...")
-                    payments_count = service.import_payment_details()
-                    self.stdout.write(self.style.SUCCESS(f"Imported {payments_count} payments for integration ID {integration.id}"))
+                # if run_all or run_payments:
+                #     self.stdout.write(f"Importing payments for integration ID {integration.id}...")
+                #     payments_count = service.import_payment_details()
+                #     self.stdout.write(self.style.SUCCESS(f"Imported {payments_count} payments for integration ID {integration.id}"))
             except Exception as e:
                 logger.error("Error importing Toast data for integration ID %s: %s", integration.id, e, exc_info=True)
                 self.stdout.write(self.style.ERROR(f"Error importing data for integration ID {integration.id}: {str(e)}"))

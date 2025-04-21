@@ -24,9 +24,9 @@ class ToastIntegrationService:
     """
     def __init__(self, integration, start_date=None, end_date=None):
         self.integration = integration
-        self.hostname = integration.toast_api_url 
-        self.client_id = integration.toast_client_id
-        self.client_secret = integration.toast_client_secret
+        self.hostname = integration.settings.get('api_url')
+        self.client_id = integration.settings.get('client_id')
+        self.client_secret = integration.settings.get('client_secret')
         self.auth_service = ToastAuthService(self.hostname, self.client_id, self.client_secret)
         self.access_token = self.auth_service.login()
         self.start_date = start_date
@@ -150,7 +150,6 @@ class ToastIntegrationService:
 
             # Create or update Site
             site_defaults = {
-                "organisation": self.integration.org,
                 "name": general.get("name"),
                 "code": general.get("locationCode"),
                 "description": general.get("description"),
@@ -166,13 +165,26 @@ class ToastIntegrationService:
                 "timezone": general.get("timeZone"),
                 "currency_code": general.get("currencyCode"),
                 "opened_date": self.convert_to_date(general.get("firstBusinessDate")),
-                "is_active": not general.get("archived", False),
+                "status": "inactive" if general.get("archived", False) else "active",
             }
-            site, _ = Site.objects.update_or_create(
-                organisation=self.integration.org,
-                name=site_defaults["name"],
-                defaults=site_defaults
-            )
+            
+            # First try to find an existing site by name and organisation
+            site = Site.objects.filter(
+                organisation=self.integration.organisation,
+                name=site_defaults["name"]
+            ).first()
+            
+            if site:
+                # Update existing site
+                for key, value in site_defaults.items():
+                    setattr(site, key, value)
+                site.save()
+            else:
+                # Create new site
+                site = Site.objects.create(
+                    organisation=self.integration.organisation,
+                    **site_defaults
+                )
 
             # Create or update IntegrationSiteMapping
             mapping_defaults = {
@@ -209,7 +221,7 @@ class ToastIntegrationService:
             day_schedule_map = {}
             for ds_guid, ds in day_schedules_data.items():
                 ds_defaults = {
-                    "tenant_id": self.integration.org.id,
+                    "tenant_id": self.integration.organisation.id,
                     "integration": self.integration,
                     "restaurant": site,  # Changed from location_obj to site
                     "guid": ds_guid,
@@ -220,7 +232,7 @@ class ToastIntegrationService:
                 }
                 day_obj, _ = ToastDaySchedule.objects.update_or_create(
                     guid=ds_guid,
-                    tenant_id=self.integration.org.id,
+                    tenant_id=self.integration.organisation.id,
                     defaults=ds_defaults
                 )
                 day_schedule_map[ds_guid] = day_obj
@@ -228,7 +240,7 @@ class ToastIntegrationService:
 
             # Update/insert ToastWeeklySchedule record.
             weekly_defaults = {
-                "tenant_id": self.integration.org.id,
+                "tenant_id": self.integration.organisation.id,
                 "integration": self.integration,
                 "restaurant": site,  # Changed from location_obj to site
                 "monday": week_schedule_data.get("monday"),
@@ -242,7 +254,7 @@ class ToastIntegrationService:
             weekly_obj, _ = ToastWeeklySchedule.objects.update_or_create(
                 integration=self.integration,
                 restaurant=site,  # Changed from location_obj to site
-                tenant_id=self.integration.org.id,
+                tenant_id=self.integration.organisation.id,
                 defaults=weekly_defaults
             )
             logger.info("Imported weekly schedule for restaurant: %s", site)
@@ -266,7 +278,7 @@ class ToastIntegrationService:
             sunday_start, sunday_end, sunday_overnight, sunday_related = get_day_schedule_info(week_schedule_data.get("sunday"))
 
             joined_defaults = {
-                "tenant_id": self.integration.org.id,
+                "tenant_id": self.integration.organisation.id,
                 "integration": self.integration,
                 "restaurant": site,  # Changed from location_obj to site
                 "monday_start_time": monday_start,
@@ -301,7 +313,7 @@ class ToastIntegrationService:
             joined_obj, _ = ToastJoinedOpeningHours.objects.update_or_create(
                 integration=self.integration,
                 restaurant=site,  # Changed from location_obj to site
-                tenant_id=self.integration.org.id,
+                tenant_id=self.integration.organisation.id,
                 defaults=joined_defaults
             )
             logger.info("Imported joined opening hours for restaurant: %s", site)
@@ -400,7 +412,7 @@ class ToastIntegrationService:
         SyncTableLogs.objects.create(
             module_name=module_name,
             integration='TOAST',
-            organization=self.integration.org,
+            organisation=self.integration.organisation,
             fetched_records=fetched_records,
             last_updated_time=timezone.now(),
             last_updated_date=timezone.now().date()
@@ -463,12 +475,12 @@ class ToastIntegrationService:
                     "void_business_date": order_data.get("voidBusinessDate"),
                     "restaurant_guid": order_data.get("restaurant_guid"),
                     "payments": all_payments if all_payments else None,
-                    "site": self.integration.org.sites.filter(integration_mappings__external_id=order_data.get("restaurant_guid")).first(),
+                    "site": self.integration.organisation.sites.filter(integration_mappings__external_id=order_data.get("restaurant_guid")).first(),
                 }
                     
                 order, created = ToastOrder.objects.update_or_create(
                     order_guid=order_guid,
-                    tenant_id=self.integration.org.id,
+                    tenant_id=self.integration.organisation.id,
                     defaults=order_defaults
                 )
                 
@@ -578,7 +590,7 @@ class ToastIntegrationService:
                     check_obj, _ = ToastCheck.objects.update_or_create(
                         check_guid=check_guid,
                         order=order,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults=check_defaults
                     )
 
@@ -646,7 +658,7 @@ class ToastIntegrationService:
                             try:
                                 selection_obj = ToastSelection.objects.get(
                                     selection_guid=selection_guid,
-                                    tenant_id=self.integration.org.id
+                                    tenant_id=self.integration.organisation.id
                                 )
                                 for key, value in selection_defaults.items():
                                     setattr(selection_obj, key, value)
@@ -663,7 +675,7 @@ class ToastIntegrationService:
                                 ToastSelection.objects.create(
                                     selection_guid=selection_guid,
                                     toast_check=check_obj,
-                                    tenant_id=self.integration.org.id,
+                                    tenant_id=self.integration.organisation.id,
                                     order_guid=order_guid,
                                     display_name=selection_data.get("displayName"),
                                     pre_discount_price=pre_discount_price,
@@ -745,7 +757,7 @@ class ToastIntegrationService:
                         
                     ToastRevenueCenter.objects.update_or_create(
                         revenue_center_guid=center_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -795,7 +807,7 @@ class ToastIntegrationService:
                         
                     ToastRestaurantService.objects.update_or_create(
                         service_guid=service_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -844,7 +856,7 @@ class ToastIntegrationService:
                         
                     ToastSalesCategory.objects.update_or_create(
                         category_guid=category_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -893,7 +905,7 @@ class ToastIntegrationService:
                         
                     ToastDiningOption.objects.update_or_create(
                         option_guid=option_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -951,7 +963,7 @@ class ToastIntegrationService:
                         # Update or create the revenue center
                         ToastRevenueCenter.objects.update_or_create(
                             revenue_center_guid=revenue_center_guid,
-                            tenant_id=self.integration.org.id,
+                            tenant_id=self.integration.organisation.id,
                             defaults={
                                 "integration": self.integration,
                                 "restaurant_guid": restaurant_guid,
@@ -963,7 +975,7 @@ class ToastIntegrationService:
                     # Create or update the service area
                     ToastServiceArea.objects.update_or_create(
                         area_guid=area_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
