@@ -84,7 +84,7 @@ class Site(models.Model):
     currency_code = models.CharField(max_length=10, null=True, blank=True)
     
     # Status
-    is_active = models.BooleanField(default=True, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -96,8 +96,7 @@ class Site(models.Model):
         indexes = [
             models.Index(fields=["organisation"]),
             models.Index(fields=["name"]),
-            models.Index(fields=["is_active"]),
-            models.Index(fields=["archived"]),
+            models.Index(fields=["status"]),
         ]
         unique_together = ('organisation', 'name')
 

@@ -132,11 +132,15 @@ class SiteAdmin(admin.ModelAdmin):
     search_fields = ('name', 'postcode', 'region', 'organisation__name')
     readonly_fields = ('created_at', 'updated_at')
     fieldsets = (
-        ('Basic Information', {
-            'fields': ('name', 'organisation', 'status')
+        (None, {
+            'fields': ('organisation', 'name', 'code', 'description')
         }),
-        ('Location Information', {
-            'fields': ('postcode', 'region', 'opened_date')
+        ('Location Details', {
+            'fields': ('postcode', 'region', 'address_line1', 'address_line2', 'city', 
+                      'state_code', 'zip_code', 'country', 'phone')
+        }),
+        ('Business Details', {
+            'fields': ('opened_date', 'timezone', 'currency_code', 'status')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

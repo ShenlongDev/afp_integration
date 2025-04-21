@@ -9,7 +9,10 @@ from integrations.models.toast.raw import (
     ToastSalesCategory,
     ToastDiningOption,
     ToastServiceArea,
-    ToastPayment
+    ToastPayment,
+    ToastCheck,
+    ToastSelection,
+    ToastGeneralLocation
 )
 
 class ToastOrderSerializer(serializers.ModelSerializer):
@@ -70,4 +73,9 @@ class ToastServiceAreaSerializer(serializers.ModelSerializer):
 class ToastPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ToastPayment
+        fields = '__all__'
+
+class ToastGeneralLocationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ToastGeneralLocation
         fields = '__all__'
