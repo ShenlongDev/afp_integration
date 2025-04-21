@@ -1,13 +1,21 @@
 import logging
+import time # Import time for sleep
 from celery import shared_task, chain
 from django.core.cache import cache
 from django.utils import timezone
 from datetime import datetime, timedelta
 from config.celery import get_active_org_sync_tasks
+from core.models import TaskLog 
 
 logger = logging.getLogger(__name__)
 
 GLOBAL_TASK_LOCK_KEY = "global_task_lock"
+
+DISPATCHER_LOCK_KEY = "dispatcher_task_lock"
+DISPATCHER_LOCK_TIMEOUT = 60 
+IN_FLIGHT_ORG_SYNC_COUNT_KEY = "in_flight_org_sync_count" 
+COUNTER_TIMEOUT = 3600 
+ORG_OFFSET_CACHE_KEY = "dispatcher_org_offset" 
 
 def acquire_global_lock(timeout=600):
     """
@@ -21,8 +29,6 @@ def release_global_lock():
     Release the global lock.
     """
     cache.delete(GLOBAL_TASK_LOCK_KEY)
-
-from core.models import TaskLog 
 
 def log_task_event(task_name, status, detail):
     TaskLog.objects.create(
@@ -41,7 +47,6 @@ def get_high_priority_task():
         from django.db import transaction
         
         with transaction.atomic():
-            # Get the earliest task that's not processed and not in progress
             task = HighPriorityTask.objects.select_for_update().filter(
                 processed=False, 
                 in_progress=False
@@ -49,7 +54,6 @@ def get_high_priority_task():
             print(task)
             
             if task:
-                # Mark as in progress immediately within the transaction
                 task.in_progress = True
                 task.in_progress_since = timezone.now()
                 task.save(update_fields=["in_progress", "in_progress_since"])
@@ -95,54 +99,79 @@ def sync_organization(self, organization_id):
     """
     Syncs all integrations for a given organization.
     Handles multiple integration types per integration record.
+    Decrements the in-flight counter upon completion or failure.
     """
+    logger.info(f"SYNC_ORGANIZATION_TASK: Entered for Org ID: {organization_id}")
     lock_key = f"org_sync_lock_{organization_id}"
+
+    # Check for duplicate processing lock first
     if not cache.add(lock_key, "in_progress", 600):
-        logger.info("Organization %s is already being processed. Skipping.", organization_id)
+        logger.warning(f"Organization {organization_id} sync lock already held. Skipping this instance.")
+        # Do NOT decrement the counter here. The instance that *holds* the lock
+        # will be responsible for decrementing when it finishes.
+        # If this instance was dispatched mistakenly due to a race condition
+        # before the lock was fully set, the dispatcher's check *before* incr
+        # should ideally prevent over-dispatching in the first place.
         return
 
     try:
-        # Add more logging to debug
-        logger.info("Actually starting sync for organization %s", organization_id)
+        logger.info(f"Actually starting sync for organization {organization_id}")
         from integrations.models.models import Integration
         logger.warning("Starting sync for organization %s", organization_id)
         org_integrations = Integration.objects.filter(org=organization_id).order_by('-id')
-        
+
+        integration_dispatched = False # Flag to see if any sub-tasks were dispatched
         for integration in org_integrations:
             logger.warning("Starting sync for integration %s", integration.id)
-            
-            # Check each integration type independently
-            
+
             # Check Toast
             if integration.toast_client_id and integration.toast_client_secret and integration.toast_api_url:
                 logger.info("Dispatching Toast sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.toast import sync_toast_data
                 sync_toast_data.apply_async(args=[integration.id], queue="org_sync")
-            
+                integration_dispatched = True
+
             # Check Xero
             if integration.xero_client_id and integration.xero_client_secret:
                 logger.info("Dispatching Xero sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.xero import sync_single_xero_data
-                sync_single_xero_data.apply_async(args=[integration.id])
-            
-            # Check NetSuite    
+                sync_single_xero_data.apply_async(args=[integration.id]) 
+                integration_dispatched = True
+
+            # Check NetSuite
             if integration.netsuite_account_id and integration.netsuite_consumer_key:
                 logger.info("Dispatching NetSuite sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.netsuite import sync_single_netsuite_data
                 sync_single_netsuite_data.apply_async(args=[integration.id])
-            
-            # Check if no valid integration types were found
-            if not (integration.toast_client_id or integration.xero_client_id or integration.netsuite_account_id):
-                logger.warning("Unknown integration type for integration %s", integration.id)
-                
-        logger.info("Completed dispatching sync for organization %s", organization_id)
-        log_task_event("sync_organization", "success", f"Organization {organization_id} sync dispatch completed at {timezone.now()}")
+                integration_dispatched = True
+
+            if not integration_dispatched and not (integration.toast_client_id or integration.xero_client_id or integration.netsuite_account_id):
+                 logger.warning("Unknown or incomplete integration type for integration %s", integration.id)
+
+
+        if integration_dispatched:
+            logger.info("Completed dispatching sub-tasks for organization %s", organization_id)
+            log_task_event("sync_organization", "success", f"Organization {organization_id} sync dispatch completed at {timezone.now()}")
+        else:
+             logger.warning("No valid integration sub-tasks found or dispatched for organization %s", organization_id)
+             log_task_event("sync_organization", "warning", f"No sub-tasks dispatched for Organization {organization_id} at {timezone.now()}")
+
+
     except Exception as exc:
-        logger.error("Error syncing organization %s: %s", organization_id, exc, exc_info=True)
+        logger.error("Error during sync_organization %s: %s", organization_id, exc, exc_info=True)
         log_task_event("sync_organization", "failed", f"Organization {organization_id} sync failed: {exc}")
-        raise exc
     finally:
         cache.delete(lock_key)
+        try:
+            new_val = cache.decr(IN_FLIGHT_ORG_SYNC_COUNT_KEY)
+            cache.touch(IN_FLIGHT_ORG_SYNC_COUNT_KEY, COUNTER_TIMEOUT)
+            logger.info(f"SYNC_ORGANIZATION_TASK: Decremented in-flight count for Org ID: {organization_id}. New count: {new_val}")
+            if new_val < 0:
+                 logger.warning(f"In-flight count went below zero ({new_val}) for Org {organization_id}. Resetting to 0.")
+                 cache.set(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0, timeout=COUNTER_TIMEOUT)
+
+        except Exception as e:
+             logger.error(f"SYNC_ORGANIZATION_TASK: Failed to decrement or touch in-flight count for Org ID: {organization_id}. Error: {e}", exc_info=True)
 
 
 @shared_task(bind=True, queue="high_priority")
@@ -167,7 +196,6 @@ def process_high_priority(self, hp_task_id):
         return
 
     try:
-        # Check if integration_type exists in MODULES
         if hp_task.integration_type not in MODULES:
             logger.error(
                 "Unknown integration type %s for task %s", 
@@ -183,7 +211,6 @@ def process_high_priority(self, hp_task_id):
             hp_task.save(update_fields=["processed"])
             return
             
-        # Prepare since_date and importer
         since_date = hp_task.since_date
         until_date = hp_task.until_date
         
@@ -193,7 +220,6 @@ def process_high_priority(self, hp_task_id):
                     integration, since_date)
         HighPriorityTask.objects.filter(pk=hp_task_id).update(in_progress=True, in_progress_since=timezone.now())
 
-        # Create importer instance
         importer = ImporterClass(integration, since_date, until_date)
         
         if hp_task.selected_modules:
@@ -260,7 +286,6 @@ def process_high_priority(self, hp_task_id):
         )
         raise
     finally:
-        # Always mark as processed and not in progress when we're done
         current_time = timezone.now()
         hp_task.processed = True
         hp_task.in_progress = False
@@ -273,46 +298,115 @@ def dispatcher(self):
     """
     Polls continuously for high priority tasks and organization sync tasks.
     This task re-enqueues itself every 5 seconds.
-    It will dispatch up to 3 organization sync tasks concurrently.
+    Ensures only one instance runs at a time using a cache lock.
+    It will dispatch up to MAX_CONCURRENT_ORG_SYNC_TASKS organization sync tasks concurrently.
     """
-    try:                
+    lock_acquired = cache.add(DISPATCHER_LOCK_KEY, "running", DISPATCHER_LOCK_TIMEOUT)
+    if not lock_acquired:
+        logger.warning("Dispatcher lock ALREADY HELD. Skipping this execution.")
+        return
+    else:
+        logger.info("Dispatcher lock ACQUIRED.")
+
+    try:
         hp_task = get_high_priority_task()
         if hp_task:
-            # Apply with higher priority and immediate execution
             process_high_priority.apply_async(
-                args=[hp_task.id], 
+                args=[hp_task.id],
                 queue="high_priority",
-                priority=9,  # Highest priority
-                countdown=0  # Execute immediately
+                priority=9,
+                countdown=0
             )
         else:
             logger.info("No high priority tasks found.")
-        
+
         from integrations.models.models import Integration
-        MAX_CONCURRENT_ORG_SYNC_TASKS = 4  # Adjust based on your system capacity
-        
-        active_org_tasks = get_active_org_sync_tasks()
-        logger.info(f"Currently active organization sync tasks: {active_org_tasks}")
-        
-        if active_org_tasks < MAX_CONCURRENT_ORG_SYNC_TASKS:
-            # Only dispatch a limited number of new tasks
-            orgs_to_sync = list(Integration.objects.values_list("org", flat=True).distinct().order_by("-org"))[:MAX_CONCURRENT_ORG_SYNC_TASKS - active_org_tasks]
-            for org in orgs_to_sync:
-                logger.info(f"Dispatching sync for organization {org}")
-                sync_organization.apply_async(args=[org], queue="org_sync")
-            log_task_event("dispatcher", "dispatched", f"Organization sync tasks dispatched at {timezone.now()}")
+        MAX_CONCURRENT_ORG_SYNC_TASKS = 3
+
+        current_in_flight = cache.get(IN_FLIGHT_ORG_SYNC_COUNT_KEY)
+        if current_in_flight is None:
+            logger.info("In-flight counter key not found or expired. Initializing to 0.")
+            cache.set(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0, timeout=COUNTER_TIMEOUT)
+            current_in_flight = 0
         else:
-            logger.info("Maximum concurrent organization sync tasks reached; will try dispatching later.")
+            try:
+                current_in_flight = int(current_in_flight)
+                cache.touch(IN_FLIGHT_ORG_SYNC_COUNT_KEY, COUNTER_TIMEOUT)
+            except (ValueError, TypeError):
+                logger.warning(f"Could not parse in-flight count '{current_in_flight}'. Resetting to 0.")
+                cache.set(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0, timeout=COUNTER_TIMEOUT)
+                current_in_flight = 0
+
+        if current_in_flight < 0:
+            logger.warning(f"In-flight count was negative ({current_in_flight}). Resetting to 0.")
+            cache.set(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0, timeout=COUNTER_TIMEOUT)
+            current_in_flight = 0
+
+        logger.info(f"Current in-flight organization sync tasks (from cache): {current_in_flight}")
+
+        slots_to_fill = MAX_CONCURRENT_ORG_SYNC_TASKS - current_in_flight
+
+        if slots_to_fill > 0:
+            logger.info(f"Attempting to fill {slots_to_fill} slots.")
+            all_orgs = list(Integration.objects.values_list("org", flat=True).distinct().order_by("org"))
+            total_orgs = len(all_orgs)
+
+            if total_orgs > 0:
+                logger.info(f"Dispatcher: Attempting to read offset. Key: {ORG_OFFSET_CACHE_KEY}")
+                org_offset = cache.get(ORG_OFFSET_CACHE_KEY, 0) 
+                logger.info(f"Dispatcher: Read offset value: {org_offset}")
+                try: 
+                    org_offset = int(org_offset)
+                except (ValueError, TypeError):
+                    org_offset = 0
+
+                orgs_dispatched_this_run = 0
+
+                for i in range(slots_to_fill):
+                    count_before_incr = cache.get(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0)
+                    try:
+                         count_before_incr = int(count_before_incr)
+                         if count_before_incr < 0 : count_before_incr = 0
+                    except(ValueError, TypeError):
+                         count_before_incr = 0
+
+                    if count_before_incr < MAX_CONCURRENT_ORG_SYNC_TASKS:
+                        new_count = cache.incr(IN_FLIGHT_ORG_SYNC_COUNT_KEY)
+                        cache.touch(IN_FLIGHT_ORG_SYNC_COUNT_KEY, COUNTER_TIMEOUT) 
+
+                        current_index = (org_offset + orgs_dispatched_this_run) % total_orgs
+                        org_to_dispatch = all_orgs[current_index]
+
+                        logger.info(f"Dispatching sync for organization {org_to_dispatch} (In-flight count after incr: {new_count})")
+                        sync_organization.apply_async(args=[org_to_dispatch], queue="org_sync")
+                        orgs_dispatched_this_run += 1
+                    else:
+                        logger.info(f"Limit ({MAX_CONCURRENT_ORG_SYNC_TASKS}) reached (Current: {count_before_incr}). Breaking dispatch loop.")
+                        break
+
+                if orgs_dispatched_this_run > 0:
+                    new_offset = (org_offset + orgs_dispatched_this_run) % total_orgs
+                    logger.info(f"Dispatcher: Attempting to set offset. Key: {ORG_OFFSET_CACHE_KEY}, Value: {new_offset}")
+                    cache.set(ORG_OFFSET_CACHE_KEY, new_offset, timeout=None) 
+                    logger.info(f"Dispatcher: Set offset complete.")
+                    log_task_event("dispatcher", "dispatched", f"Dispatched {orgs_dispatched_this_run} org tasks. Offset now {new_offset}.")
+                else:
+                     logger.info("No new organization tasks were dispatched in this run (limit reached or no orgs).")
+
+            else: 
+                 logger.info("No organizations found in database for dispatch.")
+        else: 
+             logger.info(f"In-flight count ({current_in_flight}) meets or exceeds limit ({MAX_CONCURRENT_ORG_SYNC_TASKS}). Waiting.")
 
     except Exception as exc:
         logger.error("Dispatcher encountered an error: %s", exc, exc_info=True)
         log_task_event("dispatcher", "failed", str(exc))
-        raise self.retry(exc=exc, countdown=10)
-    else:
-        logger.info("Dispatcher completed successfully.")
-        log_task_event("dispatcher", "success", f"Task completed successfully at {timezone.now()}")
+        raise 
     finally:
-        dispatcher.apply_async(countdown=5)
+        if lock_acquired:
+            cache.delete(DISPATCHER_LOCK_KEY)
+            logger.info("Dispatcher lock RELEASED.")
+            dispatcher.apply_async(countdown=5) 
 
 
 @shared_task
@@ -322,12 +416,7 @@ def daily_previous_day_sync():
     for all integrations and ALL their modules. Handles multiple integration
     types per integration record.
     """
-    # Fix the datetime import usage
     yesterday = datetime.now().date() - timedelta(days=1)
-    
-    # Or alternatively:
-    # from datetime import date
-    # yesterday = date.today() - timedelta(days=1)
     
     logger.info(f"Starting multi-type daily sync for previous day: {yesterday}")
     
@@ -338,7 +427,6 @@ def daily_previous_day_sync():
     )
     
     try:
-        # Get all integrations
         from integrations.models.models import Integration, HighPriorityTask
         from integrations.modules import MODULES
         
@@ -350,20 +438,15 @@ def daily_previous_day_sync():
         
         total_sync_count = 0
         
-        # Process each integration
         for integration in all_integrations:
-            # Check for EACH integration type independently - no elif chain
             integration_types = []
             
-            # Check Toast
             if integration.toast_client_id and integration.toast_client_secret and integration.toast_api_url:
                 integration_types.append("toast")
                 
-            # Check Xero
             if integration.xero_client_id and integration.xero_client_secret:
                 integration_types.append("xero")
                 
-            # Check NetSuite - use client_id and client_secret consistently
             if integration.netsuite_account_id and integration.netsuite_consumer_key:
                 integration_types.append("netsuite")
             
@@ -371,23 +454,20 @@ def daily_previous_day_sync():
                 logger.warning(f"No valid integration types found for integration {integration.id}, skipping")
                 continue
                 
-            # Process each integration type for this integration
             for integration_type in integration_types:
-                # Get all available modules for this integration type
                 all_modules = list(MODULES.get(integration_type, {}).get("import_methods", {}).keys())
                 
                 if not all_modules:
                     logger.warning(f"No modules found for integration type {integration_type}, integration {integration.id}")
                     continue
                     
-                # Create high priority task with ALL available modules explicitly listed
                 hp_task = HighPriorityTask.objects.create(
                     integration=integration,
                     integration_type=integration_type,
                     since_date=yesterday,
                     until_date=yesterday,
                     processed=False,
-                    selected_modules=all_modules  # Explicitly include ALL modules
+                    selected_modules=all_modules
                 )
                 
                 module_list_str = ", ".join(all_modules)
@@ -411,7 +491,6 @@ def trigger_previous_day_sync_test():
     """Test function to trigger the daily sync directly for debugging"""
     logger.info("Manually triggering daily sync for testing")
     try:
-        # Run the sync directly, not as a separate task
         daily_previous_day_sync()
         return "Task executed successfully"
     except Exception as e:

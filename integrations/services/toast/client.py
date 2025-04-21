@@ -588,8 +588,7 @@ class ToastIntegrationService:
                             quantity = Decimal(str(selection_data.get("quantity", "1")))
                             selection_net = (pre_discount_price - selection_discount_total) * quantity
 
-                            # Accumulate order-level discount amount from item-level discounts
-                            # (Keep this new logic)
+                            # Add the missing code to accumulate selection-level discounts
                             if selection_data.get("appliedDiscounts"):
                                 total_discount_amount += selection_discount_total
 
@@ -615,7 +614,7 @@ class ToastIntegrationService:
                                 "tax_inclusion": selection_data.get("taxInclusion"),
                                 "receipt_line_price": selection_data.get("receiptLinePrice"),
                                 "unit_of_measure": selection_data.get("unitOfMeasure"),
-                                "refund_details": selection_data.get("refundDetails"), # Store details, but don't use for total_refund_amount here
+                                "refund_details": selection_data.get("refundDetails"),
                                 "toast_gift_card": selection_data.get("toastGiftCard"),
                                 "tax": selection_data.get("tax"),
                                 "dining_option": selection_data.get("diningOption"),
@@ -625,7 +624,7 @@ class ToastIntegrationService:
                                 "modified_date": parse_datetime(selection_data.get("modifiedDate")) if selection_data.get("modifiedDate") else None,
                             }
                          
-                            # Update or Create Selection logic (using try/except DoesNotExist)
+
                             try:
                                 selection_obj = ToastSelection.objects.get(
                                     selection_guid=selection_guid,
@@ -634,11 +633,11 @@ class ToastIntegrationService:
                                 for key, value in selection_defaults.items():
                                     setattr(selection_obj, key, value)
                                 selection_obj.order_guid = order_guid
-                                selection_obj.toast_check = check_obj # Ensure check is linked
+                                selection_obj.toast_check = check_obj 
                                 selection_obj.display_name = selection_data.get("displayName")
                                 selection_obj.pre_discount_price = pre_discount_price
-                                selection_obj.discount_total = selection_discount_total # Save selection discount
-                                selection_obj.net_sales = selection_net # Save selection net sales
+                                selection_obj.discount_total = selection_discount_total 
+                                selection_obj.net_sales = selection_net 
                                 selection_obj.quantity = quantity
                                 selection_obj.business_date = order_data["businessDate"]
                                 selection_obj.save()
@@ -657,35 +656,26 @@ class ToastIntegrationService:
                                     **selection_defaults
                                 )
                             
-                            # REMOVED: Logic that added item-level tax refunds to total_refund_amount
-                            # total_refund_amount now only comes from payment refunds
 
                         except Exception as e:
                             print(f"Error processing selection {selection_index} in check {check_index+1}: {str(e)}")
                             logger.error(f"Error processing selection in order {order_guid}: {e}", exc_info=True)
                 
-                # --- Start of Reverted Refund Logic ---
                 business_date = order_data.get("businessDate")
-                # Apply refunds if they occurred on the same business day
                 if refund_business_date and business_date and str(refund_business_date) == str(business_date):
-                    # Reduce total revenue by the total refund amount (from payments)
                     total_revenue -= total_refund_amount
                     
-                    # Reduce net sales by the total refund amount (from payments)
                     total_net_sales -= total_refund_amount
                     
-                    # Ensure net sales doesn't go below zero (as per previous logic)
                     if total_net_sales < Decimal("0.00"):
                         total_net_sales = Decimal("0.00")
-                # --- End of Reverted Refund Logic ---
                 
-                # Save final calculated totals to the order object
-                order.tip = total_tip_total # Keep saving tips
-                order.service_charges = total_service_charge_total # Keep saving service charges
-                order.toast_sales = total_revenue # Save calculated toast_sales
-                order.total_amount = total_revenue # Typically total_amount mirrors toast_sales in this context
-                order.order_net_sales = total_net_sales # Save calculated order_net_sales
-                order.total_refunds = total_refund_amount # Save total refund amount
+                order.tip = total_tip_total 
+                order.service_charges = total_service_charge_total
+                order.toast_sales = total_revenue 
+                order.total_amount = total_revenue 
+                order.order_net_sales = total_net_sales
+                order.total_refunds = total_refund_amount 
                 # Keep saving new discount fields
                 order.total_discount_amount = total_discount_amount 
                 order.discount_count = discount_count

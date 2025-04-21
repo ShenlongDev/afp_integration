@@ -14,26 +14,24 @@ app.autodiscover_tasks(lambda: settings.INSTALLED_APPS)
 
 app.conf.broker_connection_retry_on_startup = True
 
-# Important settings for task resilience
-app.conf.task_acks_late = True  # Only acknowledge tasks after they complete
-app.conf.task_reject_on_worker_lost = True  # Reject tasks when workers are terminated
-app.conf.task_serializer = 'json'  # Use reliable serialization
-app.conf.result_serializer = 'json'  # Use reliable serialization
-app.conf.accept_content = ['json']  # Accept reliable formats
+app.conf.task_acks_late = True
+app.conf.task_reject_on_worker_lost = True
+app.conf.task_serializer = 'json'
+app.conf.result_serializer = 'json'
+app.conf.accept_content = ['json']
 app.conf.broker_transport_options = {
-    'visibility_timeout': 200000,  # (adjust as needed for your longest task)
-    'priority_steps': [1, 3, 5, 7, 9],  # Enable priority queues
-    'queue_order_strategy': 'priority',  # Process by priority order
+    'visibility_timeout': 200000,
+    'priority_steps': [1, 3, 5, 7, 9],
+    'queue_order_strategy': 'priority',
 }
 
-# Task time limits
-app.conf.task_time_limit = 172000  # 2 hours hard limit
-app.conf.task_soft_time_limit = 170000  # Slightly less for soft limit
+app.conf.task_time_limit = 172000
+app.conf.task_soft_time_limit = 170000
 
 app.conf.beat_schedule = {
     'daily-previous-day-sync': {
         'task': 'core.tasks.general.daily_previous_day_sync',
-        'schedule': crontab(hour=8, minute=20),
+        'schedule': crontab(hour=0, minute=5),
         'options': {
             'queue': 'high_priority',
             'expires': None,
@@ -42,11 +40,9 @@ app.conf.beat_schedule = {
     },
 }
 
-# Add these settings for faster task pickup
-app.conf.worker_prefetch_multiplier = 1  # Grab exactly one task at a time
-app.conf.worker_concurrency = 1  # Keep high priority worker focused
+app.conf.worker_prefetch_multiplier = 1
+app.conf.worker_concurrency = 1
 
-# Add route priorities
 app.conf.task_routes = {
     'core.tasks.general.process_high_priority': {'queue': 'high_priority', 'routing_key': 'high_priority.urgent'},
 }
@@ -60,13 +56,11 @@ def get_active_org_sync_tasks():
     reserved = i.reserved() or {}
     
     count = 0
-    # Count active tasks
     for worker_tasks in active.values():
         for task in worker_tasks:
             if task.get("name") == "core.tasks.general.sync_organization":
                 count += 1
     
-    # Count reserved tasks
     for worker_tasks in reserved.values():
         for task in worker_tasks:
             if task.get("name") == "core.tasks.general.sync_organization":
@@ -82,5 +76,4 @@ def at_start(sender, **kwargs):
     to check for high priority or normal tasks and re-enqueue itself when done.
     """
     from core.tasks.general import dispatcher
-    # Optionally add a short countdown (e.g., 5 seconds) to give a clean startup.
     dispatcher.apply_async(countdown=5)
