@@ -319,9 +319,9 @@ STATICFILES_DIRS = [
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000000
 
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND')
-CELERY_SECRET_TOKEN = 'default'
+CELERY_BROKER_URL = "redis://red-d0349obuibrs73bdm7og:6379/0"
+CELERY_RESULT_BACKEND = "django-cache"
+CELERY_CACHE_BACKEND = "django-cache"
 BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # REST Framework Settings
@@ -343,15 +343,11 @@ REST_FRAMEWORK = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": "redis://red-d0349obuibrs73bdm7og:6379/1",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         },
-
     }
 }
 
-
-CELERY_RESULT_BACKEND = 'django-cache'
-CELERY_CACHE_BACKEND = 'django-cache'
 
