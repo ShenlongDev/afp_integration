@@ -1,0 +1,51 @@
+version: "1"
+services:
+  - type: web
+    name: ws-integrations
+    runtime: python
+    repo: https://github.com/WilliamsStanleyCo/integrations
+    plan: starter
+    region: frankfurt
+    buildCommand: |
+      # Install dependencies
+      pip install -r requirements/requirements.txt
+
+      # Collect static files
+      python3 manage.py collectstatic --noinput
+    
+    startCommand: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT
+
+    envVars:
+      - key: CELERY_RESULT_BACKEND
+        sync: false
+      - key: CELERY_BROKER_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: ENVIRONMENT
+        sync: false
+      - key: DB_SSL_MODE
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: DEBUG
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+    
+    scaling:
+      minInstances: 1
+      maxInstances: 2
+      targetCPUPercent: 60
+      targetMemoryPercent: 60
+
