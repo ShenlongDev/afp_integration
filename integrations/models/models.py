@@ -179,3 +179,58 @@ class POSSales(models.Model):
 
     def __str__(self):
         return f"Order {self.order_id}" if self.order_id else "POS Sale" 
+
+class Weather(models.Model):
+    client = models.ForeignKey('core.Client', on_delete=models.SET_NULL, null=True, blank=True, related_name='weather_records')
+    organisation = models.ForeignKey('core.Organisation', on_delete=models.SET_NULL, null=True, blank=True, related_name='weather_records')
+    site = models.ForeignKey('core.Site', on_delete=models.SET_NULL, null=True, blank=True, related_name='weather_records')
+    
+    client_name = models.CharField(max_length=255)
+    store_name = models.CharField(max_length=255)
+    city = models.CharField(max_length=255)
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    
+    temperature_value = models.FloatField()
+    temperature_unit = models.CharField(max_length=10)
+    
+    pressure_value = models.FloatField()
+    pressure_unit = models.CharField(max_length=10)
+    
+    relative_humidity = models.FloatField()
+    wind_speed_value = models.FloatField()
+    wind_speed_unit = models.CharField(max_length=10)
+    wind_direction_degrees = models.FloatField()
+    windgust_speed_value = models.FloatField(null=True, blank=True)
+    windgust_speed_unit = models.CharField(max_length=10, null=True, blank=True)
+    
+    cloudiness = models.IntegerField()
+    sunrise = models.DateTimeField()
+    sunset = models.DateTimeField()
+    rain = models.FloatField(null=True, blank=True)
+    snow = models.FloatField(null=True, blank=True)
+    
+    status = models.CharField(max_length=50)
+    code = models.IntegerField()
+    description = models.TextField()
+    icon = models.CharField(max_length=255)
+    record_date = models.DateTimeField()
+    source_system = models.CharField(max_length=50)
+    automation = models.CharField(max_length=255)
+    
+    tags = models.JSONField(null=True, blank=True)
+    masking_policy = models.CharField(max_length=50, null=True, blank=True)
+    action_group = models.CharField(max_length=50, null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-record_date']
+        indexes = [
+            models.Index(fields=['client_name']),
+            models.Index(fields=['store_name']),
+            models.Index(fields=['city']),
+            models.Index(fields=['record_date']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"Weather for {self.store_name} ({self.city}) at {self.record_date}"
