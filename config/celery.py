@@ -38,6 +38,19 @@ app.conf.beat_schedule = {
             'task_track_started': True,
         }
     },
+    'sales-report': {
+        'task': 'integrations.tasks.send_weekly_sales_report',
+        'schedule': crontab(minute=0, hour=6),  # Run daily at 6:00am
+        'args': ([
+            't.stanley@williamsstanley.co',  'm.nouman@williamsstanley.co'
+        ],),
+        'kwargs': {'site_id': '3'},
+        'options': {
+            'queue': 'celery',
+            'expires': None,
+            'task_track_started': True,
+        }
+    },
 }
 
 app.conf.worker_prefetch_multiplier = 1
