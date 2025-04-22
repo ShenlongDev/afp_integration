@@ -1,6 +1,6 @@
 import requests
 import logging
-from datetime import datetime, time  # import time for our conversion
+from datetime import datetime, time 
 from decimal import Decimal
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -10,11 +10,12 @@ from integrations.models.toast.raw import (
     ToastOrder, ToastCheck, ToastSelection,
     ToastDaySchedule, ToastWeeklySchedule, 
     ToastJoinedOpeningHours, ToastRevenueCenter,
-    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea
+    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea,
+    ToastPayment
 )
 from integrations.models.models import SyncTableLogs
 from core.models import Site, IntegrationSiteMapping
-import time as timeclock  # Use a different name to avoid conflict
+import time as timeclock  
 
 logger = logging.getLogger(__name__)
 
@@ -994,5 +995,92 @@ class ToastIntegrationService:
         self.log_import_event(module_name="toast_service_areas", fetched_records=total_areas)
         return total_areas
 
+    def import_payment_details(self):
+        """
+        Import payment details for orders that have payment data
+        """
+        query_filters = {
+            'integration': self.integration,
+            'tenant_id': self.integration.organisation.id,
+            'payments__isnull': False,
+            'business_date': self.start_date.strftime("%Y%m%d")
+        }
+        orders_with_payments = ToastOrder.objects.filter(**query_filters)
+        
+        total_payments = 0
+        
+        for order in orders_with_payments:
+            restaurant_guid = order.restaurant_guid
+            if not restaurant_guid:
+                logger.warning(f"Order {order.order_guid} has no restaurant GUID, skipping payment import")
+                continue
+            
+            payments = order.payments   
+            if not payments:
+                continue
+            
+            for payment_data in payments:
+                payment_guid = payment_data.get("guid")
+                if not payment_guid:
+                    continue
+                
+                # Basic data from order payment data
+                check_guid = payment_data.get("checkGuid")
+                amount = Decimal(str(payment_data.get("amount", "0.00")))
+                tip_amount = Decimal(str(payment_data.get("tipAmount", "0.00")))
+                
+                # Try to get detailed payment info from API
+                detailed_payment = self.get_payment_details(restaurant_guid, payment_guid)
+                
+                # Use the most detailed data available (API response or embedded data)
+                payment_info = detailed_payment if detailed_payment else payment_data
+                
+                payment_defaults = {
+                    "integration": self.integration,
+                    "restaurant_guid": restaurant_guid,
+                    "order_guid": order.order_guid,
+                    "check_guid": check_guid,
+                    "type": payment_info.get("type"),
+                    "amount": amount,
+                    "tip_amount": tip_amount,
+                    "card_type": payment_info.get("cardType"),
+                    "last4_digits": payment_info.get("last4Digits"),
+                    "paid_date": parse_datetime(payment_info.get("paidDate")) if payment_info.get("paidDate") else None,
+                    "paid_business_date": payment_info.get("paidBusinessDate"),
+                    "refund_status": payment_info.get("refundStatus"),
+                    "payment_status": payment_info.get("paymentStatus"),
+                    "card_entry_mode": payment_info.get("cardEntryMode"),
+                    "server_guid": payment_info.get("server", {}).get("guid") if payment_info.get("server") else None,
+                    "created_device_id": payment_info.get("createdDevice", {}).get("id") if payment_info.get("createdDevice") else None,
+                    "last_modified_device_id": payment_info.get("lastModifiedDevice", {}).get("id") if payment_info.get("lastModifiedDevice") else None,
+                    "raw_payload": payment_info
+                }
+                
+                ToastPayment.objects.update_or_create(
+                    payment_guid=payment_guid,
+                    tenant_id=self.integration.org.id,
+                    defaults=payment_defaults
+                )
+                
+                total_payments += 1
+            
+        self.log_import_event(module_name="toast_payments", fetched_records=total_payments)
+        return total_payments
 
-
+    def get_payment_details(self, restaurant_guid, payment_guid):
+        """
+        Get detailed payment information from Toast API
+        """
+        url = f"{self.hostname}/orders/v2/payments/{payment_guid}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Toast-Restaurant-External-ID": restaurant_guid
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            logger.error(f"Error fetching payment details for {payment_guid}: {e}")
+            return None

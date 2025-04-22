@@ -312,19 +312,16 @@ STATIC_URL = '/static/'
 # Directory where static files will be collected
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
-# Additional locations the staticfiles app will traverse
-#STATICFILES_DIRS = [
-#    os.path.join(BASE_DIR, 'static'),
-#]
+
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000000
 
-CELERY_BROKER_URL = "redis://red-d0349obuibrs73bdm7og:6379/0"
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL')
+
 CELERY_RESULT_BACKEND = "django-cache"
 CELERY_CACHE_BACKEND = "django-cache"
 BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
-# REST Framework Settings
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 30,
@@ -343,7 +340,7 @@ REST_FRAMEWORK = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://red-d0349obuibrs73bdm7og:6379/1",
+        "LOCATION": CELERY_BROKER_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         },

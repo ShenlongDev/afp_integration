@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Client, Organisation, Site, TaskLog
+from .models import Client, Organisation, Site, TaskLog, IntegrationSiteMapping
 from core.forms import DataImportForm, BudgetImportForm
 from django.urls import path
 from django.shortcuts import render, redirect
@@ -155,3 +155,10 @@ class TaskLogAdmin(admin.ModelAdmin):
     search_fields = ('task_name', 'status')
     list_filter = ('status',)
     
+
+@admin.register(IntegrationSiteMapping)
+class IntegrationSiteMappingAdmin(admin.ModelAdmin):
+    list_display = ('site', 'integration', 'external_id', 'external_name')
+    list_filter = ('integration',)
+    search_fields = ('site__name', 'integration__name', 'external_id', 'external_name')
+    readonly_fields = ('created_at', 'updated_at')
