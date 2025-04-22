@@ -1,9 +1,18 @@
 from rest_framework import serializers
 from integrations.models.toast.raw import (
-    ToastOrder, ToastCheck, ToastSelection, ToastGeneralLocation,
-    ToastDaySchedule, ToastWeeklySchedule, ToastJoinedOpeningHours,
-    ToastRevenueCenter, ToastRestaurantService, ToastSalesCategory,
-    ToastDiningOption, ToastServiceArea, ToastPayment
+    ToastOrder,
+    ToastDaySchedule,
+    ToastWeeklySchedule,
+    ToastJoinedOpeningHours,
+    ToastRevenueCenter,
+    ToastRestaurantService,
+    ToastSalesCategory,
+    ToastDiningOption,
+    ToastServiceArea,
+    ToastPayment,
+    ToastCheck,
+    ToastSelection,
+    ToastGeneralLocation
 )
 
 class ToastOrderSerializer(serializers.ModelSerializer):
@@ -19,11 +28,6 @@ class ToastCheckSerializer(serializers.ModelSerializer):
 class ToastSelectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ToastSelection
-        fields = '__all__'
-
-class ToastGeneralLocationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ToastGeneralLocation
         fields = '__all__'
 
 class ToastDayScheduleSerializer(serializers.ModelSerializer):
@@ -69,4 +73,9 @@ class ToastServiceAreaSerializer(serializers.ModelSerializer):
 class ToastPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ToastPayment
+        fields = '__all__'
+
+class ToastGeneralLocationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ToastGeneralLocation
         fields = '__all__'

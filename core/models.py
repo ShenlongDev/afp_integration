@@ -52,23 +52,53 @@ class Organisation(models.Model):
 
 
 class Site(models.Model):
+    """
+    A unified model for managing sites/locations across different integrations.
+    Contains general site information that applies to all integrations.
+    """
     STATUS_CHOICES = [
         ('active', 'Active'),
         ('inactive', 'Inactive'),
         ('closed', 'Closed'),
     ]
     
-    name = models.CharField(max_length=255)
-    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name='sites')
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE, related_name="sites")
+    name = models.CharField(max_length=255, db_index=True)
+    code = models.CharField(max_length=50, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    
+    # Location details
     postcode = models.CharField(max_length=20)
     region = models.CharField(max_length=255)
+    address_line1 = models.CharField(max_length=255, null=True, blank=True)
+    address_line2 = models.CharField(max_length=255, null=True, blank=True)
+    city = models.CharField(max_length=100, null=True, blank=True)
+    state_code = models.CharField(max_length=50, null=True, blank=True)
+    zip_code = models.CharField(max_length=20, null=True, blank=True)
+    country = models.CharField(max_length=100, null=True, blank=True)
+    phone = models.CharField(max_length=20, null=True, blank=True)
+    
+    # Business details
     opened_date = models.DateField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    timezone = models.CharField(max_length=50, null=True, blank=True)
+    currency_code = models.CharField(max_length=10, null=True, blank=True)
+    
+    # Status
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', db_index=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.organisation.name})"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["organisation"]),
+            models.Index(fields=["name"]),
+            models.Index(fields=["status"]),
+        ]
+        unique_together = ('organisation', 'name')
 
 
 class TaskLog(models.Model):
@@ -91,10 +121,12 @@ class User(models.Model):
     first_name = models.CharField(max_length=30, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
     is_active = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
+
         return self.email
 
     def set_password(self, raw_password):
@@ -225,3 +257,33 @@ class UserAccess(models.Model):
             raise ValidationError(
                 f"Object type must be one of: {', '.join(t[0] for t in self.OBJECT_TYPE_CHOICES)}"
             )
+
+
+class IntegrationSiteMapping(models.Model):
+    """
+    Maps sites to their integration-specific identifiers and settings.
+    This allows a single site to be connected to multiple integrations.
+    """
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="integration_mappings")
+    integration = models.ForeignKey('integrations.Integration', on_delete=models.CASCADE)
+    
+    # Integration-specific identifiers
+    external_id = models.CharField(max_length=255, db_index=True)
+    external_name = models.CharField(max_length=255, null=True, blank=True)
+    
+    # Integration-specific settings
+    settings = models.JSONField(default=dict, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.site.name} - {self.integration.name} ({self.external_id})"
+
+    class Meta:
+        unique_together = ('site', 'integration', 'external_id')
+        indexes = [
+            models.Index(fields=["site", "integration"]),
+            models.Index(fields=["external_id"]),
+        ]
+    

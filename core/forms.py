@@ -35,62 +35,56 @@ def get_module_choices(integration_type):
     return []
 
 class DataImportForm(forms.Form):
-    integration_type = forms.ChoiceField(
-        choices=get_integration_type_choices(),
-        label="Integration Type"
-    )
     organisation = forms.ModelChoiceField(
-        queryset=Organisation.objects.all(),
+        queryset=Organisation.objects.filter(status='active'),
+        required=True,
         label="Organisation"
     )
+    integration = forms.ModelChoiceField(
+        queryset=Integration.objects.filter(is_active=True),
+        required=False,  # Will be populated based on organisation selection
+        label="Integration"
+    )
+    integration_type = forms.ChoiceField(
+        choices=[('toast', 'Toast'), ('xero', 'Xero'), ('netsuite', 'NetSuite')],
+        required=True, 
+        label="Integration Type"
+    )
     since_date = forms.DateField(
-        initial="2020-01-01",
-        widget=forms.SelectDateWidget(
-            attrs={
-                'class': 'date-select',
-                'style': 'width: 100%; display: inline-block; margin-right: 1%;'
-            },
-            years=range(2000, datetime.now().year + 1)
-        ),
-        label="Import Data Since"
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        required=True,
+        label="Since Date"
     )
     modules = forms.MultipleChoiceField(
-        choices=[],
+        choices=[],  # Will be populated dynamically
         required=False,
         widget=forms.CheckboxSelectMultiple,
-        label="Modules/Components to Import"
+        label="Modules to Import"
     )
-
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        # Always update integration_type choices from MODULES.
-        integration_choices = get_integration_type_choices()
-        self.fields['integration_type'].choices = integration_choices
-
-        raw_integration_type = (
-            self.data.get('integration_type') or self.initial.get('integration_type') or ''
-        )
-        integration_type = raw_integration_type.lower() if raw_integration_type else ''
-
-        if not integration_type and integration_choices:
-            integration_type = integration_choices[0][0].lower()
-            self.initial['integration_type'] = integration_type
-
-        self.fields['modules'].choices = get_module_choices(integration_type)
-        self.fields['organisation'].queryset = get_organisations_by_integration_type(integration_type)
-
-        if 'organisation' in self.data:
-            try:
-                org_id = int(self.data.get('organisation'))
-                if 'integration' in self.fields:
-                    self.fields['integration'].queryset = Integration.objects.filter(org_id=org_id)
-            except (ValueError, TypeError):
-                pass
-        elif self.initial.get('organisation'):
-            org = self.initial.get('organisation')
-            if 'integration' in self.fields:
-                self.fields['integration'].queryset = Integration.objects.filter(org=org)
+        
+        # Setup dynamic module choices based on selected integration type
+        if args and 'integration_type' in args[0]:
+            integration_type = args[0]['integration_type'].lower()
+            self.setup_module_choices(integration_type)
+            
+        if args and 'organisation' in args[0]:
+            org_id = args[0]['organisation']
+            self.fields['integration'].queryset = Integration.objects.filter(
+                organisation_id=org_id, is_active=True
+            )
+    
+    def setup_module_choices(self, integration_type):
+        from integrations.modules import MODULES
+        
+        if integration_type in MODULES:
+            module_choices = [(k, k.replace('_', ' ').title()) 
+                           for k in MODULES[integration_type].get('import_methods', {}).keys()]
+            self.fields['modules'].choices = module_choices
+        else:
+            self.fields['modules'].choices = []
 
     def clean_integration_type(self):
         integration_type = self.cleaned_data.get('integration_type', '')
@@ -120,28 +114,20 @@ class DataImportForm(forms.Form):
         integration_type = cleaned_data.get('integration_type')
 
         if organisation and integration_type:
-            cred_fields = {
-                'xero': ('xero_client_id', 'xero_client_secret'),
-                'netsuite': ('netsuite_account_id', 'netsuite_consumer_key'),
-                'toast': ('toast_client_id', 'toast_client_secret'),
-            }
-            id_field, secret_field = cred_fields.get(integration_type, (None, None))
-            if id_field and secret_field:
-                integration = Integration.objects.filter(
-                    org=organisation,
-                    **{
-                        f'{id_field}__isnull': False,
-                        f'{secret_field}__isnull': False
-                    }
-                ).first()
+            # Find integration based on the new settings structure 
+            integration = Integration.objects.filter(
+                organisation=organisation,
+                integration_type=integration_type,
+                is_active=True
+            ).first()
 
-                if not integration:
-                    raise ValidationError(
-                        f"No {integration_type.capitalize()} integration found with valid credentials for "
-                        f"this organisation."
-                    )
+            if not integration:
+                raise ValidationError(
+                    f"No {integration_type.capitalize()} integration found with valid credentials for "
+                    f"this organisation."
+                )
 
-                cleaned_data['integration'] = integration
+            cleaned_data['integration'] = integration
 
         return cleaned_data
 
@@ -185,52 +171,39 @@ class DataImportForm(forms.Form):
             )
 
 class BudgetImportForm(forms.Form):
-    """
-    Form specifically for importing Xero budgets with date range control.
-    """
-    integration_type = forms.ChoiceField(
-        choices=[("xero", "Xero")], 
-        label="Integration Type",
-        initial="xero",
-        widget=forms.HiddenInput() 
-    )
     organisation = forms.ModelChoiceField(
-        queryset=Organisation.objects.all(),
+        queryset=Organisation.objects.filter(status='active'),
+        required=True,
         label="Organisation"
     )
+    integration = forms.ModelChoiceField(
+        queryset=Integration.objects.filter(is_active=True, integration_type='xero'),
+        required=False,  # Will be set based on organisation
+        label="Xero Integration"
+    )
     since_date = forms.DateField(
-        initial="2020-01-01",
-        widget=forms.SelectDateWidget(
-            attrs={
-                'class': 'date-select',
-                'style': 'width: 100%; display: inline-block; margin-right: 1%;'
-            },
-            years=range(2000, datetime.now().year + 1)
-        ),
-        label="Budget Data From"
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        required=True,
+        label="Start Date"
     )
     until_date = forms.DateField(
-        initial=datetime.now().date(),
-        widget=forms.SelectDateWidget(
-            attrs={
-                'class': 'date-select',
-                'style': 'width: 100%; display: inline-block; margin-right: 1%;'
-            },
-            years=range(2000, datetime.now().year + 1)
-        ),
-        label="Budget Data To"
+        widget=forms.DateInput(attrs={'type': 'date'}),
+        required=True,
+        label="End Date"
     )
-
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        integration_type = "xero" 
-        self.fields['organisation'].queryset = get_organisations_by_integration_type(integration_type)
+        if args and 'organisation' in args[0]:
+            org_id = args[0]['organisation']
+            self.fields['integration'].queryset = Integration.objects.filter(
+                organisation_id=org_id, is_active=True, integration_type='xero'
+            )
 
     def clean(self):
         cleaned_data = super().clean()
         organisation = cleaned_data.get('organisation')
-        integration_type = cleaned_data.get('integration_type', 'xero')
         since_date = cleaned_data.get('since_date')
         until_date = cleaned_data.get('until_date')
         
@@ -239,9 +212,9 @@ class BudgetImportForm(forms.Form):
 
         if organisation:
             integration = Integration.objects.filter(
-                org=organisation,
-                xero_client_id__isnull=False,
-                xero_client_secret__isnull=False
+                organisation=organisation,
+                integration_type='xero',
+                is_active=True
             ).first()
 
             if not integration:

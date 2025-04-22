@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Client, Organisation, Site, TaskLog
+from .models import Client, Organisation, Site, TaskLog, IntegrationSiteMapping
 from core.forms import DataImportForm, BudgetImportForm
 from django.urls import path
 from django.shortcuts import render, redirect
@@ -132,11 +132,15 @@ class SiteAdmin(admin.ModelAdmin):
     search_fields = ('name', 'postcode', 'region', 'organisation__name')
     readonly_fields = ('created_at', 'updated_at')
     fieldsets = (
-        ('Basic Information', {
-            'fields': ('name', 'organisation', 'status')
+        (None, {
+            'fields': ('organisation', 'name', 'code', 'description')
         }),
-        ('Location Information', {
-            'fields': ('postcode', 'region', 'opened_date')
+        ('Location Details', {
+            'fields': ('postcode', 'region', 'address_line1', 'address_line2', 'city', 
+                      'state_code', 'zip_code', 'country', 'phone')
+        }),
+        ('Business Details', {
+            'fields': ('opened_date', 'timezone', 'currency_code', 'status')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -151,3 +155,10 @@ class TaskLogAdmin(admin.ModelAdmin):
     search_fields = ('task_name', 'status')
     list_filter = ('status',)
     
+
+@admin.register(IntegrationSiteMapping)
+class IntegrationSiteMappingAdmin(admin.ModelAdmin):
+    list_display = ('site', 'integration', 'external_id', 'external_name')
+    list_filter = ('integration',)
+    search_fields = ('site__name', 'integration__name', 'external_id', 'external_name')
+    readonly_fields = ('created_at', 'updated_at')

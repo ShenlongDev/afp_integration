@@ -107,55 +107,51 @@ def sync_organization(self, organization_id):
     # Check for duplicate processing lock first
     if not cache.add(lock_key, "in_progress", 600):
         logger.warning(f"Organization {organization_id} sync lock already held. Skipping this instance.")
-        # Do NOT decrement the counter here. The instance that *holds* the lock
-        # will be responsible for decrementing when it finishes.
-        # If this instance was dispatched mistakenly due to a race condition
-        # before the lock was fully set, the dispatcher's check *before* incr
-        # should ideally prevent over-dispatching in the first place.
         return
 
     try:
         logger.info(f"Actually starting sync for organization {organization_id}")
         from integrations.models.models import Integration
         logger.warning("Starting sync for organization %s", organization_id)
-        org_integrations = Integration.objects.filter(org=organization_id).order_by('-id')
+        org_integrations = Integration.objects.filter(organisation_id=organization_id).order_by('-id')
 
         integration_dispatched = False # Flag to see if any sub-tasks were dispatched
         for integration in org_integrations:
             logger.warning("Starting sync for integration %s", integration.id)
+            integration_type = integration.integration_type.lower()
+            settings = integration.settings
+            print(settings)
 
             # Check Toast
-            if integration.toast_client_id and integration.toast_client_secret and integration.toast_api_url:
+            if integration_type == 'toast' and settings.get('client_id') and settings.get('client_secret') and settings.get('api_url'):
                 logger.info("Dispatching Toast sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.toast import sync_toast_data
                 sync_toast_data.apply_async(args=[integration.id], queue="org_sync")
                 integration_dispatched = True
 
             # Check Xero
-            if integration.xero_client_id and integration.xero_client_secret:
+            if integration_type == 'xero' and settings.get('client_id') and settings.get('client_secret'):
                 logger.info("Dispatching Xero sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.xero import sync_single_xero_data
                 sync_single_xero_data.apply_async(args=[integration.id]) 
                 integration_dispatched = True
 
             # Check NetSuite
-            if integration.netsuite_account_id and integration.netsuite_consumer_key:
+            if integration_type == 'netsuite' and settings.get('account_id') and settings.get('consumer_key'):
                 logger.info("Dispatching NetSuite sync for integration %s for organization %s", integration.id, organization_id)
                 from core.tasks.netsuite import sync_single_netsuite_data
                 sync_single_netsuite_data.apply_async(args=[integration.id])
                 integration_dispatched = True
 
-            if not integration_dispatched and not (integration.toast_client_id or integration.xero_client_id or integration.netsuite_account_id):
-                 logger.warning("Unknown or incomplete integration type for integration %s", integration.id)
-
+            if not integration_dispatched:
+                logger.warning(f"No valid credentials found for integration {integration.id} of type {integration_type}")
 
         if integration_dispatched:
             logger.info("Completed dispatching sub-tasks for organization %s", organization_id)
             log_task_event("sync_organization", "success", f"Organization {organization_id} sync dispatch completed at {timezone.now()}")
         else:
-             logger.warning("No valid integration sub-tasks found or dispatched for organization %s", organization_id)
-             log_task_event("sync_organization", "warning", f"No sub-tasks dispatched for Organization {organization_id} at {timezone.now()}")
-
+            logger.warning("No valid integration sub-tasks found or dispatched for organization %s", organization_id)
+            log_task_event("sync_organization", "warning", f"No sub-tasks dispatched for Organization {organization_id} at {timezone.now()}")
 
     except Exception as exc:
         logger.error("Error during sync_organization %s: %s", organization_id, exc, exc_info=True)
@@ -167,11 +163,10 @@ def sync_organization(self, organization_id):
             cache.touch(IN_FLIGHT_ORG_SYNC_COUNT_KEY, COUNTER_TIMEOUT)
             logger.info(f"SYNC_ORGANIZATION_TASK: Decremented in-flight count for Org ID: {organization_id}. New count: {new_val}")
             if new_val < 0:
-                 logger.warning(f"In-flight count went below zero ({new_val}) for Org {organization_id}. Resetting to 0.")
-                 cache.set(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0, timeout=COUNTER_TIMEOUT)
-
+                logger.warning(f"In-flight count went below zero ({new_val}) for Org {organization_id}. Resetting to 0.")
+                cache.set(IN_FLIGHT_ORG_SYNC_COUNT_KEY, 0, timeout=COUNTER_TIMEOUT)
         except Exception as e:
-             logger.error(f"SYNC_ORGANIZATION_TASK: Failed to decrement or touch in-flight count for Org ID: {organization_id}. Error: {e}", exc_info=True)
+            logger.error(f"SYNC_ORGANIZATION_TASK: Failed to decrement or touch in-flight count for Org ID: {organization_id}. Error: {e}", exc_info=True)
 
 
 @shared_task(bind=True, queue="high_priority")
@@ -348,7 +343,7 @@ def dispatcher(self):
 
         if slots_to_fill > 0:
             logger.info(f"Attempting to fill {slots_to_fill} slots.")
-            all_orgs = list(Integration.objects.values_list("org", flat=True).distinct().order_by("org"))
+            all_orgs = list(Integration.objects.values_list("organisation_id", flat=True).distinct().order_by("organisation_id"))
             total_orgs = len(all_orgs)
 
             if total_orgs > 0:
@@ -430,49 +425,40 @@ def daily_previous_day_sync():
         from integrations.models.models import Integration, HighPriorityTask
         from integrations.modules import MODULES
         
-        all_integrations = Integration.objects.all()
+        all_integrations = Integration.objects.filter(is_active=True)
         
         if not all_integrations.exists():
-            logger.info("No integrations found for daily sync")
+            logger.info("No active integrations found for daily sync")
             return
         
         total_sync_count = 0
         
         for integration in all_integrations:
-            integration_types = []
+            # Use the integration_type field directly instead of checking specific credentials
+            integration_type = integration.integration_type.lower()
             
-            if integration.toast_client_id and integration.toast_client_secret and integration.toast_api_url:
-                integration_types.append("toast")
-                
-            if integration.xero_client_id and integration.xero_client_secret:
-                integration_types.append("xero")
-                
-            if integration.netsuite_account_id and integration.netsuite_consumer_key:
-                integration_types.append("netsuite")
-            
-            if not integration_types:
-                logger.warning(f"No valid integration types found for integration {integration.id}, skipping")
+            if integration_type not in MODULES:
+                logger.warning(f"Unsupported integration type {integration_type} for integration {integration.id}, skipping")
                 continue
                 
-            for integration_type in integration_types:
-                all_modules = list(MODULES.get(integration_type, {}).get("import_methods", {}).keys())
+            all_modules = list(MODULES.get(integration_type, {}).get("import_methods", {}).keys())
+            
+            if not all_modules:
+                logger.warning(f"No modules found for integration type {integration_type}, integration {integration.id}")
+                continue
                 
-                if not all_modules:
-                    logger.warning(f"No modules found for integration type {integration_type}, integration {integration.id}")
-                    continue
-                    
-                hp_task = HighPriorityTask.objects.create(
-                    integration=integration,
-                    integration_type=integration_type,
-                    since_date=yesterday,
-                    until_date=yesterday,
-                    processed=False,
-                    selected_modules=all_modules
-                )
-                
-                module_list_str = ", ".join(all_modules)
-                total_sync_count += 1
-                logger.info(f"Created full sync task for integration {integration.id} (type: {integration_type}) with modules: {module_list_str}")
+            hp_task = HighPriorityTask.objects.create(
+                integration=integration,
+                integration_type=integration_type,
+                since_date=yesterday,
+                until_date=yesterday,
+                processed=False,
+                selected_modules=all_modules
+            )
+            
+            module_list_str = ", ".join(all_modules)
+            total_sync_count += 1
+            logger.info(f"Created full sync task for integration {integration.id} (type: {integration_type}) with modules: {module_list_str}")
         
         log_task_event(
             "daily_previous_day_sync", 

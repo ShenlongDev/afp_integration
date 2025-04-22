@@ -28,7 +28,6 @@ class Command(BaseCommand):
             help='Optional end date (YYYY-MM-DD) to import orders until',
             default=None
         )
-        # Add module selection arguments
         parser.add_argument(
             '--orders',
             action='store_true',
@@ -97,7 +96,6 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"Invalid --until date format: {until_date_str}"))
                 return
 
-        # Determine which modules to run
         run_orders = options.get('orders')
         run_restaurants = options.get('restaurants')
         run_revenue_centers = options.get('revenue_centers')
@@ -108,7 +106,6 @@ class Command(BaseCommand):
         run_payments = options.get('payments')
         run_all = options.get('all')
 
-        # If no specific modules are selected, run all
         if not (run_orders or run_restaurants or run_revenue_centers or 
                 run_restaurant_services or run_sales_categories or 
                 run_dining_options or run_service_areas or run_payments):
@@ -118,17 +115,29 @@ class Command(BaseCommand):
         if integration_id:
             try:
                 integration = Integration.objects.get(pk=integration_id)
+                if integration.integration_type.lower() != 'toast':
+                    self.stdout.write(self.style.ERROR(f"Integration with ID {integration_id} is not a Toast integration."))
+                    return
                 integrations.append(integration)
             except Integration.DoesNotExist:
                 self.stdout.write(self.style.ERROR(f"Integration with ID {integration_id} does not exist."))
                 return
         else:
             integrations = Integration.objects.filter(
-                toast_client_id__isnull=False,
-                toast_client_secret__isnull=False
+                integration_type='toast',
+                is_active=True
             )
-            if not integrations.exists():
-                self.stdout.write(self.style.WARNING("No Toast integrations found."))
+            
+            valid_integrations = []
+            for integration in integrations:
+                settings = integration.settings
+                if settings.get('client_id') and settings.get('client_secret') and settings.get('api_url'):
+                    valid_integrations.append(integration)
+            
+            integrations = valid_integrations
+            
+            if not integrations:
+                self.stdout.write(self.style.WARNING("No valid Toast integrations found."))
                 return
 
         for integration in integrations:
@@ -136,43 +145,36 @@ class Command(BaseCommand):
             try:
                 service = ToastIntegrationService(integration, since_date, until_date)
                 
-                # Import orders if selected
                 if run_all or run_orders:
                     self.stdout.write(f"Importing orders for integration ID {integration.id}...")
                     orders = service.import_orders()
                     self.stdout.write(self.style.SUCCESS(f"Imported {len(orders)} orders for integration ID {integration.id}"))
                 
-                # Import restaurant data if selected
                 if run_all or run_restaurants:
                     self.stdout.write(f"Importing restaurant data for integration ID {integration.id}...")
                     restaurant_info = service.import_restaurant_and_schedule_data()
                     self.stdout.write(self.style.SUCCESS(f"Imported restaurant info, day schedules, weekly schedule, and opening hours for integration ID {integration.id}"))
                 
-                # Import revenue centers if selected
                 if run_all or run_revenue_centers:
                     self.stdout.write(f"Importing revenue centers for integration ID {integration.id}...")
                     revenue_centers = service.import_revenue_centers()
                     self.stdout.write(self.style.SUCCESS(f"Imported revenue centers for integration ID {integration.id}"))
                 
-                # Import restaurant services if selected
                 if run_all or run_restaurant_services:
                     self.stdout.write(f"Importing restaurant services for integration ID {integration.id}...")
                     services_count = service.import_restaurant_services()
                     self.stdout.write(self.style.SUCCESS(f"Imported {services_count} restaurant services for integration ID {integration.id}"))
                 
-                # Import sales categories if selected
                 if run_all or run_sales_categories:
                     self.stdout.write(f"Importing sales categories for integration ID {integration.id}...")
                     categories_count = service.import_sales_categories()
                     self.stdout.write(self.style.SUCCESS(f"Imported {categories_count} sales categories for integration ID {integration.id}"))
                 
-                # Import dining options if selected
                 if run_all or run_dining_options:
                     self.stdout.write(f"Importing dining options for integration ID {integration.id}...")
                     options_count = service.import_dining_options()
                     self.stdout.write(self.style.SUCCESS(f"Imported {options_count} dining options for integration ID {integration.id}"))
                 
-                # Import service areas if selected
                 if run_all or run_service_areas:
                     self.stdout.write(f"Importing service areas for integration ID {integration.id}...")
                     areas_count = service.import_service_areas()

@@ -1,6 +1,6 @@
 import requests
 import logging
-from datetime import datetime, time  # import time for our conversion
+from datetime import datetime, time 
 from decimal import Decimal
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -8,12 +8,14 @@ from django.db import transaction
 from .auth import ToastAuthService
 from integrations.models.toast.raw import (
     ToastOrder, ToastCheck, ToastSelection,
-    ToastGeneralLocation, ToastDaySchedule, 
-    ToastWeeklySchedule, ToastJoinedOpeningHours, ToastRevenueCenter,
-    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea
+    ToastDaySchedule, ToastWeeklySchedule, 
+    ToastJoinedOpeningHours, ToastRevenueCenter,
+    ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea,
+    ToastPayment
 )
 from integrations.models.models import SyncTableLogs
-import time as timeclock  # Use a different name to avoid conflict
+from core.models import Site, IntegrationSiteMapping
+import time as timeclock  
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +25,9 @@ class ToastIntegrationService:
     """
     def __init__(self, integration, start_date=None, end_date=None):
         self.integration = integration
-        self.hostname = integration.toast_api_url 
-        self.client_id = integration.toast_client_id
-        self.client_secret = integration.toast_client_secret
+        self.hostname = integration.settings.get('api_url')
+        self.client_id = integration.settings.get('client_id')
+        self.client_secret = integration.settings.get('client_secret')
         self.auth_service = ToastAuthService(self.hostname, self.client_id, self.client_secret)
         self.access_token = self.auth_service.login()
         self.start_date = start_date
@@ -117,7 +119,8 @@ class ToastIntegrationService:
     def import_restaurant_and_schedule_data(self):
         """
         Fetches restaurant info (including schedules) for all restaurants from Toast and updates/creates:
-         - ToastGeneralLocation,
+         - Site,
+         - IntegrationSiteMapping,
          - ToastDaySchedule,
          - ToastWeeklySchedule, and
          - ToastJoinedOpeningHours.
@@ -146,24 +149,13 @@ class ToastIntegrationService:
             urls = data.get("urls", {})
             location_data = data.get("location", {})
 
-            general_location_defaults = {
-                "tenant_id": self.integration.org.id,
-                "guid": data.get("guid"),
-                "general_name": general.get("name"),
-                "location_name": general.get("locationName"),
-                "location_code": general.get("locationCode"),
+            # Create or update Site
+            site_defaults = {
+                "name": general.get("name"),
+                "code": general.get("locationCode"),
                 "description": general.get("description"),
-                "timezone": general.get("timeZone"),
-                # Convert the closeout hour (which is an integer) to a time object.
-                "closeout_hour": self.convert_int_to_time(general.get("closeoutHour")),
-                "management_group_guid": general.get("managementGroupGuid"),
-                "currency_code": general.get("currencyCode"),
-                "first_business_date": self.convert_to_date(general.get("firstBusinessDate")),
-                "archived": general.get("archived", False),
-                "url_website": urls.get("website"),
-                "url_facebook": urls.get("facebook"),
-                "url_twitter": urls.get("twitter"),
-                "url_order_online": urls.get("orderOnline"),
+                "postcode": location_data.get("zipCode"),
+                "region": location_data.get("stateCode"),
                 "address_line1": location_data.get("address1"),
                 "address_line2": location_data.get("address2"),
                 "city": location_data.get("city"),
@@ -171,15 +163,55 @@ class ToastIntegrationService:
                 "zip_code": location_data.get("zipCode"),
                 "country": location_data.get("country"),
                 "phone": location_data.get("phone"),
-                "latitude": location_data.get("latitude"),
-                "longitude": location_data.get("longitude"),
+                "timezone": general.get("timeZone"),
+                "currency_code": general.get("currencyCode"),
+                "opened_date": self.convert_to_date(general.get("firstBusinessDate")),
+                "status": "inactive" if general.get("archived", False) else "active",
             }
-            location_obj, _ = ToastGeneralLocation.objects.update_or_create(
-                guid=general_location_defaults["guid"],
-                tenant_id=self.integration.org.id,
-                defaults=general_location_defaults
+            
+            # First try to find an existing site by name and organisation
+            site = Site.objects.filter(
+                organisation=self.integration.organisation,
+                name=site_defaults["name"]
+            ).first()
+            
+            if site:
+                # Update existing site
+                for key, value in site_defaults.items():
+                    setattr(site, key, value)
+                site.save()
+            else:
+                # Create new site
+                site = Site.objects.create(
+                    organisation=self.integration.organisation,
+                    **site_defaults
+                )
+
+            # Create or update IntegrationSiteMapping
+            mapping_defaults = {
+                "site": site,
+                "integration": self.integration,
+                "external_id": restaurant_guid,
+                "external_name": general.get("name"),
+                "settings": {
+                    "closeout_hour": general.get("closeoutHour"),
+                    "management_group_guid": general.get("managementGroupGuid"),
+                    "website": urls.get("website"),
+                    "facebook": urls.get("facebook"),
+                    "twitter": urls.get("twitter"),
+                    "order_online": urls.get("orderOnline"),
+                    "first_business_date": general.get("firstBusinessDate"),
+                    "latitude": location_data.get("latitude"),
+                    "longitude": location_data.get("longitude"),
+                }
+            }
+            mapping, _ = IntegrationSiteMapping.objects.update_or_create(
+                site=site,
+                integration=self.integration,
+                defaults=mapping_defaults
             )
-            logger.info("Imported restaurant location: %s", location_obj)
+
+            logger.info("Imported restaurant location: %s", site)
 
             # Process schedule data:
             schedules = data.get("schedules", {})
@@ -190,9 +222,9 @@ class ToastIntegrationService:
             day_schedule_map = {}
             for ds_guid, ds in day_schedules_data.items():
                 ds_defaults = {
-                    "tenant_id": self.integration.org.id,
+                    "tenant_id": self.integration.organisation.id,
                     "integration": self.integration,
-                    "restaurant": location_obj,
+                    "restaurant": site,  # Changed from location_obj to site
                     "guid": ds_guid,
                     "property_name": ds.get("scheduleName"),
                     "open_time": self.convert_to_time(ds.get("openTime")),
@@ -201,7 +233,7 @@ class ToastIntegrationService:
                 }
                 day_obj, _ = ToastDaySchedule.objects.update_or_create(
                     guid=ds_guid,
-                    tenant_id=self.integration.org.id,
+                    tenant_id=self.integration.organisation.id,
                     defaults=ds_defaults
                 )
                 day_schedule_map[ds_guid] = day_obj
@@ -209,9 +241,9 @@ class ToastIntegrationService:
 
             # Update/insert ToastWeeklySchedule record.
             weekly_defaults = {
-                "tenant_id": self.integration.org.id,
+                "tenant_id": self.integration.organisation.id,
                 "integration": self.integration,
-                "restaurant": location_obj,
+                "restaurant": site,  # Changed from location_obj to site
                 "monday": week_schedule_data.get("monday"),
                 "tuesday": week_schedule_data.get("tuesday"),
                 "wednesday": week_schedule_data.get("wednesday"),
@@ -222,11 +254,11 @@ class ToastIntegrationService:
             }
             weekly_obj, _ = ToastWeeklySchedule.objects.update_or_create(
                 integration=self.integration,
-                restaurant=location_obj,
-                tenant_id=self.integration.org.id,
+                restaurant=site,  # Changed from location_obj to site
+                tenant_id=self.integration.organisation.id,
                 defaults=weekly_defaults
             )
-            logger.info("Imported weekly schedule for restaurant: %s", location_obj)
+            logger.info("Imported weekly schedule for restaurant: %s", site)
 
             # Build joined opening hours (ToastJoinedOpeningHours)
             def get_day_schedule_info(schedule_id):
@@ -247,9 +279,9 @@ class ToastIntegrationService:
             sunday_start, sunday_end, sunday_overnight, sunday_related = get_day_schedule_info(week_schedule_data.get("sunday"))
 
             joined_defaults = {
-                "tenant_id": self.integration.org.id,
+                "tenant_id": self.integration.organisation.id,
                 "integration": self.integration,
-                "restaurant": location_obj,
+                "restaurant": site,  # Changed from location_obj to site
                 "monday_start_time": monday_start,
                 "monday_end_time": monday_end,
                 "monday_overnight": monday_overnight,
@@ -281,13 +313,14 @@ class ToastIntegrationService:
             }
             joined_obj, _ = ToastJoinedOpeningHours.objects.update_or_create(
                 integration=self.integration,
-                restaurant=location_obj,
-                tenant_id=self.integration.org.id,
+                restaurant=site,  # Changed from location_obj to site
+                tenant_id=self.integration.organisation.id,
                 defaults=joined_defaults
             )
-            logger.info("Imported joined opening hours for restaurant: %s", location_obj)
+            logger.info("Imported joined opening hours for restaurant: %s", site)
             results.append({
-                "location": location_obj,
+                "site": site,
+                "mapping": mapping,
                 "day_schedules": list(day_schedule_map.values()),
                 "weekly_schedule": weekly_obj,
                 "joined_opening_hours": joined_obj,
@@ -380,7 +413,7 @@ class ToastIntegrationService:
         SyncTableLogs.objects.create(
             module_name=module_name,
             integration='TOAST',
-            organization=self.integration.org,
+            organisation=self.integration.organisation,
             fetched_records=fetched_records,
             last_updated_time=timezone.now(),
             last_updated_date=timezone.now().date()
@@ -427,9 +460,7 @@ class ToastIntegrationService:
                     "paid_date": parse_datetime(order_data.get("paidDate")) if order_data.get("paidDate") else None,
                     "restaurant_service_guid": order_data.get("restaurantService", {}).get("guid") if order_data.get("restaurantService") else None,
                     "excess_food": order_data.get("excessFood"),
-                    # Store voided orders instead of skipping them.
                     "voided": order_data.get("voided"),
-                    # New: Store deleted orders by reading the value (default to False if missing).
                     "deleted": order_data.get("deleted", False),
                     "estimated_fulfillment_date": parse_datetime(order_data.get("estimatedFulfillmentDate")) if order_data.get("estimatedFulfillmentDate") else None,
                     "table_guid": order_data.get("table", {}).get("guid") if order_data.get("table", {}) else None,
@@ -443,14 +474,14 @@ class ToastIntegrationService:
                     "applied_packaging_info": order_data.get("appliedPackagingInfo") if order_data.get("appliedPackagingInfo") else None,
                     "opened_date": parse_datetime(order_data.get("openedDate")) if order_data.get("openedDate") else None,
                     "void_business_date": order_data.get("voidBusinessDate"),
-                    # Add restaurant_guid to store with the order
                     "restaurant_guid": order_data.get("restaurant_guid"),
-                    "payments": all_payments if all_payments else None
+                    "payments": all_payments if all_payments else None,
+                    "site": self.integration.organisation.sites.filter(integration_mappings__external_id=order_data.get("restaurant_guid")).first(),
                 }
                     
                 order, created = ToastOrder.objects.update_or_create(
                     order_guid=order_guid,
-                    tenant_id=self.integration.org.id,
+                    tenant_id=self.integration.organisation.id,
                     defaults=order_defaults
                 )
                 
@@ -560,7 +591,7 @@ class ToastIntegrationService:
                     check_obj, _ = ToastCheck.objects.update_or_create(
                         check_guid=check_guid,
                         order=order,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults=check_defaults
                     )
 
@@ -628,7 +659,7 @@ class ToastIntegrationService:
                             try:
                                 selection_obj = ToastSelection.objects.get(
                                     selection_guid=selection_guid,
-                                    tenant_id=self.integration.org.id
+                                    tenant_id=self.integration.organisation.id
                                 )
                                 for key, value in selection_defaults.items():
                                     setattr(selection_obj, key, value)
@@ -645,7 +676,7 @@ class ToastIntegrationService:
                                 ToastSelection.objects.create(
                                     selection_guid=selection_guid,
                                     toast_check=check_obj,
-                                    tenant_id=self.integration.org.id,
+                                    tenant_id=self.integration.organisation.id,
                                     order_guid=order_guid,
                                     display_name=selection_data.get("displayName"),
                                     pre_discount_price=pre_discount_price,
@@ -727,7 +758,7 @@ class ToastIntegrationService:
                         
                     ToastRevenueCenter.objects.update_or_create(
                         revenue_center_guid=center_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -777,7 +808,7 @@ class ToastIntegrationService:
                         
                     ToastRestaurantService.objects.update_or_create(
                         service_guid=service_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -826,7 +857,7 @@ class ToastIntegrationService:
                         
                     ToastSalesCategory.objects.update_or_create(
                         category_guid=category_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -875,7 +906,7 @@ class ToastIntegrationService:
                         
                     ToastDiningOption.objects.update_or_create(
                         option_guid=option_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -933,7 +964,7 @@ class ToastIntegrationService:
                         # Update or create the revenue center
                         ToastRevenueCenter.objects.update_or_create(
                             revenue_center_guid=revenue_center_guid,
-                            tenant_id=self.integration.org.id,
+                            tenant_id=self.integration.organisation.id,
                             defaults={
                                 "integration": self.integration,
                                 "restaurant_guid": restaurant_guid,
@@ -945,7 +976,7 @@ class ToastIntegrationService:
                     # Create or update the service area
                     ToastServiceArea.objects.update_or_create(
                         area_guid=area_guid,
-                        tenant_id=self.integration.org.id,
+                        tenant_id=self.integration.organisation.id,
                         defaults={
                             "integration": self.integration,
                             "restaurant_guid": restaurant_guid,
@@ -964,5 +995,92 @@ class ToastIntegrationService:
         self.log_import_event(module_name="toast_service_areas", fetched_records=total_areas)
         return total_areas
 
+    def import_payment_details(self):
+        """
+        Import payment details for orders that have payment data
+        """
+        query_filters = {
+            'integration': self.integration,
+            'tenant_id': self.integration.organisation.id,
+            'payments__isnull': False,
+            'business_date': self.start_date.strftime("%Y%m%d")
+        }
+        orders_with_payments = ToastOrder.objects.filter(**query_filters)
+        
+        total_payments = 0
+        
+        for order in orders_with_payments:
+            restaurant_guid = order.restaurant_guid
+            if not restaurant_guid:
+                logger.warning(f"Order {order.order_guid} has no restaurant GUID, skipping payment import")
+                continue
+            
+            payments = order.payments   
+            if not payments:
+                continue
+            
+            for payment_data in payments:
+                payment_guid = payment_data.get("guid")
+                if not payment_guid:
+                    continue
+                
+                # Basic data from order payment data
+                check_guid = payment_data.get("checkGuid")
+                amount = Decimal(str(payment_data.get("amount", "0.00")))
+                tip_amount = Decimal(str(payment_data.get("tipAmount", "0.00")))
+                
+                # Try to get detailed payment info from API
+                detailed_payment = self.get_payment_details(restaurant_guid, payment_guid)
+                
+                # Use the most detailed data available (API response or embedded data)
+                payment_info = detailed_payment if detailed_payment else payment_data
+                
+                payment_defaults = {
+                    "integration": self.integration,
+                    "restaurant_guid": restaurant_guid,
+                    "order_guid": order.order_guid,
+                    "check_guid": check_guid,
+                    "type": payment_info.get("type"),
+                    "amount": amount,
+                    "tip_amount": tip_amount,
+                    "card_type": payment_info.get("cardType"),
+                    "last4_digits": payment_info.get("last4Digits"),
+                    "paid_date": parse_datetime(payment_info.get("paidDate")) if payment_info.get("paidDate") else None,
+                    "paid_business_date": payment_info.get("paidBusinessDate"),
+                    "refund_status": payment_info.get("refundStatus"),
+                    "payment_status": payment_info.get("paymentStatus"),
+                    "card_entry_mode": payment_info.get("cardEntryMode"),
+                    "server_guid": payment_info.get("server", {}).get("guid") if payment_info.get("server") else None,
+                    "created_device_id": payment_info.get("createdDevice", {}).get("id") if payment_info.get("createdDevice") else None,
+                    "last_modified_device_id": payment_info.get("lastModifiedDevice", {}).get("id") if payment_info.get("lastModifiedDevice") else None,
+                    "raw_payload": payment_info
+                }
+                
+                ToastPayment.objects.update_or_create(
+                    payment_guid=payment_guid,
+                    tenant_id=self.integration.org.id,
+                    defaults=payment_defaults
+                )
+                
+                total_payments += 1
+            
+        self.log_import_event(module_name="toast_payments", fetched_records=total_payments)
+        return total_payments
 
-
+    def get_payment_details(self, restaurant_guid, payment_guid):
+        """
+        Get detailed payment information from Toast API
+        """
+        url = f"{self.hostname}/orders/v2/payments/{payment_guid}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Toast-Restaurant-External-ID": restaurant_guid
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            logger.error(f"Error fetching payment details for {payment_guid}: {e}")
+            return None
