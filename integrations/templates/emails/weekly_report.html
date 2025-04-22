@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+{% load report_filters %}
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Weekly Sales Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .summary {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .metric {
+            display: inline-block;
+            width: 30%;
+            text-align: center;
+            margin: 10px;
+        }
+        .metric .value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .metric .label {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+        .change-positive {
+            color: #27ae60;
+        }
+        .change-negative {
+            color: #e74c3c;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Weekly Sales Report</h1>
+        <h2>{{ site_name }}</h2>
+        <p>Week Ending: {{ week_ending|date:"d/m/Y" }}</p>
+    </div>
+    
+    <div class="summary">
+        <h3>Weekly Summary</h3>
+        
+        <div class="metric">
+            <div class="value">{{ total_sales|floatformat:2 }} {{ data.0.CURRENCY }}</div>
+            <div class="label">Total Sales</div>
+            <div class="{% if sales_change >= 0 %}change-positive{% else %}change-negative{% endif %}">
+                {{ sales_change|floatformat:1 }}% vs last week
+            </div>
+        </div>
+        
+        <div class="metric">
+            <div class="value">{{ total_covers|floatformat:0 }}</div>
+            <div class="label">Total Covers</div>
+            <div class="{% if covers_change >= 0 %}change-positive{% else %}change-negative{% endif %}">
+                {{ covers_change|floatformat:1 }}% vs last week
+            </div>
+        </div>
+        
+        <div class="metric">
+            <div class="value">{{ total_sales|divide:total_covers|floatformat:2 }} {{ data.0.CURRENCY }}</div>
+            <div class="label">Avg Spend Per Head</div>
+        </div>
+    </div>
+    
+    <div class="data-table">
+        <h3>Daily Breakdown</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Day</th>
+                    <th>Net Sales</th>
+                    <th>Covers</th>
+                    <th>LW Sales</th>
+                    <th>LW %</th>
+                    <th>Weather</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for day in data %}
+                <tr>
+                    <td>{{ day.DATE|date:"d/m/Y" }}</td>
+                    <td>{{ day.DATE|date:"l" }}</td>
+                    <td>{{ day.SALES|floatformat:2 }} {{ day.CURRENCY }}</td>
+                    <td>{{ day.COVERS|floatformat:0 }}</td>
+                    <td>{{ day.LW_SALES|floatformat:2 }} {{ day.CURRENCY }}</td>
+                    <td>{{ day.SALES_CHANGE_PCT|floatformat:1 }}%</td>
+                    <td>{{ day.TEMPERATURE_VALUE|floatformat:1 }}°C, {{ day.DESCRIPTION }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="footer">
+        <p>This report is automatically generated. Please do not reply to this email.</p>
+        <p>&copy; {% now "Y" %} Insights Analytics Platform</p>
+    </div>
+</body>
+</html> 
