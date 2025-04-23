@@ -1058,7 +1058,7 @@ class ToastIntegrationService:
                 
                 ToastPayment.objects.update_or_create(
                     payment_guid=payment_guid,
-                    tenant_id=self.integration.org.id,
+                    tenant_id=self.integration.organisation.id,
                     defaults=payment_defaults
                 )
                 
