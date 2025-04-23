@@ -286,4 +286,44 @@ class IntegrationSiteMapping(models.Model):
             models.Index(fields=["site", "integration"]),
             models.Index(fields=["external_id"]),
         ]
+
+
+class Commentary(models.Model):
+    """
+    Model for storing comments and takings associated with sites and users.
+    """
+    comments = models.TextField(help_text="The commentary text")
+    takings = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Associated takings amount"
+    )
+    site = models.ForeignKey(
+        Site,
+        on_delete=models.CASCADE,
+        related_name="commentaries",
+        help_text="The site this commentary is associated with"
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="commentaries",
+        help_text="The user who created this commentary"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Commentary by {self.user.email} for {self.site.name}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["site"]),
+            models.Index(fields=["user"]),
+            models.Index(fields=["created_at"]),
+        ]
+        verbose_name_plural = "Commentaries"
     
