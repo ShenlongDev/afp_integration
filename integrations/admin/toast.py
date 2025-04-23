@@ -29,7 +29,7 @@ class ToastCheckAdmin(admin.ModelAdmin):
 
 class ToastOrderAdmin(admin.ModelAdmin):
     list_display = ('order_guid', 'order_net_sales', 'import_id', 'opened_date','total_refunds')
-    search_fields = ('order_guid',)
+    search_fields = ('order_guid', 'display_number')
     ordering = ('-opened_date',)
 
 class ToastDayScheduleAdmin(admin.ModelAdmin):

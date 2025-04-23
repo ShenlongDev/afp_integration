@@ -423,24 +423,20 @@ class ToastIntegrationService:
         
         for index, order_data in enumerate(orders):
             order_guid = order_data.get("guid", "unknown")            
-            # Skip the order if it is marked as a refund    
             if order_data.get("refund"):
                 print(f"Skipping refund order {order_guid}")
                 continue
             
             try:
-                # Extract payments from checks to store in order
                 all_payments = []
                 for check_data in order_data.get("checks", []):
                     if check_data.get("payments"):
                         all_payments.extend(check_data.get("payments", []))
 
-                # Process in smaller chunks, breaking the transaction
                 order_defaults = {
                     "integration": self.integration,
-                    # Don't save full payload initially
-                    "payload": {},  # Empty temporarily
-                    "order_net_sales": Decimal("0.00"), # Will be updated below
+                    "payload": {},
+                    "order_net_sales": Decimal("0.00"),
                     "import_id": self.integration.id,
                     "ws_import_date": timezone.now(),
                     "created_date": parse_datetime(order_data.get("createdDate")) if order_data.get("createdDate") else None,
@@ -485,41 +481,48 @@ class ToastIntegrationService:
                     defaults=order_defaults
                 )
                 
-                # Initialize totals
-                total_revenue = Decimal("0.00")    # This will become toast_sales
-                total_net_sales = Decimal("0.00")  # This will become order_net_sales
-                total_refund_amount = Decimal("0.00") # Accumulates only from payment refunds now
+                total_revenue = Decimal("0.00")  
+                total_net_sales = Decimal("0.00")
+                total_refund_amount = Decimal("0.00")
                 total_tip_total = Decimal("0.00")    
                 total_service_charge_total = Decimal("0.00")
-                # Initialize discount tracking (Keep this new logic)
                 total_discount_amount = Decimal("0.00")
                 discount_count = 0
                 refund_business_date = None
 
-                # Process all checks for this order
                 for check_index, check_data in enumerate(order_data.get("checks", [])):
-                    # Skip check if voided, deleted, or refund
                     if check_data.get("voided") or check_data.get("deleted") or check_data.get("refund"):
                         continue
 
-                    # Calculate check discount total and count (Keep this new logic)
                     check_discount_total = Decimal("0.00")
                     check_discount_count = 0
                     applied_discounts = check_data.get("appliedDiscounts", [])
-                    
+
                     if applied_discounts:
-                        check_discount_count = len(applied_discounts)
+                        valid_discounts = [d for d in applied_discounts if d.get("processingState") != "VOID"]
+                        check_discount_count = len(valid_discounts)
                         check_discount_total = sum(
                             Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
-                            for d in applied_discounts
+                            for d in valid_discounts
                         )
+                    else:
+                        for selection_data in check_data.get("selections", []):
+                            if selection_data.get("voided"):
+                                continue
+                                
+                            selection_discounts = selection_data.get("appliedDiscounts", [])
+                            valid_selection_discounts = [d for d in selection_discounts if d.get("processingState") != "VOID"]
+                            
+                            check_discount_count += len(valid_selection_discounts)
+                            check_discount_total += sum(
+                                Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
+                                for d in valid_selection_discounts
+                            )
                     
-                    # Add check discounts to order totals (Keep this new logic)
                     total_discount_amount += check_discount_total
                     discount_count += check_discount_count
 
                     check_guid = check_data.get("guid")
-                    # Assume check_subtotal is the base amount (already reflects discounts).
                     check_subtotal = Decimal(str(check_data.get("amount", "0.00")))
                     tax_amount = Decimal(str(check_data.get("taxAmount", "0.00")))
                     tip_total = sum(
@@ -536,17 +539,13 @@ class ToastIntegrationService:
                         if not sc.get("refundDetails"):
                             service_charge_total_exclude_refunds += charge_amount
                     
-                    # Accumulate order-level totals
                     total_tip_total += tip_total
                     total_service_charge_total += service_charge_total_exclude_refunds
 
-                    # Calculate revenue for the check (subtotal + tax + tip + service charges)
                     check_revenue = check_subtotal + tax_amount + tip_total + service_charge_total
                     total_revenue += check_revenue
-                    # Net sales is based only on the check subtotal
                     total_net_sales += check_subtotal
 
-                    # Process refunds *only from payments* for the total refund amount calculation
                     check_refund = Decimal("0.00")
                     for payment in check_data.get("payments", []):
                         if payment.get("refund"):
@@ -554,13 +553,11 @@ class ToastIntegrationService:
                             tip_refund_amt = Decimal(str(payment.get("refund", {}).get("tipRefundAmount", "0.00")))
                             
                             check_refund += refund_amt
-                            total_refund_amount += refund_amt # Add to order total refund
-                            # Capture refund business date
+                            total_refund_amount += refund_amt 
                             rbd = payment.get("refund", {}).get("refundBusinessDate")
                             if rbd:
                                 refund_business_date = rbd
                     
-                    # Prepare check defaults (including calculated check-level refund)
                     check_defaults = {
                         "external_id": check_data.get("externalId"),
                         "entity_type": check_data.get("entityType"),
@@ -582,10 +579,10 @@ class ToastIntegrationService:
                         "display_number": check_data.get("displayNumber"),
                         "net_sales": check_subtotal,
                         "service_charge_total": service_charge_total,
-                        "discount_total": check_discount_total, # Save check-level discount
+                        "discount_total": check_discount_total, 
                         "opened_date": parse_datetime(check_data.get("openedDate")) if check_data.get("openedDate") else None,
                         "closed_date": parse_datetime(check_data.get("closedDate")) if check_data.get("closedDate") else None,
-                        "check_refund": check_refund # Save calculated check refund amount
+                        "check_refund": check_refund
                     })
 
                     check_obj, _ = ToastCheck.objects.update_or_create(
@@ -595,15 +592,12 @@ class ToastIntegrationService:
                         defaults=check_defaults
                     )
 
-                    # Add more checkpoint logging for selections
                     selection_count = len(check_data.get("selections", []))
                     
                     selection_index = 0
-                    # Process selections (mostly for saving selection details, not impacting order totals directly here)
                     for selection_data in check_data.get("selections", []):
                         try:
                             selection_index += 1
-                            # Skip voided, gift cards, or refunded items
                             if (selection_data.get("voided") or 
                                 selection_data.get("displayName", "").strip().lower() == "gift card" or 
                                 selection_data.get("refund")):
@@ -611,17 +605,12 @@ class ToastIntegrationService:
                             
                             selection_guid = selection_data.get("guid")
                             pre_discount_price = Decimal(str(selection_data.get("preDiscountPrice", "0.00")))
-                            # Calculate selection-level discount (used for saving selection record)
                             selection_discount_total = sum(
                                 Decimal(str(d.get("nonTaxDiscountAmount", "0.00")))
                                 for d in selection_data.get("appliedDiscounts", [])
                             )
                             quantity = Decimal(str(selection_data.get("quantity", "1")))
                             selection_net = (pre_discount_price - selection_discount_total) * quantity
-
-                            # Add the missing code to accumulate selection-level discounts
-                            if selection_data.get("appliedDiscounts"):
-                                total_discount_amount += selection_discount_total
 
                             selection_defaults = {
                                 "external_id": selection_data.get("externalId"),
@@ -707,14 +696,12 @@ class ToastIntegrationService:
                 order.total_amount = total_revenue 
                 order.order_net_sales = total_net_sales
                 order.total_refunds = total_refund_amount 
-                # Keep saving new discount fields
                 order.total_discount_amount = total_discount_amount 
                 order.discount_count = discount_count
                 if refund_business_date:
                     order.refund_business_date = refund_business_date
-                order.save() # Save calculated fields
+                order.save()
 
-                # Save the full payload separately after calculations
                 order.payload = order_data
                 order.save(update_fields=['payload'])
 
@@ -726,6 +713,7 @@ class ToastIntegrationService:
         print(f"Finished processing all {len(orders)} orders")
         logger.info(f"Imported {len(orders)} orders")
         self.log_import_event(module_name="toast_orders", fetched_records=len(orders))
+
 
     def import_revenue_centers(self):
         """
@@ -1058,7 +1046,7 @@ class ToastIntegrationService:
                 
                 ToastPayment.objects.update_or_create(
                     payment_guid=payment_guid,
-                    tenant_id=self.integration.org.id,
+                    tenant_id=self.integration.organisation.id,
                     defaults=payment_defaults
                 )
                 
