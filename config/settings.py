@@ -59,6 +59,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'core.middleware.KillSwitchMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -103,7 +104,8 @@ DATABASES = {
         "PORT": os.getenv('DB_PORT'),
         "OPTIONS": {
             "sslmode": os.getenv('DB_SSL_MODE')
-        }
+        },
+        "DISABLE_SERVER_SIDE_CURSORS": True
     }
 }
 
@@ -146,7 +148,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -312,7 +314,8 @@ STATIC_URL = '/static/'
 # Directory where static files will be collected
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
-
+# Include these if you're using whitenoise (recommended for Render)
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000000
 
