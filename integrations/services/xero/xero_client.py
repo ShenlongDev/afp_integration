@@ -26,6 +26,7 @@ from integrations.models.xero.transformations import (
     XeroInvoiceLineItems,
     XeroJournalLineTrackingCategories
 )
+from core.models import Site, IntegrationSiteMapping
 
 
 logger = logging.getLogger(__name__)
@@ -64,9 +65,13 @@ class XeroDataImporter:
         self.integration = integration
         self.since_date = since_date
         self.until_date = until_date
-        self.client_id = integration.xero_client_id
-        self.client_secret = integration.xero_client_secret
-        self.tenant_id = str(integration.org.id)
+        
+        # Get credentials from settings JSON field instead of direct properties
+        self.client_id = integration.settings.get('client_id')
+        self.client_secret = integration.settings.get('client_secret')
+        
+        # Update to use 'organisation' instead of 'org'
+        self.tenant_id = str(integration.organisation.id)
         
         if since_date is None:
             self.since_date = timezone.now().date()
@@ -196,7 +201,7 @@ class XeroDataImporter:
         SyncTableLogs.objects.create(
             module_name=module_name,
             integration='XERO',
-            organization=self.integration.org,
+            organisation=self.integration.organisation,
             fetched_records=fetched_records,
             last_updated_time=timezone.now(),
             last_updated_date=timezone.now().date()
@@ -219,7 +224,7 @@ class XeroDataImporter:
                 return
             try:
                 obj, created = XeroAccountsRaw.objects.update_or_create(
-                    tenant_id=self.integration.org.id,
+                    tenant_id=self.integration.organisation.id,
                     account_id=account_id,
                     defaults={
                         "name": acct.get("Name"),
@@ -281,7 +286,7 @@ class XeroDataImporter:
                     "source_system": "XERO"
                 }
                 XeroJournalsRaw.objects.update_or_create(
-                    tenant_id=self.integration.org.id,
+                    tenant_id=self.integration.organisation.id,
                     journal_id=journal_id,
                     defaults=jr_defaults
                 )
@@ -297,7 +302,7 @@ class XeroDataImporter:
                     tracking_option = tcat[0].get("Option") if tcat else None
 
                     jline_defaults = {
-                        "tenant_id": self.integration.org.id,
+                        "tenant_id": self.integration.organisation.id,
                         "journal_id": journal_id,
                         "reference": journal.get("Reference"),
                         "source_id": journal.get("SourceID"),
@@ -326,7 +331,7 @@ class XeroDataImporter:
                     if tcat:
                         for tracking in tcat:
                             XeroJournalLineTrackingCategories.objects.update_or_create(
-                                tenant_id=self.integration.org.id,
+                                tenant_id=self.integration.organisation.id,
                                 journal_line_id=line_id,
                                 tracking_category_id=tracking.get("TrackingCategoryID"),
                                 defaults={
@@ -365,7 +370,7 @@ class XeroDataImporter:
                 logger.warning("Skipping contact with no ContactID.")
                 return
             XeroContactsRaw.objects.update_or_create(
-                tenant_id=self.integration.org.id,
+                tenant_id=self.integration.organisation.id,
                 contact_id=contact_id,
                 defaults={
                     "name": contact.get("Name"),
@@ -396,7 +401,7 @@ class XeroDataImporter:
                 logger.warning("Skipping invoice with no InvoiceID.")
                 return
             XeroInvoicesRaw.objects.update_or_create(
-                tenant_id=self.integration.org.id,
+                tenant_id=self.integration.organisation.id,
                 invoice_id=invoice_id,
                 defaults={
                     "invoice_number": inv.get("InvoiceNumber"),
@@ -427,7 +432,7 @@ class XeroDataImporter:
                         "line_amount": line.get("LineAmount"),
                         "url": inv.get("Url"),
                         "type": inv.get("Type"),
-                        'tenant_id': self.integration.org.id,
+                        'tenant_id': self.integration.organisation.id,
                         'description': line.get('Description'),
                         'quantity': line.get('Quantity'),
                         'unit_amount': line.get('UnitAmount'),
@@ -477,7 +482,7 @@ class XeroDataImporter:
                 return
             XeroBankTransactionsRaw.objects.update_or_create(
                 bank_transaction_id=bt_id,
-                tenant_id=self.integration.org.id,
+                tenant_id=self.integration.organisation.id,
                 defaults={
                     "type": bt.get("Type"),
                     "status": bt.get("Status"),
@@ -492,7 +497,7 @@ class XeroDataImporter:
                 XeroInvoiceLineItems.objects.update_or_create(
                     line_item_id=line['LineItemID'],
                     defaults={
-                        'tenant_id': self.integration.org.id,
+                        'tenant_id': self.integration.organisation.id,
                         'description': line.get('Description'),
                         'quantity': line.get('Quantity'),
                         'unit_amount': line.get('UnitAmount'),
@@ -554,9 +559,9 @@ class XeroDataImporter:
                 return
             XeroBudgetsRaw.objects.update_or_create(
                 budget_id=budget_id,
-                tenant_id=self.integration.org.id,
+                tenant_id=self.integration.organisation.id,
                 defaults={
-                    "tenant_name": self.integration.org,
+                    "tenant_name": self.integration.organisation,
                     "status": budget.get("Status"),
                     "type": budget.get("Type"),
                     "description": budget.get("Description"),
@@ -577,16 +582,24 @@ class XeroDataImporter:
                 for line in budget_lines:
                     account_id = line.get("AccountID")
                     account_code = line.get("AccountCode")
+                    
+                    # Initialize these variables outside the try block
+                    reporting_code = None
+                    reporting_code_name = None
+                    account_name = None
+                    
                     try:
                         account = XeroAccountsRaw.objects.get(
-                            tenant_id=self.integration.org.id,
+                            tenant_id=self.integration.organisation.id,
                             account_id=account_id
                         )
                         reporting_code = account.raw_payload.get("ReportingCode")
                         reporting_code_name = account.raw_payload.get("ReportingCodeName")
                         account_name = account.name
                     except XeroAccountsRaw.DoesNotExist:
-                        account_name = None
+                        # Log that we couldn't find the account
+                        logger.warning(f"Account {account_id} not found for budget {budget_id}")
+                    
                     raw_balances = line.get("BudgetBalances", [])
                     sorted_balances = sorted(raw_balances, key=lambda x: x.get("Period"))
                     for pb in sorted_balances:
@@ -596,11 +609,11 @@ class XeroDataImporter:
                         updated_date_utc = self.parse_xero_datetime(b_item.get("UpdatedDateUTC"))
                         XeroBudgetPeriodBalancesRaw.objects.update_or_create(
                             budget_id=budget_id,
-                            tenant_id=self.integration.org.id,
+                            tenant_id=self.integration.organisation.id,
                             account_id=account_id,
                             period=period,
                             defaults={
-                                "tenant_name": self.integration.org,
+                                "tenant_name": self.integration.organisation,
                                 "account_code": account_code,
                                 "account_name": account_name,
                                 "reporting_code": reporting_code,
@@ -620,6 +633,90 @@ class XeroDataImporter:
         self.log_import_event(module_name="xero_budgets", fetched_records=len(budgets))
         logger.info("Completed Xero Budgets & Period Balances import.")
 
+
+    def map_tracking_categories_to_sites(self):
+        """
+        Maps Xero tracking categories (which represent locations/sites) to the Site model
+        and creates IntegrationSiteMapping records to link them.
+        """
+        logger.info("Mapping Xero tracking categories to sites...")
+        
+        # Query all tracking categories from journal line tracking categories
+        tracking_categories = XeroJournalLineTrackingCategories.objects.filter(
+            tenant_id=self.integration.organisation.id,
+            source_system="XERO"
+        ).values(
+            'tracking_category_id', 'tracking_option_id', 'name', 'option'
+        ).distinct()
+        
+        mapping_count = 0
+        
+        for tc in tracking_categories:
+            # Skip if no valid tracking data
+            if not tc.get('option') or not tc.get('tracking_option_id'):
+                continue
+            
+            category_name = tc.get('name', 'Location')
+            site_name = tc.get('option')
+            tracking_option_id = tc.get('tracking_option_id')
+            tracking_category_id = tc.get('tracking_category_id')
+            
+            # If this doesn't represent a location, skip it
+            if category_name.lower() not in ['location', 'branch', 'site', 'store']:
+                continue
+            
+            # Default date to use if not available - 1 year ago
+            default_open_date = timezone.now().date() - timedelta(days=365)
+            
+            try:
+                # First, see if we already have a mapping for this tracking option
+                existing_mapping = IntegrationSiteMapping.objects.filter(
+                    integration=self.integration,
+                    external_id=tracking_option_id
+                ).select_related('site').first()
+                
+                if existing_mapping:
+                    # Mapping exists, update if needed
+                    logger.info(f"Existing mapping found for {site_name} ({tracking_option_id})")
+                    continue
+                
+                # Check if site with this name already exists for this organisation
+                site = Site.objects.filter(
+                    organisation=self.integration.organisation,
+                    name=site_name
+                ).first()
+                
+                if not site:
+                    # Create a new site
+                    site = Site.objects.create(
+                        organisation=self.integration.organisation,
+                        name=site_name,
+                        # Set minimal required fields with default values
+                        postcode="",  # Required field
+                        region="",    # Required field
+                        opened_date=default_open_date  # Required field
+                    )
+                    logger.info(f"Created new site: {site_name}")
+                
+                # Create the mapping
+                IntegrationSiteMapping.objects.create(
+                    site=site,
+                    integration=self.integration,
+                    external_id=tracking_option_id,
+                    external_name=site_name,
+                    settings={
+                        "tracking_category_id": tracking_category_id,
+                        "source": "xero_tracking_category"
+                    }
+                )
+                mapping_count += 1
+                logger.info(f"Created mapping: {site_name} -> Xero tracking option {tracking_option_id}")
+                
+            except Exception as e:
+                logger.error(f"Error mapping site {site_name}: {str(e)}", exc_info=True)
+        
+        logger.info(f"Completed mapping {mapping_count} Xero tracking categories to sites")
+        return mapping_count
 
     @transaction.atomic
     def import_xero_data(self):
@@ -649,6 +746,10 @@ class XeroDataImporter:
         # 6. Budgets
         print("Importing Xero Budgets...")
         self.import_xero_budgets()
+        
+        # 7. Map tracking categories to sites (NEW)
+        print("Mapping Xero tracking categories to sites...")
+        self.map_tracking_categories_to_sites()
 
         logger.info("Finished full Xero data import successfully.")
         

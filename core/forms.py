@@ -3,13 +3,12 @@ from django import forms
 from django.core.exceptions import ValidationError
 from integrations.models.models import Integration, Organisation
 from integrations.modules import MODULES
-from django.utils import timezone
 from datetime import datetime
-from integrations.services.utils import get_organisations_by_integration_type
 from core.tasks.general import log_task_event
-from django.core.files.storage import default_storage
-from django.core.files.base import ContentFile
 from core.models import Organisation
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def get_integration_type_choices():
@@ -35,6 +34,12 @@ def get_module_choices(integration_type):
     return []
 
 class DataImportForm(forms.Form):
+    integration_type = forms.ChoiceField(
+        choices=[('', 'Select Integration Type')] + get_integration_type_choices(),
+        required=True, 
+        label="Integration Type",
+        initial=''
+    )
     organisation = forms.ModelChoiceField(
         queryset=Organisation.objects.filter(status='active'),
         required=True,
@@ -42,13 +47,8 @@ class DataImportForm(forms.Form):
     )
     integration = forms.ModelChoiceField(
         queryset=Integration.objects.filter(is_active=True),
-        required=False,  # Will be populated based on organisation selection
+        required=False,
         label="Integration"
-    )
-    integration_type = forms.ChoiceField(
-        choices=[('toast', 'Toast'), ('xero', 'Xero'), ('netsuite', 'NetSuite')],
-        required=True, 
-        label="Integration Type"
     )
     since_date = forms.DateField(
         widget=forms.DateInput(attrs={'type': 'date'}),
@@ -56,7 +56,7 @@ class DataImportForm(forms.Form):
         label="Since Date"
     )
     modules = forms.MultipleChoiceField(
-        choices=[],  # Will be populated dynamically
+        choices=[],
         required=False,
         widget=forms.CheckboxSelectMultiple,
         label="Modules to Import"
@@ -65,26 +65,61 @@ class DataImportForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Setup dynamic module choices based on selected integration type
-        if args and 'integration_type' in args[0]:
-            integration_type = args[0]['integration_type'].lower()
+        if self.is_bound and 'integration_type' in self.data:
+            integration_type = self.data.get('integration_type', '').lower()
             self.setup_module_choices(integration_type)
             
-        if args and 'organisation' in args[0]:
-            org_id = args[0]['organisation']
-            self.fields['integration'].queryset = Integration.objects.filter(
-                organisation_id=org_id, is_active=True
-            )
+            try:
+                self.fields['organisation'].queryset = Organisation.objects.filter(
+                    status='active',
+                    integrations_org__integration_type=integration_type,
+                    integrations_org__is_active=True
+                ).distinct()
+            except Exception as e:
+                self.fields['organisation'].queryset = Organisation.objects.filter(status='active')
+        
+        self.fields['integration_type'].widget.attrs.update({
+            'onchange': 'this.form.submit()'
+        })
+        
+        self.fields['organisation'].widget.attrs.update({
+            'onchange': 'this.form.submit()'
+        })
+        
+        if self.data and 'integration_type' in self.data:
+            integration_type = self.data.get('integration_type', '').lower()
+            self.setup_module_choices(integration_type)
+            
+            organisations_with_integration = Organisation.objects.filter(
+                integrations_org__integration_type=integration_type,
+                integrations_org__is_active=True
+            ).distinct()
+            
+            if organisations_with_integration.exists():
+                self.fields['organisation'].queryset = organisations_with_integration
+            
+            if 'organisation' in self.data and self.data['organisation']:
+                org_id = self.data.get('organisation')
+                if org_id and org_id.isdigit():
+                    self.fields['integration'].queryset = Integration.objects.filter(
+                        organisation_id=int(org_id),
+                        integration_type=integration_type,
+                        is_active=True
+                    )
     
     def setup_module_choices(self, integration_type):
         from integrations.modules import MODULES
         
-        if integration_type in MODULES:
-            module_choices = [(k, k.replace('_', ' ').title()) 
-                           for k in MODULES[integration_type].get('import_methods', {}).keys()]
-            self.fields['modules'].choices = module_choices
-        else:
+        try:
+            if integration_type in MODULES:
+                module_choices = [(k, k.replace('_', ' ').title()) 
+                               for k in MODULES[integration_type].get('import_methods', {}).keys()]
+                self.fields['modules'].choices = module_choices
+            else:
+                self.fields['modules'].choices = []
+        except Exception as e:
             self.fields['modules'].choices = []
+            logger.error(f"Error setting up module choices: {e}")
 
     def clean_integration_type(self):
         integration_type = self.cleaned_data.get('integration_type', '')
@@ -127,6 +162,11 @@ class DataImportForm(forms.Form):
                     f"this organisation."
                 )
 
+            if not (integration.settings.get('client_id') and integration.settings.get('client_secret')):
+                raise ValidationError(
+                    f"The {integration_type.capitalize()} integration for this organisation doesn't have valid credentials."
+                )
+
             cleaned_data['integration'] = integration
 
         return cleaned_data
@@ -160,7 +200,7 @@ class DataImportForm(forms.Form):
                         import_func(importer)
 
             return (
-                f"Successfully imported {integration_type} data for {integration.org.name}",
+                f"Successfully imported {integration_type} data for {integration.organisation.name}",
                 None
             )
 
@@ -221,6 +261,12 @@ class BudgetImportForm(forms.Form):
                 raise ValidationError(
                     f"No Xero integration found with valid credentials for this organisation."
                 )
+                
+            # Verify credentials exist in settings
+            if not (integration.settings.get('client_id') and integration.settings.get('client_secret')):
+                raise ValidationError(
+                    f"The Xero integration for this organisation doesn't have valid credentials."
+                )
 
             cleaned_data['integration'] = integration
 
@@ -245,12 +291,12 @@ class BudgetImportForm(forms.Form):
                 until_date.strftime('%Y-%m-%d')
             )
             log_task_event(
-                f"Xero budget import task initiated for {integration.org.name} from {since_date} to {until_date}",
+                f"Xero budget import task initiated for {integration.organisation.name} from {since_date} to {until_date}",
                 "success",
                 None
             )
             return (
-                f"Xero budget import task initiated for {integration.org.name} from {since_date} to {until_date}",
+                f"Xero budget import task initiated for {integration.organisation.name} from {since_date} to {until_date}",
                 None
             )
         except Exception as e:

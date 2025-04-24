@@ -51,13 +51,6 @@ def get_high_priority_task():
                 processed=False, 
                 in_progress=False
             ).order_by('created_at').first()
-            print(task)
-            
-            if task:
-                task.in_progress = True
-                task.in_progress_since = timezone.now()
-                task.save(update_fields=["in_progress", "in_progress_since"])
-                
         return task
     except Exception as exc:
         logger.error("Error fetching high priority task: %s", exc, exc_info=True)

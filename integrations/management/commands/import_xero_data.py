@@ -1,5 +1,3 @@
-import logging
-import os
 from django.core.management.base import BaseCommand
 from integrations.models.models import Integration
 from integrations.services.xero.xero_client import XeroDataImporter
@@ -48,8 +46,8 @@ class Command(BaseCommand):
         if integration_id:
             try:
                 integration = Integration.objects.get(pk=integration_id)
-                if not (integration.xero_client_id and integration.xero_client_secret):
-                    self.stdout.write(self.style.ERROR(f"Integration ID {integration_id} does not have Xero credentials set."))
+                if not (integration.settings.get('client_id') and integration.settings.get('client_secret')):
+                    self.stdout.write(self.style.ERROR(f"Integration ID {integration_id} does not have Xero credentials set in settings."))
                     return
                 integrations.append(integration)
             except Integration.DoesNotExist:
@@ -57,10 +55,13 @@ class Command(BaseCommand):
                 return
         else:
             integrations = Integration.objects.filter(
-                xero_client_id__isnull=False,
-                xero_client_secret__isnull=False
+                integration_type='xero',
+                is_active=True
             )
-            if not integrations.exists():
+            
+            integrations = [i for i in integrations if i.settings.get('client_id') and i.settings.get('client_secret')]
+            
+            if not integrations:
                 self.stdout.write(self.style.WARNING("No integrations found with Xero credentials."))
                 return
 
@@ -77,6 +78,7 @@ class Command(BaseCommand):
                         'invoices': xero.import_xero_invoices,
                         'bank_transactions': xero.import_xero_bank_transactions,
                         'budgets': xero.import_xero_budgets,
+                        'sites_mapping': xero.map_tracking_categories_to_sites,
                     }
                     for component in components:
                         if component in import_methods:

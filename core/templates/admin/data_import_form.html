@@ -151,10 +151,12 @@
           {{ form.since_date }}
         </div>
       </p>
-      <p>
-        {{ form.modules.label_tag }}
-        {{ form.modules }}
-      </p>
+      {% if form.modules and form.modules.field.choices %}
+        <p>
+          {{ form.modules.label_tag }}
+          {{ form.modules }}
+        </p>
+      {% endif %}
       <input type="submit" value="Start Import">
     </form>
   </div>

@@ -67,7 +67,7 @@ class ImportToolsMixin:
                     
                     messages.success(
                         request,
-                        f"Successfully imported Xero budget data for {integration.org.name} from {since_date} to {until_date}"
+                        f"Successfully imported Xero budget data for {integration.organisation.name} from {since_date} to {until_date}"
                     )
                 except Exception as e:
                     messages.error(
