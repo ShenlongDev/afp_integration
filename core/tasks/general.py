@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from config.celery import get_active_org_sync_tasks
 from core.models import TaskLog 
 import signal
+from django.db import close_old_connections
+from celery.signals import worker_ready
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,8 @@ DISPATCHER_LOCK_TIMEOUT = 60
 IN_FLIGHT_ORG_SYNC_COUNT_KEY = "in_flight_org_sync_count" 
 COUNTER_TIMEOUT = 3600 
 ORG_OFFSET_CACHE_KEY = "dispatcher_org_offset" 
+
+HIGH_PRIORITY_WORKER = False
 
 def acquire_global_lock(timeout=600):
     """
@@ -109,7 +113,7 @@ def sync_organization(self, organization_id):
         logger.warning("Starting sync for organization %s", organization_id)
         org_integrations = Integration.objects.filter(organisation_id=organization_id).order_by('-id')
 
-        integration_dispatched = False # Flag to see if any sub-tasks were dispatched
+        integration_dispatched = False 
         for integration in org_integrations:
             logger.warning("Starting sync for integration %s", integration.id)
             integration_type = integration.integration_type.lower()
@@ -168,7 +172,8 @@ def process_high_priority(self, hp_task_id):
     from integrations.models.models import HighPriorityTask, Integration
     from integrations.modules import MODULES
 
-
+    close_old_connections()
+    
     original_term_handler = signal.getsignal(signal.SIGTERM)
     
     def ignore_sigterm(*args, **kwargs):
@@ -177,14 +182,22 @@ def process_high_priority(self, hp_task_id):
     signal.signal(signal.SIGTERM, ignore_sigterm)
     
     try:
+        HighPriorityTask.objects.filter(pk=hp_task_id, in_progress=False).update(
+            in_progress=True, 
+            in_progress_since=timezone.now()
+        )
+        
         hp_task = HighPriorityTask.objects.get(pk=hp_task_id)
+        
+        if hp_task.in_progress and hp_task.in_progress_since and (timezone.now() - hp_task.in_progress_since).total_seconds() > 300:
+            logger.warning(f"Task {hp_task_id} has been in progress for more than 5 minutes. Attempting to process anyway.")
+            
+        integration = Integration.objects.get(pk=hp_task.integration.id)
     except HighPriorityTask.DoesNotExist:
         logger.error("HighPriorityTask with ID %s does not exist", hp_task_id)
         signal.signal(signal.SIGTERM, original_term_handler)
         return
     
-    try:
-        integration = Integration.objects.get(pk=hp_task.integration.id)
     except Integration.DoesNotExist:
         logger.error("Integration with ID %s does not exist.", hp_task.integration.id)
         hp_task.processed = True
@@ -216,7 +229,6 @@ def process_high_priority(self, hp_task_id):
         ImporterClass = module_config["client"]
         logger.info("Processing High Priority task for integration: %s with since_date: %s",
                     integration, since_date)
-        HighPriorityTask.objects.filter(pk=hp_task_id).update(in_progress=True, in_progress_since=timezone.now())
 
         importer = ImporterClass(integration, since_date, until_date)
         
@@ -284,23 +296,30 @@ def process_high_priority(self, hp_task_id):
         )
         raise
     finally:
-        # Make sure we restore the original signal handler
         signal.signal(signal.SIGTERM, original_term_handler)
+        close_old_connections()
         
-        current_time = timezone.now()
-        hp_task.processed = True
-        hp_task.in_progress = False
-        hp_task.processed_at = current_time
-        hp_task.save(update_fields=["processed", "in_progress", "processed_at"])
+        try:
+            current_time = timezone.now()
+            HighPriorityTask.objects.filter(pk=hp_task_id).update(
+                processed=True, 
+                in_progress=False, 
+                processed_at=current_time
+            )
+            logger.info(f"Successfully marked high priority task {hp_task_id} as processed")
+            
+            cache.delete("active_high_priority_task")
+            
+        except Exception as e:
+            logger.error(f"Failed to update high priority task {hp_task_id} status: {e}")
+            cache.delete("active_high_priority_task")
 
 
 @shared_task(bind=True, max_retries=3)
 def dispatcher(self):
     """
-    Polls continuously for high priority tasks and organization sync tasks.
+    Polls continuously for organization sync tasks only.
     This task re-enqueues itself every 5 seconds.
-    Ensures only one instance runs at a time using a cache lock.
-    It will dispatch up to MAX_CONCURRENT_ORG_SYNC_TASKS organization sync tasks concurrently.
     """
     lock_acquired = cache.add(DISPATCHER_LOCK_KEY, "running", DISPATCHER_LOCK_TIMEOUT)
     if not lock_acquired:
@@ -310,17 +329,7 @@ def dispatcher(self):
         logger.info("Dispatcher lock ACQUIRED.")
 
     try:
-        hp_task = get_high_priority_task()
-        if hp_task:
-            process_high_priority.apply_async(
-                args=[hp_task.id],
-                queue="high_priority",
-                priority=9,
-                countdown=0
-            )
-        else:
-            logger.info("No high priority tasks found.")
-
+        
         from integrations.models.models import Integration
         MAX_CONCURRENT_ORG_SYNC_TASKS = 3
 
@@ -407,7 +416,7 @@ def dispatcher(self):
         if lock_acquired:
             cache.delete(DISPATCHER_LOCK_KEY)
             logger.info("Dispatcher lock RELEASED.")
-            dispatcher.apply_async(countdown=5) 
+            dispatcher.apply_async(countdown=5)
 
 
 @shared_task
@@ -440,7 +449,6 @@ def daily_previous_day_sync():
         total_sync_count = 0
         
         for integration in all_integrations:
-            # Use the integration_type field directly instead of checking specific credentials
             integration_type = integration.integration_type.lower()
             
             if integration_type not in MODULES:
@@ -488,3 +496,128 @@ def trigger_previous_day_sync_test():
     except Exception as e:
         logger.error(f"Manual task execution failed: {str(e)}", exc_info=True)
         return f"Task execution failed: {str(e)}"
+
+
+@shared_task
+def monitor_stuck_high_priority_tasks():
+    """
+    Check for high priority tasks that were never processed and dispatch them
+    to the high priority worker.
+    """
+    from integrations.models.models import HighPriorityTask
+    from django.db import close_old_connections
+    
+    close_old_connections()
+    
+    try:
+        created_threshold = timezone.now() - timedelta(minutes=1)
+        missed_tasks = HighPriorityTask.objects.filter(
+            in_progress=False,
+            processed=False,
+            created_at__lt=created_threshold
+        )
+        
+        if missed_tasks.exists():
+            count = missed_tasks.count()
+            logger.warning(f"Found {count} high priority tasks that were never processed (older than 1 minute)")
+            
+            task_ids = list(missed_tasks.values_list('id', flat=True))
+            
+            log_task_event(
+                "monitor_missed_tasks",
+                "detected",
+                f"Detected {count} missed high priority tasks: {task_ids}"
+            )
+            
+            dispatched_count = 0
+            for task_id in task_ids:
+                try:
+                    HighPriorityTask.objects.filter(
+                        id=task_id, 
+                        in_progress=False, 
+                        processed=False
+                    ).update(in_progress_since=timezone.now())
+                    
+                    from core.tasks.general import process_high_priority
+                    process_high_priority.apply_async(
+                        args=[task_id],
+                        queue="high_priority",
+                        priority=9
+                    )
+                    dispatched_count += 1
+                    logger.info(f"Monitor dispatched missed task {task_id} to high_priority queue")
+                except Exception as dispatch_error:
+                    logger.error(f"Error dispatching missed task {task_id}: {dispatch_error}")
+            
+            log_task_event(
+                "monitor_missed_tasks",
+                "dispatched",
+                f"Dispatched {dispatched_count} out of {count} missed high priority tasks"
+            )
+    
+    except Exception as e:
+        logger.error(f"Error monitoring for missed tasks: {e}", exc_info=True)
+    finally:
+        close_old_connections()
+
+
+@shared_task(bind=True, max_retries=3, queue="high_priority")
+def high_priority_dispatcher(self):
+    """
+    Dispatcher that only runs on high priority workers and only handles high priority tasks.
+    Ensures tasks are processed one at a time.
+    """
+    lock_acquired = cache.add("high_priority_dispatcher_lock", "running", 60)
+    if not lock_acquired:
+        logger.warning("High priority dispatcher lock ALREADY HELD. Skipping this execution.")
+        return
+    
+    try:
+        active_high_priority = cache.get("active_high_priority_task")
+        if active_high_priority:
+            logger.info(f"High priority task {active_high_priority} is still running. Waiting.")
+            return
+        
+        hp_task = get_high_priority_task()
+        if hp_task:
+            cache.set("active_high_priority_task", hp_task.id, timeout=259200)  # 3 days timeout as safety
+            
+            hp_task.in_progress_since = timezone.now()
+            hp_task.save(update_fields=["in_progress_since"])
+            
+            process_high_priority.apply_async(
+                args=[hp_task.id],
+                queue="high_priority",
+                priority=9,
+                countdown=0
+            )
+            logger.info(f"High priority dispatcher sent task {hp_task.id} to high_priority queue")
+        else:
+            logger.info("No high priority tasks found for processing.")
+    except Exception as exc:
+        logger.error("High priority dispatcher encountered an error: %s", exc, exc_info=True)
+        log_task_event("high_priority_dispatcher", "failed", str(exc))
+        raise
+    finally:
+        if lock_acquired:
+            cache.delete("high_priority_dispatcher_lock")
+            logger.info("High priority dispatcher lock RELEASED.")
+            high_priority_dispatcher.apply_async(countdown=5, queue="high_priority")
+
+
+@worker_ready.connect
+def at_start(sender, **kwargs):
+    """
+    When the worker is ready, send the appropriate kickstart task
+    based on worker type.
+    """
+    global HIGH_PRIORITY_WORKER
+    
+    if HIGH_PRIORITY_WORKER:
+        logger.info("Starting high priority dispatcher for high priority worker")
+        from core.tasks.general import high_priority_dispatcher
+        high_priority_dispatcher.apply_async(countdown=5, queue="high_priority")
+    else:
+        logger.info("Starting regular dispatcher for standard worker")
+        from core.tasks.general import dispatcher
+        dispatcher.apply_async(countdown=5)

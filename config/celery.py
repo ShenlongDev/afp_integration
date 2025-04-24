@@ -64,13 +64,25 @@ app.conf.beat_schedule = {
             'task_track_started': True,
         }
     },
+    'monitor-stuck-tasks': {
+        'task': 'core.tasks.general.monitor_stuck_high_priority_tasks',
+        'schedule': crontab(minute='*/5'),
+        'options': {
+            'queue': 'high_priority',
+            'expires': None,
+        }
+    },
 }
 
 app.conf.worker_prefetch_multiplier = 1
 app.conf.worker_concurrency = 1
 
 app.conf.task_routes = {
-    'core.tasks.general.process_high_priority': {'queue': 'high_priority', 'routing_key': 'high_priority.urgent'},
+    'core.tasks.general.process_high_priority': {'queue': 'high_priority'},
+    'core.tasks.general.high_priority_dispatcher': {'queue': 'high_priority'},
+    'core.tasks.netsuite.refresh_netsuite_token_task': {'queue': 'high_priority'},
+    'core.tasks.general.monitor_stuck_high_priority_tasks': {'queue': 'high_priority'},
+    'core.tasks.general.daily_previous_day_sync': {'queue': 'high_priority'},
 }
 
 HIGH_PRIORITY_WORKER = False
