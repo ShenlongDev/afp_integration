@@ -66,7 +66,15 @@ app.conf.beat_schedule = {
     },
     'monitor-stuck-tasks': {
         'task': 'core.tasks.general.monitor_stuck_high_priority_tasks',
-        'schedule': crontab(minute='*/5'),
+        'schedule': crontab(minute='*/3'),
+        'options': {
+            'queue': 'high_priority',
+            'expires': None,
+        }
+    },
+    'monitor-semaphores': {
+        'task': 'core.tasks.general.monitor_stuck_semaphores',
+        'schedule': crontab(hour='*/3'),
         'options': {
             'queue': 'high_priority',
             'expires': None,
@@ -83,6 +91,7 @@ app.conf.task_routes = {
     'core.tasks.netsuite.refresh_netsuite_token_task': {'queue': 'high_priority'},
     'core.tasks.general.monitor_stuck_high_priority_tasks': {'queue': 'high_priority'},
     'core.tasks.general.daily_previous_day_sync': {'queue': 'high_priority'},
+    'core.tasks.general.monitor_stuck_semaphores': {'queue': 'high_priority'},
 }
 
 HIGH_PRIORITY_WORKER = False

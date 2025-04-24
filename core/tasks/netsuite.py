@@ -7,12 +7,15 @@ from celery import shared_task, chain
 from django.utils import timezone
 from datetime import datetime
 import time
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
 from integrations.models.models import Integration, IntegrationAccessToken
 from integrations.services.netsuite.auth import NetSuiteAuthService
 from integrations.services.netsuite.importer import NetSuiteImporter 
+from core.tasks.general import SYSTEM_TASK_ACTIVE_KEY  # Import the constant
+from core.tasks.general import log_task_event  # Import log_task_event
 
 def get_netsuite_importer(integration_id, since_str=None):
     """
@@ -179,28 +182,67 @@ def sync_single_netsuite_data(integration_id, since_str: str = None):
     )
     task_chain.apply_async()
 
-@shared_task
+@shared_task(queue="high_priority")
 def refresh_netsuite_token_task():
-    """
-    Refresh the NetSuite token for all available integrations.
-    """
+    """Refresh the NetSuite token for all available integrations."""
+    from django.db import close_old_connections
+    from integrations.models.models import Integration
+    from integrations.services.netsuite.auth import NetSuiteAuthService
+    from django.core.cache import cache 
+    
+    active_system_task = cache.get(SYSTEM_TASK_ACTIVE_KEY)
+    if active_system_task:
+        logger.info(f"Another system task {active_system_task} is already running. Skipping token refresh.")
+        return
+    
+    # Set the active system task flag
+    cache.set(SYSTEM_TASK_ACTIVE_KEY, "netsuite_token_refresh", timeout=229600) 
+    
     try:
+        close_old_connections()
+        
         # Find all integrations with NetSuite settings
         netsuite_integrations = Integration.objects.filter(
             integration_type='netsuite',
             settings__account_id__isnull=False,
+            is_active=True
         )
         
+        refresh_count = 0
+        error_count = 0
         for integration in netsuite_integrations:
-            auth_service = NetSuiteAuthService(integration)
             try:
-                # Try to obtain a new token
+                auth_service = NetSuiteAuthService(integration)
                 auth_service.obtain_access_token()
+                refresh_count += 1
                 logger.info(f"NetSuite token refreshed for integration {integration.id}")
+                
+                log_task_event(
+                    "netsuite_token_refresh",
+                    "success",
+                    f"Refreshed NetSuite token for integration {integration.id}"
+                )
+                
             except Exception as e:
-                logger.error(f"Error refreshing NetSuite token for integration {integration.id}: {e}")
+                error_count += 1
+                error_msg = f"Error refreshing token for integration {integration.id}: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                
+                log_task_event(
+                    "netsuite_token_refresh",
+                    "error",
+                    error_msg
+                )
+            
+            close_old_connections()
         
-        logger.info("NetSuite token refresh process completed.")
+        summary_msg = f"Completed NetSuite token refresh: {refresh_count} successful, {error_count} failed"
+        logger.info(summary_msg)
+        log_task_event("netsuite_token_refresh", "completed", summary_msg)
+        
     except Exception as e:
-        logger.error(f"Error in NetSuite token refresh task: {e}")
-        raise e 
+        logger.error(f"Error in NetSuite token refresh task: {e}", exc_info=True)
+        log_task_event("netsuite_token_refresh", "failed", f"General error: {str(e)}")
+    finally:
+        cache.delete(SYSTEM_TASK_ACTIVE_KEY)
+        close_old_connections() 

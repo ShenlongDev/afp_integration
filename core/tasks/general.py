@@ -1,5 +1,5 @@
 import logging
-import time # Import time for sleep
+import time
 from celery import shared_task, chain
 from django.core.cache import cache
 from django.utils import timezone
@@ -21,6 +21,15 @@ COUNTER_TIMEOUT = 3600
 ORG_OFFSET_CACHE_KEY = "dispatcher_org_offset" 
 
 HIGH_PRIORITY_WORKER = False
+
+# Create separate keys for different channels
+DATA_TASK_ACTIVE_KEY = "active_high_priority_data_task"
+SYSTEM_TASK_ACTIVE_KEY = "active_high_priority_system_task"
+
+# Keys for our semaphore system
+HIGH_PRIORITY_TASK_SEMAPHORE = "high_priority_data_task_semaphore"
+HIGH_PRIORITY_TASK_ACTIVE_COUNT = "high_priority_data_task_active_count"
+SYSTEM_TASK_ACTIVE_KEY = "high_priority_system_task_active"
 
 def acquire_global_lock(timeout=600):
     """
@@ -168,10 +177,12 @@ def sync_organization(self, organization_id):
 
 
 @shared_task(bind=True, queue="high_priority")
-def process_high_priority(self, hp_task_id):
+def process_high_priority(self, hp_task_id, semaphore_id=None):
+    """Process a high priority task, releasing the semaphore when done"""
     from integrations.models.models import HighPriorityTask, Integration
     from integrations.modules import MODULES
 
+    # Close any stale connections
     close_old_connections()
     
     original_term_handler = signal.getsignal(signal.SIGTERM)
@@ -193,20 +204,7 @@ def process_high_priority(self, hp_task_id):
             logger.warning(f"Task {hp_task_id} has been in progress for more than 5 minutes. Attempting to process anyway.")
             
         integration = Integration.objects.get(pk=hp_task.integration.id)
-    except HighPriorityTask.DoesNotExist:
-        logger.error("HighPriorityTask with ID %s does not exist", hp_task_id)
-        signal.signal(signal.SIGTERM, original_term_handler)
-        return
-    
-    except Integration.DoesNotExist:
-        logger.error("Integration with ID %s does not exist.", hp_task.integration.id)
-        hp_task.processed = True
-        hp_task.save(update_fields=["processed"])
-        log_task_event("process_data_import_task", "failed",
-                        f"Integration with ID {hp_task.integration.id} does not exist at {timezone.now()}")
-        return
 
-    try:
         if hp_task.integration_type not in MODULES:
             logger.error(
                 "Unknown integration type %s for task %s", 
@@ -296,6 +294,7 @@ def process_high_priority(self, hp_task_id):
         )
         raise
     finally:
+        # Make sure we restore the original signal handler
         signal.signal(signal.SIGTERM, original_term_handler)
         close_old_connections()
         
@@ -308,11 +307,16 @@ def process_high_priority(self, hp_task_id):
             )
             logger.info(f"Successfully marked high priority task {hp_task_id} as processed")
             
-            cache.delete("active_high_priority_task")
+            # Clear the active DATA task flag
+            cache.delete(DATA_TASK_ACTIVE_KEY)
             
         except Exception as e:
             logger.error(f"Failed to update high priority task {hp_task_id} status: {e}")
-            cache.delete("active_high_priority_task")
+            cache.delete(DATA_TASK_ACTIVE_KEY)
+        
+        if semaphore_id:
+            release_data_task_semaphore(semaphore_id)
+            logger.info(f"Released semaphore {semaphore_id} for task {hp_task_id}")
 
 
 @shared_task(bind=True, max_retries=3)
@@ -498,74 +502,110 @@ def trigger_previous_day_sync_test():
         return f"Task execution failed: {str(e)}"
 
 
-@shared_task
+@shared_task(queue="high_priority")
 def monitor_stuck_high_priority_tasks():
     """
     Check for high priority tasks that were never processed and dispatch them
     to the high priority worker.
     """
     from integrations.models.models import HighPriorityTask
-    from django.db import close_old_connections
+    from django.db import close_old_connections, transaction
     
-    close_old_connections()
+    # Use a unique lock key for this monitor run to prevent duplicates
+    monitor_lock_key = f"monitor_stuck_tasks_lock_{int(time.time())}"
+    if not cache.add(monitor_lock_key, "locked", timeout=300):  # 5 minutes
+        logger.info("Another monitor task is already running. Skipping.")
+        return
     
     try:
-        created_threshold = timezone.now() - timedelta(minutes=1)
-        missed_tasks = HighPriorityTask.objects.filter(
-            in_progress=False,
-            processed=False,
-            created_at__lt=created_threshold
-        )
+        close_old_connections()
         
-        if missed_tasks.exists():
-            count = missed_tasks.count()
-            logger.warning(f"Found {count} high priority tasks that were never processed (older than 1 minute)")
+        active_system_task = cache.get(SYSTEM_TASK_ACTIVE_KEY)
+        if active_system_task:
+            logger.info(f"Another system task {active_system_task} is already running. Skipping monitoring.")
+            return
+        
+        cache.set(SYSTEM_TASK_ACTIVE_KEY, "monitor_stuck_tasks", timeout=1800)  # 30 minutes
+        
+        try:
+            current_count = cache.get(HIGH_PRIORITY_TASK_ACTIVE_COUNT) or 0
+            try:
+                current_count = int(current_count)
+            except (ValueError, TypeError):
+                current_count = 0
+                
+            slots_to_fill = 2 - current_count
             
-            task_ids = list(missed_tasks.values_list('id', flat=True))
+            if slots_to_fill <= 0:
+                logger.info(f"Already running {current_count} tasks. No slots to fill from monitor.")
+                return
+                
+            logger.info(f"Monitor attempting to fill {slots_to_fill} slots for stuck tasks")
             
-            log_task_event(
-                "monitor_missed_tasks",
-                "detected",
-                f"Detected {count} missed high priority tasks: {task_ids}"
-            )
+            created_threshold = timezone.now() - timedelta(minutes=1)
+            missed_tasks = HighPriorityTask.objects.filter(
+                in_progress=False,
+                processed=False,
+                created_at__lt=created_threshold
+            ).order_by('created_at')[:slots_to_fill]
             
-            dispatched_count = 0
-            for task_id in task_ids:
-                try:
-                    HighPriorityTask.objects.filter(
-                        id=task_id, 
-                        in_progress=False, 
-                        processed=False
-                    ).update(in_progress_since=timezone.now())
-                    
-                    from core.tasks.general import process_high_priority
-                    process_high_priority.apply_async(
-                        args=[task_id],
-                        queue="high_priority",
-                        priority=9
-                    )
-                    dispatched_count += 1
-                    logger.info(f"Monitor dispatched missed task {task_id} to high_priority queue")
-                except Exception as dispatch_error:
-                    logger.error(f"Error dispatching missed task {task_id}: {dispatch_error}")
-            
-            log_task_event(
-                "monitor_missed_tasks",
-                "dispatched",
-                f"Dispatched {dispatched_count} out of {count} missed high priority tasks"
-            )
+            if missed_tasks:
+                logger.warning(f"Found {len(missed_tasks)} high priority tasks that were never processed")
+                
+                # Process each task
+                for task in missed_tasks:
+                    # Try to acquire a semaphore
+                    semaphore_id = acquire_data_task_semaphore()
+                    if not semaphore_id:
+                        logger.info("Failed to acquire semaphore. No more slots available.")
+                        break
+                        
+                    try:
+                        with transaction.atomic():
+                            locked_task = HighPriorityTask.objects.select_for_update(skip_locked=True).filter(
+                                id=task.id, 
+                                in_progress=False, 
+                                processed=False
+                            ).first()
+                            
+                            if locked_task:
+                                locked_task.in_progress_since = timezone.now()
+                                locked_task.save(update_fields=["in_progress_since"])
+                                
+                                process_high_priority.apply_async(
+                                    args=[locked_task.id, semaphore_id],
+                                    queue="high_priority",
+                                    priority=9
+                                )
+                                logger.info(f"Monitor dispatched missed task {locked_task.id} to high_priority queue")
+                            else:
+                                release_data_task_semaphore(semaphore_id)
+                                logger.info(f"Task {task.id} is no longer available for processing")
+                                
+                    except Exception as task_error:
+                        logger.error(f"Error dispatching task {task.id}: {task_error}")
+                        # Release the semaphore on error
+                        release_data_task_semaphore(semaphore_id)
+            else:
+                logger.info("No missed high priority tasks found.")
+                
+        except Exception as inner_error:
+            logger.error(f"Error processing missed tasks: {inner_error}", exc_info=True)
     
     except Exception as e:
         logger.error(f"Error monitoring for missed tasks: {e}", exc_info=True)
     finally:
+        # Clear the system task flag
+        cache.delete(SYSTEM_TASK_ACTIVE_KEY)
+        cache.delete(monitor_lock_key)
         close_old_connections()
 
 
 @shared_task(bind=True, max_retries=3, queue="high_priority")
 def high_priority_dispatcher(self):
     """
-    Dispatcher that only runs on high priority workers and only handles high priority tasks.
-    Ensures tasks are processed one at a time.
+    Dispatcher that only runs on high priority workers and handles high priority tasks.
+    Tries to fill up to 2 data task slots at once.
     """
     lock_acquired = cache.add("high_priority_dispatcher_lock", "running", 60)
     if not lock_acquired:
@@ -573,27 +613,59 @@ def high_priority_dispatcher(self):
         return
     
     try:
-        active_high_priority = cache.get("active_high_priority_task")
-        if active_high_priority:
-            logger.info(f"High priority task {active_high_priority} is still running. Waiting.")
-            return
+        current_count = cache.get(HIGH_PRIORITY_TASK_ACTIVE_COUNT) or 0
+        try:
+            current_count = int(current_count)
+        except (ValueError, TypeError):
+            current_count = 0
+            
+        slots_to_fill = 2 - current_count
         
-        hp_task = get_high_priority_task()
-        if hp_task:
-            cache.set("active_high_priority_task", hp_task.id, timeout=259200)  # 3 days timeout as safety
-            
-            hp_task.in_progress_since = timezone.now()
-            hp_task.save(update_fields=["in_progress_since"])
-            
-            process_high_priority.apply_async(
-                args=[hp_task.id],
-                queue="high_priority",
-                priority=9,
-                countdown=0
-            )
-            logger.info(f"High priority dispatcher sent task {hp_task.id} to high_priority queue")
+        if slots_to_fill <= 0:
+            logger.info(f"Already running {current_count} tasks. No slots to fill.")
         else:
-            logger.info("No high priority tasks found for processing.")
+            logger.info(f"Attempting to fill {slots_to_fill} slots for high priority tasks")
+            
+            from integrations.models.models import HighPriorityTask
+            from django.db import transaction
+            
+            slots_filled = 0
+            
+            for _ in range(slots_to_fill):
+                semaphore_id = acquire_data_task_semaphore()
+                if not semaphore_id:
+                    logger.info("Failed to acquire semaphore. No more slots available.")
+                    break
+                    
+                try:
+                    with transaction.atomic():
+                        hp_task = HighPriorityTask.objects.select_for_update(skip_locked=True).filter(
+                            processed=False, 
+                            in_progress=False
+                        ).order_by('created_at').first()
+                        
+                        if hp_task:
+                            hp_task.in_progress_since = timezone.now()
+                            hp_task.save(update_fields=["in_progress_since"])
+                            
+                            process_high_priority.apply_async(
+                                args=[hp_task.id, semaphore_id],
+                                queue="high_priority",
+                                priority=9,
+                                countdown=0
+                            )
+                            logger.info(f"High priority dispatcher sent task {hp_task.id} with semaphore {semaphore_id}")
+                            slots_filled += 1
+                        else:
+                            release_data_task_semaphore(semaphore_id)
+                            logger.info("No high priority tasks found for processing.")
+                            break 
+                except Exception as inner_exc:
+                    logger.error(f"Error dispatching high priority task: {inner_exc}")
+                    release_data_task_semaphore(semaphore_id)
+            
+            logger.info(f"Filled {slots_filled} out of {slots_to_fill} available slots")
+                
     except Exception as exc:
         logger.error("High priority dispatcher encountered an error: %s", exc, exc_info=True)
         log_task_event("high_priority_dispatcher", "failed", str(exc))
@@ -621,3 +693,180 @@ def at_start(sender, **kwargs):
         logger.info("Starting regular dispatcher for standard worker")
         from core.tasks.general import dispatcher
         dispatcher.apply_async(countdown=5)
+
+def acquire_data_task_semaphore():
+    """
+    Attempt to acquire a slot for a data processing task.
+    Returns a semaphore ID if acquired, False otherwise.
+    
+    This limits data tasks to max 2 concurrent executions.
+    Works with any cache backend.
+    """
+    try:
+        # Get current count
+        count = cache.get(HIGH_PRIORITY_TASK_ACTIVE_COUNT) or 0
+        try:
+            count = int(count)
+        except (ValueError, TypeError):
+            count = 0
+            
+        if count >= 2:
+            return False
+            
+        lock_key = f"semaphore_lock_{time.time()}"
+        if not cache.add(lock_key, "locked", timeout=10):
+            return False 
+            
+        try:
+            count = cache.get(HIGH_PRIORITY_TASK_ACTIVE_COUNT) or 0
+            try:
+                count = int(count)
+            except (ValueError, TypeError):
+                count = 0
+                
+            if count >= 2:
+                return False
+                
+            new_count = count + 1
+            cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, new_count, timeout=259200)  # 3 days
+            
+            timestamp = int(time.time())
+            task_id = f"task_{timestamp}_{new_count}"
+            
+            cache.set(f"{HIGH_PRIORITY_TASK_SEMAPHORE}:{task_id}", task_id, timeout=259200)
+            
+            return task_id
+        finally:
+            cache.delete(lock_key)
+            
+    except Exception as e:
+        logger.error(f"Error acquiring data task semaphore: {e}")
+        return False
+
+def release_data_task_semaphore(task_id):
+    """Release a previously acquired data task slot"""
+    try:
+        cache.delete(f"{HIGH_PRIORITY_TASK_SEMAPHORE}:{task_id}")
+        
+        lock_key = f"release_lock_{time.time()}"
+        if not cache.add(lock_key, "locked", timeout=10):
+            logger.warning("Failed to acquire lock for releasing semaphore")
+            return False
+            
+        try:
+            count = cache.get(HIGH_PRIORITY_TASK_ACTIVE_COUNT) or 0
+            try:
+                count = int(count)
+            except (ValueError, TypeError):
+                count = 0
+                
+            if count > 0:
+                cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, count - 1)
+            else:
+                cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, 0)
+                
+            return True
+        finally:
+            cache.delete(lock_key)
+            
+    except Exception as e:
+        logger.error(f"Error releasing data task semaphore: {e}")
+        return False
+
+@shared_task(queue="high_priority")
+def refresh_netsuite_token_task():
+    """Refresh the NetSuite token for all available integrations."""
+    from django.db import close_old_connections
+    from integrations.models.models import Integration
+    from integrations.services.netsuite.auth import NetSuiteAuthService
+    
+    active_system_task = cache.get(SYSTEM_TASK_ACTIVE_KEY)
+    if active_system_task:
+        logger.info(f"Another system task {active_system_task} is already running. Skipping token refresh.")
+        return
+    
+    cache.set(SYSTEM_TASK_ACTIVE_KEY, "netsuite_token_refresh", timeout=3600)  # 1 hour
+    
+    try:
+        close_old_connections()
+        
+        netsuite_integrations = Integration.objects.filter(
+            integration_type='netsuite',
+            settings__account_id__isnull=False,
+            is_active=True
+        )
+        
+        refresh_count = 0
+        error_count = 0
+        for integration in netsuite_integrations:
+            try:
+                auth_service = NetSuiteAuthService(integration)
+                auth_service.obtain_access_token()
+                refresh_count += 1
+                logger.info(f"NetSuite token refreshed for integration {integration.id}")
+                
+                log_task_event(
+                    "netsuite_token_refresh",
+                    "success",
+                    f"Refreshed NetSuite token for integration {integration.id}"
+                )
+                
+            except Exception as e:
+                error_count += 1
+                error_msg = f"Error refreshing token for integration {integration.id}: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                
+                log_task_event(
+                    "netsuite_token_refresh",
+                    "error",
+                    error_msg
+                )
+            
+            close_old_connections()
+        
+        summary_msg = f"Completed NetSuite token refresh: {refresh_count} successful, {error_count} failed"
+        logger.info(summary_msg)
+        log_task_event("netsuite_token_refresh", "completed", summary_msg)
+        
+    except Exception as e:
+        logger.error(f"Error in NetSuite token refresh task: {e}", exc_info=True)
+        log_task_event("netsuite_token_refresh", "failed", f"General error: {str(e)}")
+    finally:
+        cache.delete(SYSTEM_TASK_ACTIVE_KEY)
+        close_old_connections()
+
+@shared_task
+def monitor_stuck_semaphores():
+    """Check for and fix stuck semaphores that might prevent task processing"""
+    try:
+        from integrations.models.models import HighPriorityTask
+        from django.db import close_old_connections
+        
+        close_old_connections()
+        
+        actual_in_progress = HighPriorityTask.objects.filter(
+            in_progress=True, 
+            processed=False
+        ).count()
+        
+        count = cache.get(HIGH_PRIORITY_TASK_ACTIVE_COUNT) or 0
+        try:
+            count = int(count)
+        except (ValueError, TypeError):
+            count = 0
+            
+        if count > (actual_in_progress + 1) or count < 0:
+            logger.warning(f"Semaphore count mismatch: cached={count}, actual={actual_in_progress}. Fixing.")
+            cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, min(actual_in_progress, 2))
+            
+        if count > 2:
+            logger.warning(f"Semaphore count {count} exceeds max of 2. Fixing.")
+            cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, 2)
+            
+    except Exception as e:
+        logger.error(f"Error in semaphore monitor: {e}", exc_info=True)
+        
+        try:
+            cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, 0)
+        except:
+            pass
