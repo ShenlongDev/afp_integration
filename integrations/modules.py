@@ -47,6 +47,9 @@ def xero_import_xero_budgets(importer):
 def xero_import_xero_data(importer):
     return importer.import_xero_data()
 
+def xero_map_tracking_categories_to_sites(importer):
+    return importer.map_tracking_categories_to_sites()
+
 
 # NetSuite integration helper functions
 def netsuite_import_vendors(importer):
@@ -119,6 +122,7 @@ MODULES = {
             "invoices": xero_import_xero_invoices,
             "bank_transactions": xero_import_xero_bank_transactions,
             "budgets": xero_import_xero_budgets,
+            "map_sites": xero_map_tracking_categories_to_sites,
         },
         "full_import": xero_import_xero_data,
     },

@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from core.forms import DataImportForm, BudgetImportForm
 from core.models import HighPriorityTask
-from django.http import HttpResponseForbidden, HttpResponse, JsonResponse
+from django.http import HttpResponseForbidden, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 import os
 import logging
@@ -10,13 +10,6 @@ from django.db import connection
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from integrations.services.xero.xero_client import XeroDataImporter
-from django.views.decorators.http import require_http_methods
-from django.core.exceptions import ValidationError
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
-import json
-from django.utils.decorators import method_decorator
-from django.views import View
 
 
 logger = logging.getLogger(__name__)
@@ -106,7 +99,7 @@ def import_budgets_view(request):
                 
                 messages.success(
                     request,
-                    f"Successfully imported Xero budget data for {integration.org.name} from {since_date} to {until_date}"
+                    f"Successfully imported Xero budget data for {integration.organisation.name} from {since_date} to {until_date}"
                 )
             except Exception as e:
                 messages.error(

@@ -19,6 +19,12 @@ def get_xero_importer(integration_id, since_str=None, until_str=None):
     The until_str is used to set the until_date for budget imports.
     """
     integration = Integration.objects.get(pk=integration_id)
+    
+    # Check if integration has required credentials in settings
+    if not (integration.settings.get('client_id') and integration.settings.get('client_secret')):
+        logger.error(f"Integration {integration_id} is missing required Xero credentials")
+        raise ValueError("Xero client credentials not set in Integration settings")
+        
     if since_str is None:
          since_str = timezone.now().strftime('%Y-%m-%d')
     since_date = datetime.strptime(since_str, '%Y-%m-%d')
@@ -63,6 +69,11 @@ def xero_import_budgets_task(integration_id, since_str=None, until_str=None):
     importer.import_xero_budgets(until_date=until_str)
     logger.info(f"Xero budgets imported for integration id: {integration_id} from {since_str} to {until_str}")
 
+@shared_task
+def xero_map_tracking_categories_task(integration_id):
+    importer = get_xero_importer(integration_id)
+    sites_mapped = importer.map_tracking_categories_to_sites()
+    logger.info(f"Mapped {sites_mapped} Xero tracking categories to sites for integration id: {integration_id}")
 
 @shared_task
 def wait_60_seconds(integration_id):
@@ -88,6 +99,11 @@ def sync_xero_data(since_str: str = None):
         return
 
     for integration in eligible_integrations:
+        # Verify integration has required settings
+        if not (integration.settings.get('client_id') and integration.settings.get('client_secret')):
+            logger.warning(f"Integration {integration.id} is missing required Xero credentials. Skipping.")
+            continue
+            
         task_chain = chain(
             xero_sync_accounts_task.si(integration.id, since_str),
             wait_60_seconds.si(integration.id),
@@ -100,6 +116,8 @@ def sync_xero_data(since_str: str = None):
             xero_import_bank_transactions_task.si(integration.id, since_str),
             wait_60_seconds.si(integration.id),
             xero_import_budgets_task.si(integration.id, since_str),
+            wait_60_seconds.si(integration.id),
+            xero_map_tracking_categories_task.si(integration.id),
         )
         task_chain.apply_async()
         logger.info(f"Dispatched Xero sync tasks for integration: {integration}")
@@ -111,6 +129,16 @@ def sync_single_xero_data(integration_id, since_str: str = None):
     This sequential chain executes all required sub-tasks.
     The since_str, if not provided, will be determined by each task at runtime.
     """
+    # Check if integration has required settings
+    try:
+        integration = Integration.objects.get(pk=integration_id)
+        if not (integration.settings.get('client_id') and integration.settings.get('client_secret')):
+            logger.error(f"Integration {integration_id} missing Xero credentials")
+            return
+    except Integration.DoesNotExist:
+        logger.error(f"Integration {integration_id} not found")
+        return
+    
     task_chain = chain( 
         xero_sync_accounts_task.si(integration_id, since_str),
         wait_60_seconds.si(integration_id),
@@ -123,5 +151,7 @@ def sync_single_xero_data(integration_id, since_str: str = None):
         xero_import_bank_transactions_task.si(integration_id, since_str),
         wait_60_seconds.si(integration_id),
         xero_import_budgets_task.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        xero_map_tracking_categories_task.si(integration_id),
     )
     task_chain.apply_async() 
