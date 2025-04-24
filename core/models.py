@@ -326,4 +326,65 @@ class Commentary(models.Model):
             models.Index(fields=["created_at"]),
         ]
         verbose_name_plural = "Commentaries"
+
+
+class Review(models.Model):
+    """
+    Model for storing customer reviews across different platforms and sources.
+    """
+    # Basic review information
+    review_id = models.CharField(max_length=255, unique=True, db_index=True)
+    review_text = models.TextField()
+    review_date = models.DateTimeField()
+    rating = models.DecimalField(max_digits=3, decimal_places=1)
+    review_url = models.URLField(max_length=2048, null=True, blank=True)
+    reviewer = models.CharField(max_length=255)
+    
+    # Location information
+    client_name = models.CharField(max_length=255)
+    store_name = models.CharField(max_length=255)
+    city = models.CharField(max_length=255)
+    place_id = models.CharField(max_length=255, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    
+    # Review parameters (using JSONField for flexibility)
+    parameters = models.JSONField(
+        default=dict,
+        help_text="Stores review parameters and their ratings in a flexible format"
+    )
+    
+    # Additional metadata
+    recommend_score = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    visit_type = models.CharField(max_length=255, null=True, blank=True)
+    source_system = models.CharField(max_length=255)
+    automation = models.CharField(max_length=255, null=True, blank=True)
+    
+    # Relationships
+    site = models.ForeignKey(
+        Site,
+        on_delete=models.CASCADE,
+        related_name="reviews",
+        null=True,
+        blank=True
+    )
+    
+    # Timestamps
+    record_date = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["review_id"]),
+            models.Index(fields=["review_date"]),
+            models.Index(fields=["client_name"]),
+            models.Index(fields=["store_name"]),
+            models.Index(fields=["city"]),
+            models.Index(fields=["site"]),
+        ]
+        ordering = ["-review_date"]
+
+    def __str__(self):
+        return f"Review by {self.reviewer} for {self.store_name} ({self.review_date})"
     
