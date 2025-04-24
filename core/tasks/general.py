@@ -6,6 +6,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from config.celery import get_active_org_sync_tasks
 from core.models import TaskLog 
+import signal
 
 logger = logging.getLogger(__name__)
 
@@ -167,10 +168,19 @@ def process_high_priority(self, hp_task_id):
     from integrations.models.models import HighPriorityTask, Integration
     from integrations.modules import MODULES
 
+
+    original_term_handler = signal.getsignal(signal.SIGTERM)
+    
+    def ignore_sigterm(*args, **kwargs):
+        logger.warning(f"High priority task {hp_task_id} ignoring SIGTERM (warm shutdown)")
+    
+    signal.signal(signal.SIGTERM, ignore_sigterm)
+    
     try:
         hp_task = HighPriorityTask.objects.get(pk=hp_task_id)
     except HighPriorityTask.DoesNotExist:
         logger.error("HighPriorityTask with ID %s does not exist", hp_task_id)
+        signal.signal(signal.SIGTERM, original_term_handler)
         return
     
     try:
@@ -274,6 +284,9 @@ def process_high_priority(self, hp_task_id):
         )
         raise
     finally:
+        # Make sure we restore the original signal handler
+        signal.signal(signal.SIGTERM, original_term_handler)
+        
         current_time = timezone.now()
         hp_task.processed = True
         hp_task.in_progress = False

@@ -1,8 +1,12 @@
 import os
+import signal
 from celery import Celery
 from django.conf import settings
-from celery.signals import worker_ready
+from celery.signals import worker_ready, worker_init, worker_shutting_down
 from celery.schedules import crontab
+import logging
+
+logger = logging.getLogger(__name__)
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
@@ -40,7 +44,7 @@ app.conf.beat_schedule = {
     },
     'sales-report': {
         'task': 'integrations.tasks.send_weekly_sales_report',
-        'schedule': crontab(minute=0, hour=6),  # Run daily at 6:00am
+        'schedule': crontab(minute=0, hour=6),
         'args': ([
             't.stanley@williamsstanley.co',  'm.nouman@williamsstanley.co'
         ],),
@@ -59,6 +63,43 @@ app.conf.worker_concurrency = 1
 app.conf.task_routes = {
     'core.tasks.general.process_high_priority': {'queue': 'high_priority', 'routing_key': 'high_priority.urgent'},
 }
+
+HIGH_PRIORITY_WORKER = False
+
+@worker_init.connect
+def mark_high_priority_worker(sender, instance, **kwargs):
+    """
+    Identify high priority workers and mark them globally
+    """
+    global HIGH_PRIORITY_WORKER
+    
+    queues = getattr(instance, 'queues', [])
+    worker_name = getattr(sender, 'hostname', '')
+    
+    if queues and any('high_priority' in str(q) for q in queues):
+        HIGH_PRIORITY_WORKER = True
+        logger.warning(f"High priority worker detected: {worker_name}")
+    elif 'high_priority' in worker_name:
+        HIGH_PRIORITY_WORKER = True
+        logger.warning(f"High priority worker detected by name: {worker_name}")
+    
+    if HIGH_PRIORITY_WORKER:
+        os.environ['REMAP_SIGTERM'] = 'SIGQUIT'
+        logger.warning(f"SIGTERM remapped to SIGQUIT for high priority worker: {worker_name}")
+        
+        instance.app.conf.worker_soft_shutdown_timeout = 9999999
+        logger.warning(f"Soft shutdown timeout set to extremely high value for worker: {worker_name}")
+
+@worker_shutting_down.connect
+def handle_worker_shutdown(sender, sig, how, exitcode, **kwargs):
+    """
+    Handle shutdown signal for high priority workers
+    """
+    global HIGH_PRIORITY_WORKER
+    
+    if HIGH_PRIORITY_WORKER and how == 'warm':
+        logger.warning(f"PREVENTING warm shutdown for high priority worker. Signal: {sig}")
+        return False
 
 def get_active_org_sync_tasks():
     """
