@@ -55,6 +55,15 @@ app.conf.beat_schedule = {
             'task_track_started': True,
         }
     },
+    'refresh-netsuite-tokens': {
+        'task': 'core.tasks.netsuite.refresh_netsuite_token_task',
+        'schedule': crontab(minute='*/20'),
+        'options': {
+            'queue': 'high_priority',
+            'expires': None,
+            'task_track_started': True,
+        }
+    },
 }
 
 app.conf.worker_prefetch_multiplier = 1

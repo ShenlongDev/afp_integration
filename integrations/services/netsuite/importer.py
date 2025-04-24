@@ -446,7 +446,6 @@ class NetSuiteImporter:
 
             for r in rows:
                 txn_id = r.get("id")
-                print(r)
                 if not txn_id:
                     continue
 
@@ -584,7 +583,6 @@ class NetSuiteImporter:
                 return
 
             def process_line(r):
-                print(r)
                 nonlocal line_counter
                 line_counter += 1
                 
@@ -701,7 +699,7 @@ class NetSuiteImporter:
                     AMOUNTPAID,
                     AMOUNTUNPAID,
                     LASTMODIFIEDDATE,
-                    PROCESSEDBYREVCOMMIT,
+                    PROCESSEDBYREVCOMMIT
                 FROM TransactionAccountingLine
                 WHERE 
                     (TRANSACTION > {min_transaction} 
@@ -790,7 +788,6 @@ class NetSuiteImporter:
         print(f"fetched {len(rows)} budget records")
 
         def process_budget(r):
-            print(f"processing budget: {r}")
             budget_id = r.get("id")
             if not budget_id:
                 return
@@ -835,7 +832,6 @@ class NetSuiteImporter:
             
             try:
                 with transaction.atomic():
-                    print(r)
                     location_name = r.get("name")
                     full_name = r.get("fullname")
                     is_inactive = bool_from_str(r.get("isinactive"))
