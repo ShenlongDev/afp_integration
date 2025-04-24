@@ -20,8 +20,15 @@ def get_netsuite_importer(integration_id, since_str=None):
     If since_str is not provided, compute today's date at task execution time.
     """
     integration = Integration.objects.get(pk=integration_id)
+    
+    # Validate that we have the required NetSuite settings
+    settings = integration.settings or {}
+    if not settings.get("account_id"):
+        logger.error(f"Integration {integration_id} missing 'account_id' in settings")
+        raise ValueError(f"Integration {integration_id} missing required NetSuite settings")
+    
     if since_str is None:
-         since_str = timezone.now().strftime('%Y-%m-%d')
+        since_str = timezone.now().strftime('%Y-%m-%d')
     since_date = datetime.strptime(since_str, '%Y-%m-%d')
     return NetSuiteImporter(integration, since_date)
 
@@ -178,17 +185,22 @@ def refresh_netsuite_token_task():
     Refresh the NetSuite token for all available integrations.
     """
     try:
+        # Find all integrations with NetSuite settings
         netsuite_integrations = Integration.objects.filter(
-            netsuite_account_id__isnull=False,
+            integration_type='netsuite',
+            settings__account_id__isnull=False,
         )
+        
         for integration in netsuite_integrations:
             auth_service = NetSuiteAuthService(integration)
-            token_obj = IntegrationAccessToken.objects.get(
-                integration=integration,
-                integration_type="NETSUITE"
-            )
-            auth_service._refresh_token(token_obj)
-        logger.info("NetSuite token refreshed successfully.")
+            try:
+                # Try to obtain a new token
+                auth_service.obtain_access_token()
+                logger.info(f"NetSuite token refreshed for integration {integration.id}")
+            except Exception as e:
+                logger.error(f"Error refreshing NetSuite token for integration {integration.id}: {e}")
+        
+        logger.info("NetSuite token refresh process completed.")
     except Exception as e:
-        logger.error(f"Error refreshing NetSuite token: {e}")
+        logger.error(f"Error in NetSuite token refresh task: {e}")
         raise e 

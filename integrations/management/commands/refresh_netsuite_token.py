@@ -24,8 +24,12 @@ class Command(BaseCommand):
         force_refresh = options.get('force', False)
         integration_id = options.get('integration_id')
         
-        # Get all NetSuite integrations, or a specific one if ID provided
-        integrations_query = Integration.objects.filter(netsuite_account_id__isnull=False)
+        # Get all NetSuite integrations with account_id in settings, or a specific one if ID provided
+        integrations_query = Integration.objects.filter(
+            integration_type='netsuite', 
+            settings__account_id__isnull=False
+        )
+        
         if integration_id:
             integrations_query = integrations_query.filter(id=integration_id)
         
@@ -49,7 +53,6 @@ class Command(BaseCommand):
                         integration_type=INTEGRATION_TYPE_NETSUITE
                     )
                     
-                        
                 except IntegrationAccessToken.DoesNotExist:
                     self.stdout.write(self.style.ERROR(
                         f"No token found for {integration}. Initial authorization required."
@@ -61,7 +64,7 @@ class Command(BaseCommand):
                 auth_service = NetSuiteAuthService(integration)
                 self.stdout.write(f"Refreshing token for {integration}")
                 
-                # Replace the call to non-existent _refresh_token method with obtain_access_token
+                # Get a new token
                 new_token = auth_service.obtain_access_token()
                 
                 success_count += 1

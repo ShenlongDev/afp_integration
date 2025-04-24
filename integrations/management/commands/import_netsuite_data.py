@@ -78,16 +78,20 @@ class Command(BaseCommand):
         if integration_id:
             try:
                 integration = Integration.objects.get(pk=integration_id)
-                if not (integration.netsuite_account_id and integration.netsuite_consumer_key):
-                    self.stdout.write(self.style.ERROR(f"Integration ID {integration_id} does not have NetSuite credentials set."))
+                # Check for required NetSuite settings in the JSON field
+                settings = integration.settings or {}
+                if not (settings.get('account_id') and settings.get('consumer_key')):
+                    self.stdout.write(self.style.ERROR(f"Integration ID {integration_id} does not have required NetSuite settings (account_id, consumer_key)."))
                     return
                 integrations.append(integration)
             except Integration.DoesNotExist:
                 self.stdout.write(self.style.ERROR(f"Integration with ID {integration_id} does not exist."))
                 return
         else:
+            # Find all NetSuite integrations
             integrations = Integration.objects.filter(
-                netsuite_account_id__isnull=False,
+                integration_type='netsuite',
+                settings__account_id__isnull=False,
             )
             if not integrations.exists():
                 self.stdout.write(self.style.WARNING("No integrations found with NetSuite credentials."))
