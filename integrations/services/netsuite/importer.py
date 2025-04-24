@@ -26,6 +26,7 @@ from integrations.models.netsuite.analytics import (
     NetSuiteBudgets,
     NetSuiteLocations,
 )
+from core.models import Site, IntegrationSiteMapping
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +52,18 @@ class NetSuiteImporter:
     """
     def __init__(self, integration: Integration, since_date: Optional[str] = None, until_date: Optional[str] = None):
         self.integration = integration
-        self.client = NetSuiteClient(self.integration.netsuite_account_id, integration)
-        self.org = integration.org
+        # Get settings from the integration.settings JSON field
+        self.settings = integration.settings or {}
+        
+        # Get the account_id from settings
+        account_id = self.settings.get("account_id")
+        if not account_id:
+            raise ValueError("Integration settings missing 'account_id'.")
+        
+        self.client = NetSuiteClient(account_id, integration)
+        self.org = integration.organisation
         self.now_ts = timezone.now()
-        self.tenant_id = integration.org.id
+        self.tenant_id = integration.organisation.id
         self.since_date = since_date or timezone.datetime.combine(date.today(), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S")
         self.until_date = until_date  # May be None
         if since_date is None:
@@ -64,7 +73,7 @@ class NetSuiteImporter:
         SyncTableLogs.objects.create(
             module_name=module_name,
             integration='NETSUITE',
-            organization=self.integration.org,
+            organisation=self.org,
             fetched_records=fetched_records,
             last_updated_time=timezone.now(),
             last_updated_date=timezone.now().date()
@@ -334,7 +343,7 @@ class NetSuiteImporter:
                             "subsidiary": r.get("subsidiary"),
                             "balance": decimal_or_none(r.get("balance")),
                             "record_date": self.now_ts,
-                            "consolidation_key": self.integration.netsuite_account_id,
+                            "consolidation_key": self.settings.get("account_id"),
                         }
                     )
                 except Exception as e:
@@ -417,7 +426,9 @@ class NetSuiteImporter:
                     Transaction.TransactionNumber AS transactionnumber,
                     Transaction.Void AS void,
                     Transaction.Voided AS voided,
-                    BUILTIN.DF(Transaction.Terms) AS terms
+                    Transaction.Location AS location_id,
+                    BUILTIN.DF(Transaction.Terms) AS terms,
+                    BUILTIN.DF(Transaction.Location) AS locations
                 FROM 
                     Transaction
                 WHERE 
@@ -435,6 +446,7 @@ class NetSuiteImporter:
 
             for r in rows:
                 txn_id = r.get("id")
+                print(r)
                 if not txn_id:
                     continue
 
@@ -491,7 +503,7 @@ class NetSuiteImporter:
                             "voided": r.get("voided"),
                             "memo": r.get("memo"),
                             "record_date": last_mod,
-                            "consolidation_key": self.integration.netsuite_account_id,
+                            "consolidation_key": self.settings.get("account_id"),
                         }
                     )
                 except Exception as e:
@@ -542,7 +554,10 @@ class NetSuiteImporter:
                     L.isrevrectransaction, L.linelastmodifieddate, L.linesequencenumber, L.mainline, 
                     L.matchbilltoreceipt, L.netamount, L.oldcommitmentfirm, L.quantitybilled, L.quantityrejected, 
                     L.quantityshiprecv, BUILTIN.DF( L.subsidiary ) AS subsidiary, L.subsidiary AS subsidiaryid, 
-                    L.taxline, L.transaction, L.transactiondiscount, L.uniquekey, L.location, L.class 
+                    L.taxline, L.transaction, L.transactiondiscount, L.uniquekey,
+                    L.location AS line_location_id,
+                    BUILTIN.DF(L.location) AS line_location_name,
+                    L.class 
                 FROM TransactionLine L 
                 WHERE 
                     (L.transaction > {last_transaction} 
@@ -569,12 +584,11 @@ class NetSuiteImporter:
                 return
 
             def process_line(r):
+                print(r)
                 nonlocal line_counter
                 line_counter += 1
                 
-                if decimal_or_none(r.get("netamount")) == 51251.66 or r.get("id") == 1065 or r.get("id") == '1065':
-                    print(f"transaction_line_id: {r.get('id')}, Net Amount: {decimal_or_none(r.get('netamount'))}")
-                
+
                 try:
                     last_modified = self.parse_datetime(r.get("linelastmodifieddate"))
                     NetSuiteTransactionLine.objects.update_or_create(
@@ -626,7 +640,7 @@ class NetSuiteImporter:
                             "documentnumber": r.get("documentnumber"),
                             "class_field": r.get("class"),
                             "uniquekey": r.get("uniquekey"),
-                            "consolidation_key": self.integration.netsuite_account_id,
+                            "consolidation_key": self.settings.get("account_id"),
                         }
                     )
                 except Exception as e:
@@ -653,14 +667,12 @@ class NetSuiteImporter:
                                           start_date: Optional[str] = None,
                                           end_date: Optional[str] = None):
         logger.info("Importing Transaction Accounting Lines...")
-        # Initialize composite boundaries. These must be orderable.
         min_transaction = min_transaction or "0"
-        min_transactionline = "0"  # start boundary for transaction line
+        min_transactionline = "0"  
         limit = 500
         total_imported = 0
         start_date = start_date or self.since_date
 
-        # Build the date clause for filtering based on LASTMODIFIEDDATE.
         date_filter_clause = ""
         if last_modified_after:
             date_filter_clause += f" AND LASTMODIFIEDDATE > TO_DATE('{last_modified_after}', 'YYYY-MM-DD HH24:MI:SS')"
@@ -672,7 +684,6 @@ class NetSuiteImporter:
 
         while True:
             close_old_connections()
-            # Composite condition: return rows with a greater TRANSACTION or, if equal, a greater TRANSACTIONLINE.
             query = f"""
                 SELECT
                     TRANSACTION,
@@ -690,7 +701,7 @@ class NetSuiteImporter:
                     AMOUNTPAID,
                     AMOUNTUNPAID,
                     LASTMODIFIEDDATE,
-                    PROCESSEDBYREVCOMMIT
+                    PROCESSEDBYREVCOMMIT,
                 FROM TransactionAccountingLine
                 WHERE 
                     (TRANSACTION > {min_transaction} 
@@ -735,7 +746,7 @@ class NetSuiteImporter:
                             "lastmodifieddate": last_modified,
                             "processedbyrevcommit": r.get("processedbyrevcommit"),
                             # New fields:
-                            "consolidation_key": self.integration.netsuite_account_id,
+                            "consolidation_key": self.settings.get("account_id"),
                             "source_uri": r.get("source_uri"),
                         }
                     )
@@ -745,23 +756,18 @@ class NetSuiteImporter:
             BatchUtils.process_in_batches(rows, process_accounting_line, batch_size=limit)
             total_imported += len(rows)
 
-            # Update composite boundaries using the last row.
             last_row = rows[-1]
             new_min_transaction = str(last_row.get("transaction"))
             new_min_transactionline = str(last_row.get("transactionline"))
 
-            # Debug log to show new boundaries.
             logger.info(f"Processed batch. New boundary: TRANSACTION {new_min_transaction}, TRANSACTIONLINE {new_min_transactionline}. Total imported: {total_imported}.")
 
-            # Safeguard: if the boundary does not change, break out of the loop to avoid infinite iteration.
             if new_min_transaction == min_transaction and new_min_transactionline == min_transactionline:
                 logger.warning("Pagination boundaries did not change. Exiting loop to avoid infinite loop.")
                 break
 
-            # Update boundaries for the next iteration.
             min_transaction, min_transactionline = new_min_transaction, new_min_transactionline
 
-            # End loop if fewer rows than the limit are returned.
             if len(rows) < limit:
                 logger.info("Fewer rows than limit fetched. Likely reached end of records.")
                 break
@@ -826,28 +832,81 @@ class NetSuiteImporter:
             location_id = r.get("id")
             if not location_id:
                 return
+            
             try:
-                NetSuiteLocations.objects.update_or_create(
-                    location_id=location_id,
-                    defaults={
-                        "tenant_id": self.org.id,
-                        "name": r.get("name"),
-                        "full_name": r.get("fullname"),
-                        "external_id": r.get("externalid"),
+                with transaction.atomic():
+                    print(r)
+                    location_name = r.get("name")
+                    full_name = r.get("fullname")
+                    is_inactive = bool_from_str(r.get("isinactive"))
+                    status = 'inactive' if is_inactive else 'active'
+                    
+                    try:
+                        mapping = IntegrationSiteMapping.objects.get(
+                            integration=self.integration,
+                            external_id=location_id
+                        )
+                        site = mapping.site
+                        site.name = location_name
+                        site.status = status
+                        site.save(update_fields=["name", "status", "updated_at"])
+                        
+                    except IntegrationSiteMapping.DoesNotExist:
+                        today = timezone.now().date()
+                        site = Site(
+                            organisation=self.integration.organisation,
+                            name=location_name,
+                            description=f"NetSuite location: {full_name}" if full_name and full_name != location_name else None,
+                            postcode="",
+                            region="",
+                            opened_date=today,
+                            status=status
+                        )
+                        
+                        if r.get("mainaddress"):
+                            address_data = r.get("mainaddress")
+                            if isinstance(address_data, str):
+                                site.address_line1 = address_data
+                            elif isinstance(address_data, dict):
+                                site.address_line1 = address_data.get("addr1", "")
+                                site.address_line2 = address_data.get("addr2", "")
+                                site.city = address_data.get("city", "")
+                                site.state_code = address_data.get("state", "")
+                                site.zip_code = address_data.get("zip", "")
+                                site.country = address_data.get("country", "")
+                        
+                        site.save()
+                        
+                        mapping = IntegrationSiteMapping.objects.create(
+                            site=site,
+                            integration=self.integration,
+                            external_id=location_id,
+                            external_name=full_name,
+                            settings={
+                                "include_children": bool_from_str(r.get("includechildren")),
+                                "parent_location_id": r.get("parent"),
+                                "subsidiary_id": r.get("subsidiary"),
+                                "last_modified_date": self.parse_datetime(r.get("lastmodifieddate")).isoformat() if self.parse_datetime(r.get("lastmodifieddate")) else None,
+                                "netsuite_external_id": r.get("externalid"),
+                            }
+                        )
+                    
+                    mapping.external_name = full_name
+                    mapping.settings.update({
                         "include_children": bool_from_str(r.get("includechildren")),
-                        "is_inactive": bool_from_str(r.get("isinactive")),
-                        "main_address": r.get("mainaddress"),
-                        "subsidiary": r.get("subsidiary"),
-                        "parent": r.get("parent"),
-                        "last_modified_date": self.parse_datetime(r.get("lastmodifieddate")),
-                        "record_date": self.now_ts,
-                        "consolidation_key": self.integration.netsuite_account_id,
-                    }
-                )
+                        "parent_location_id": r.get("parent"),
+                        "subsidiary_id": r.get("subsidiary"),
+                        "last_modified_date": self.parse_datetime(r.get("lastmodifieddate")).isoformat() if self.parse_datetime(r.get("lastmodifieddate")) else None,
+                        "netsuite_external_id": r.get("externalid"),
+                    })
+                    mapping.save(update_fields=["external_name", "settings", "updated_at"])
+                    
+                    logger.info(f"Processed NetSuite location {location_id}: {location_name}")
+                
             except Exception as e:
                 logger.error(f"Error importing location row: {e}", exc_info=True)
 
-        BatchUtils.process_in_batches(rows, process_location, batch_size=1000)
+        BatchUtils.process_in_batches(rows, process_location, batch_size=500)
         self.log_import_event(module_name="netsuite_locations", fetched_records=len(rows))
         logger.info(f"Imported Locations: {len(rows)} records processed.")
 

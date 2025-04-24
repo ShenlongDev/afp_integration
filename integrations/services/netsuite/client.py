@@ -9,6 +9,15 @@ logger = logging.getLogger(__name__)
 
 class NetSuiteClient:
     def __init__(self, consolidation_key: str, integration: Integration):
+        """
+        Initialize the NetSuite client with the consolidation key and integration.
+        
+        Args:
+            consolidation_key: Account ID to use for API URLs
+            integration: Integration record with NetSuite settings
+        """
+        self.integration = integration
+        # Get account_id from settings
         self.consolidation_key = consolidation_key
         self.auth_service = NetSuiteAuthService(integration)
         # Here we simply use the saved access token. No auto-refresh is performed.

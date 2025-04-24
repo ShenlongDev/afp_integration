@@ -20,14 +20,17 @@ class NetSuiteAuthService:
 
     def __init__(self, integration: Integration):
         """
-        :param integration: The Integration record that has netsuite_account_id,
-                        and netsuite_private_key.
+        :param integration: The Integration record with settings containing account_id,
+                        consumer_key, private_key and certificate_id.
         """
         self.integration = integration
 
-        account_id = integration.netsuite_account_id
+        # Get settings from the integration.settings JSON field
+        integration_settings = integration.settings or {}
+        
+        account_id = integration_settings.get("account_id")
         if not account_id:
-            raise ValueError("Integration missing netsuite_account_id.")
+            raise ValueError("Integration settings missing 'account_id'.")
 
         # Token endpoint:
         # "https://{account_id}.suitetalk.api.netsuite.com/services/rest/auth/oauth2/v1/token"
@@ -41,26 +44,33 @@ class NetSuiteAuthService:
         """
         now = int(timezone.now().timestamp())
         
+        # Get settings from the integration.settings JSON field
+        integration_settings = self.integration.settings or {}
+        
         # Add JWT header with kid (certificate ID) that matches your NetSuite integration
         headers = {
             "alg": "PS256",
             "typ": "JWT",
-            "kid": self.integration.netsuite_certificate_id  # You need to store this in your integration model
+            "kid": integration_settings.get("certificate_id")  # From settings JSON
         }
         
         payload = {
-            "iss": self.integration.netsuite_consumer_key,  # Consumer key from integration record
+            "iss": integration_settings.get("consumer_key"),  # Consumer key from settings JSON
             "aud": self.token_url,                          # Token endpoint URL
             "iat": now,
             "exp": now + 3600,                              # Valid for 1 hour
             "scope": self.scope                             # Already set to ['restlets','rest_webservices'] in __init__
         }
         
-        # Sign the JWT using the RSA private key stored in the integration record
+        # Sign the JWT using the RSA private key stored in the integration settings
         # Pass the headers parameter to include the kid
-        client_assertion = jwt.encode(payload, self.integration.netsuite_private_key, algorithm="PS256", headers=headers)
+        client_assertion = jwt.encode(
+            payload, 
+            integration_settings.get("private_key"), 
+            algorithm="PS256", 
+            headers=headers
+        )
         return client_assertion
-
 
     def obtain_access_token(self) -> str:
         """
@@ -87,7 +97,6 @@ class NetSuiteAuthService:
         # Save the token. Since there is no refresh token in M2M, we store only the access token.
         self.save_tokens(access_token, None, expires_in)
         return access_token
-
 
     def save_tokens(self, access_token: str, refresh_token: str | None, expires_in: int):
         """
