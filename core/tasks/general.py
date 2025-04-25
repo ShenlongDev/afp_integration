@@ -193,6 +193,8 @@ def process_high_priority(self, hp_task_id, semaphore_id=None):
     signal.signal(signal.SIGTERM, ignore_sigterm)
     
     try:
+        print(f"Processing high priority task {hp_task_id}")
+        logger.warning(f"Processing high priority task")
         HighPriorityTask.objects.filter(pk=hp_task_id, in_progress=False).update(
             in_progress=True, 
             in_progress_since=timezone.now()
@@ -645,8 +647,9 @@ def high_priority_dispatcher(self):
                         ).order_by('created_at').first()
                         
                         if hp_task:
+                            hp_task.in_progress = True
                             hp_task.in_progress_since = timezone.now()
-                            hp_task.save(update_fields=["in_progress_since"])
+                            hp_task.save(update_fields=["in_progress", "in_progress_since"])
                             
                             process_high_priority.apply_async(
                                 args=[hp_task.id, semaphore_id],
@@ -843,7 +846,8 @@ def monitor_stuck_semaphores():
         from django.db import close_old_connections
         
         close_old_connections()
-        
+        print(f"Processing high priority task")
+        logger.warning(f"Processing high priority task")
         actual_in_progress = HighPriorityTask.objects.filter(
             in_progress=True, 
             processed=False
