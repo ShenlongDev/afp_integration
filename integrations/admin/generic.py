@@ -32,8 +32,6 @@ CREDENTIALS = {
     },
     'netsuite': {
         'account_id':    {'type': CHAR,  'label': 'Account ID',    'req': True},
-        'client_id':     {'type': CHAR,  'label': 'Client ID',     'req': True},
-        'client_secret': {'type': CHAR, 'label': 'Client Secret',  'req': True},
         'consumer_key':  {'type': CHAR,  'label': 'Consumer Key',  'req': True},
         'private_key':   {'type': TEXTA['type'], 'label': 'Private Key',
                          'req': True, 'widget': TEXTA['widget']},
