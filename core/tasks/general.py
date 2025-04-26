@@ -927,6 +927,7 @@ def monitor_in_progress_not_dispatched_tasks():
     """
     Monitor for anomalous tasks that are marked as in_progress but were never 
     properly dispatched. This can happen if there's a system error during processing.
+    Immediately dispatches these tasks if slots are available.
     """
     from integrations.models.models import HighPriorityTask
     from django.db import close_old_connections, transaction
@@ -948,42 +949,86 @@ def monitor_in_progress_not_dispatched_tasks():
         
         cache.set(SYSTEM_TASK_ACTIVE_KEY, "monitor_in_progress_not_dispatched", timeout=1800)
         
-        threshold = timezone.now() - timedelta(seconds=5)
+        threshold = timezone.now() - timedelta(seconds=2)
         inconsistent_tasks = HighPriorityTask.objects.filter(
             in_progress=True,
             dispatched=False,
             in_progress_since__lt=threshold,
             processed=False
-        ).order_by('in_progress_since')
+        ).order_by('created_at')
         
         if inconsistent_tasks.exists():
             count = inconsistent_tasks.count()
-            logger.warning(f"Found {count} tasks marked as in_progress but never dispatched! Fixing...")
+            logger.warning(f"Found {count} tasks marked as in_progress but never dispatched! Fixing and processing...")
             
-            inconsistent_tasks.update(
+            current_count = cache.get(HIGH_PRIORITY_TASK_ACTIVE_COUNT) or 0
+            try:
+                current_count = int(current_count)
+            except (ValueError, TypeError):
+                current_count = 0
+                
+            actual_in_progress = HighPriorityTask.objects.filter(
+                in_progress=True, 
+                dispatched=True,
+                processed=False
+            ).count()
+            
+            if current_count != actual_in_progress:
+                logger.warning(f"Semaphore count mismatch: cached={current_count}, actual={actual_in_progress}. Fixing.")
+                cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, min(actual_in_progress, 2))
+                current_count = actual_in_progress
+            
+            # Reset all the inconsistent tasks so they can be picked up
+            tasks_to_reset_ids = list(inconsistent_tasks.values_list('id', flat=True))
+            HighPriorityTask.objects.filter(id__in=tasks_to_reset_ids).update(
                 in_progress=False,
                 in_progress_since=None
             )
             
-            actual_in_progress = HighPriorityTask.objects.filter(
-                in_progress=True, 
-                processed=False
-            ).count()
+            slots_to_fill = 2 - current_count
+            tasks_dispatched = 0
             
-            count = cache.get(HIGH_PRIORITY_TASK_ACTIVE_COUNT) or 0
-            try:
-                count = int(count)
-            except (ValueError, TypeError):
-                count = 0
+            if slots_to_fill > 0:
+                logger.info(f"Attempting to immediately dispatch {min(slots_to_fill, count)} previously stuck tasks")
                 
-            if count > actual_in_progress:
-                logger.warning(f"Semaphore count inflated: cached={count}, actual={actual_in_progress}. Fixing.")
-                cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, min(actual_in_progress, 2))
-                
+                for task_id in tasks_to_reset_ids[:slots_to_fill]:
+                    semaphore_id = acquire_data_task_semaphore()
+                    if not semaphore_id:
+                        logger.info("Failed to acquire semaphore. No more slots available.")
+                        break
+                    
+                    try:
+                        with transaction.atomic():
+                            task = HighPriorityTask.objects.select_for_update(skip_locked=True).filter(
+                                id=task_id,
+                                processed=False,
+                                in_progress=False
+                            ).first()
+                            
+                            if task:
+                                task.dispatched = True
+                                task.dispatched_at = timezone.now()
+                                task.save(update_fields=["dispatched", "dispatched_at"])
+                                
+                                process_high_priority.apply_async(
+                                    args=[task.id, semaphore_id],
+                                    queue="high_priority",
+                                    priority=9,
+                                    countdown=0
+                                )
+                                logger.info(f"Immediately dispatched previously stuck task {task.id}")
+                                tasks_dispatched += 1
+                            else:
+                                release_data_task_semaphore(semaphore_id)
+                                logger.info(f"Task {task_id} is no longer available for processing")
+                    except Exception as e:
+                        release_data_task_semaphore(semaphore_id)
+                        logger.error(f"Error dispatching previously stuck task {task_id}: {e}")
+            
             log_task_event(
                 "monitor_in_progress_tasks", 
                 "fixed", 
-                f"Reset {count} inconsistent tasks that were in_progress but not dispatched"
+                f"Reset {count} inconsistent tasks, immediately dispatched {tasks_dispatched}"
             )
         else:
             logger.info("No inconsistent in_progress tasks found.")
@@ -1001,8 +1046,7 @@ def comprehensive_task_state_monitor():
     Comprehensive monitor that checks for all possible inconsistent task states and fixes them:
     1. Tasks marked as dispatched but not in_progress (stuck in dispatch)
     2. Tasks marked as in_progress but not dispatched (impossible state)
-    3. Tasks that have been in_progress for too long (stuck in processing)
-    4. Checks and fixes semaphore counters
+    3. Checks and fixes semaphore counters
     """
     from integrations.models.models import HighPriorityTask
     from django.db import close_old_connections, transaction
@@ -1027,6 +1071,7 @@ def comprehensive_task_state_monitor():
         fixed_count = 0
         task_info = {}
         
+        # 1. Find tasks that have been dispatched but not started processing
         dispatch_threshold = timezone.now() - timedelta(seconds=30)
         stuck_dispatched = HighPriorityTask.objects.filter(
             dispatched=True,
@@ -1042,6 +1087,7 @@ def comprehensive_task_state_monitor():
             fixed_count += count
             task_info['dispatched_not_started'] = count
         
+        # 2. Find tasks that are in_progress but not dispatched (impossible state)
         in_progress_threshold = timezone.now() - timedelta(seconds=5)
         inconsistent_tasks = HighPriorityTask.objects.filter(
             in_progress=True,
@@ -1057,25 +1103,7 @@ def comprehensive_task_state_monitor():
             fixed_count += count
             task_info['in_progress_not_dispatched'] = count
         
-        processing_threshold = timezone.now() - timedelta(minutes=30)
-        stuck_processing = HighPriorityTask.objects.filter(
-            in_progress=True,
-            processed=False,
-            in_progress_since__lt=processing_threshold
-        )
-        
-        if stuck_processing.exists():
-            count = stuck_processing.count()
-            logger.warning(f"Found {count} tasks stuck in processing for over 30 minutes")
-            stuck_processing.update(
-                in_progress=False, 
-                in_progress_since=None, 
-                dispatched=False, 
-                dispatched_at=None
-            )
-            fixed_count += count
-            task_info['stuck_in_processing'] = count
-        
+        # 3. Check and fix semaphore counter
         actual_in_progress = HighPriorityTask.objects.filter(
             in_progress=True, 
             processed=False
@@ -1092,6 +1120,7 @@ def comprehensive_task_state_monitor():
             cache.set(HIGH_PRIORITY_TASK_ACTIVE_COUNT, min(actual_in_progress, 2))
             task_info['semaphore_fixed'] = True
         
+        # Check dispatcher lock
         dispatcher_lock = cache.get("high_priority_dispatcher_lock")
         if not dispatcher_lock:
             logger.warning("Dispatcher lock not found. Restarting dispatcher.")
