@@ -643,13 +643,14 @@ def high_priority_dispatcher(self):
                     with transaction.atomic():
                         hp_task = HighPriorityTask.objects.select_for_update(skip_locked=True).filter(
                             processed=False, 
-                            in_progress=False
+                            in_progress=False,
+                            dispatched=False
                         ).order_by('created_at').first()
                         
                         if hp_task:
-                            hp_task.in_progress = True
-                            hp_task.in_progress_since = timezone.now()
-                            hp_task.save(update_fields=["in_progress", "in_progress_since"])
+                            hp_task.dispatched = True
+                            hp_task.dispatched_at = timezone.now()
+                            hp_task.save(update_fields=["dispatched", "dispatched_at"])
                             
                             process_high_priority.apply_async(
                                 args=[hp_task.id, semaphore_id],

@@ -110,6 +110,8 @@ class HighPriorityTask(models.Model):
     in_progress_since = models.DateTimeField(null=True, blank=True)
     processed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    dispatched = models.BooleanField(default=False)
+    dispatched_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"HighPriorityTask {self.id}"
