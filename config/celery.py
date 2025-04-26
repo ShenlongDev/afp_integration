@@ -74,7 +74,7 @@ app.conf.beat_schedule = {
     },
     'monitor-semaphores': {
         'task': 'core.tasks.general.monitor_stuck_semaphores',
-        'schedule': crontab(hour='*/3'),
+        'schedule': crontab(hour='*/15'),
         'options': {
             'queue': 'high_priority',
             'expires': None,
