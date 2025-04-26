@@ -350,7 +350,7 @@ class ImportToolsMixin:
 
 
 class HighPriorityTaskAdmin(ImportToolsMixin, admin.ModelAdmin):
-    list_display = ('integration', 'integration_type', 'since_date', 'selected_modules', 'processed')
+    list_display = ('integration', 'integration_type', 'since_date', 'selected_modules', 'dispatched', 'in_progress', 'processed')    
     search_fields = ('integration__organisation__name', 'integration_type', 'since_date', 'selected_modules', 'processed')
     change_list_template = "admin/high_priority_task_changelist.html"
 
