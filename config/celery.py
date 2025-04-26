@@ -80,6 +80,22 @@ app.conf.beat_schedule = {
             'expires': None,
         }
     },
+    'monitor-in-progress-not-dispatched': {
+        'task': 'core.tasks.general.monitor_in_progress_not_dispatched_tasks',
+        'schedule': crontab(minute='*/3'),
+        'options': {
+            'queue': 'high_priority',
+            'expires': None,
+        }
+    },
+    'comprehensive-task-monitor': {
+        'task': 'core.tasks.general.comprehensive_task_state_monitor',
+        'schedule': crontab(minute='*/10'),
+        'options': {
+            'queue': 'high_priority',
+            'expires': None,
+        }
+    },
 }
 
 app.conf.worker_prefetch_multiplier = 1
@@ -92,6 +108,8 @@ app.conf.task_routes = {
     'core.tasks.general.monitor_stuck_high_priority_tasks': {'queue': 'high_priority'},
     'core.tasks.general.daily_previous_day_sync': {'queue': 'high_priority'},
     'core.tasks.general.monitor_stuck_semaphores': {'queue': 'high_priority'},
+    'core.tasks.general.monitor_in_progress_not_dispatched_tasks': {'queue': 'high_priority'},
+    'core.tasks.general.comprehensive_task_state_monitor': {'queue': 'high_priority'},
 }
 
 HIGH_PRIORITY_WORKER = False
