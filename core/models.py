@@ -387,4 +387,32 @@ class Review(models.Model):
 
     def __str__(self):
         return f"Review by {self.reviewer} for {self.store_name} ({self.review_date})"
+
+
+class Bulk_Calendar(models.Model):
+    """
+    Model for storing calendar data with organization-specific information.
+    """
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='bulk_calendars')
+    start_month = models.CharField(max_length=50)
+    calendar_type = models.CharField(max_length=50)
+    fiscal_year = models.CharField(max_length=50)
+    date = models.DateField()
+    month = models.CharField(max_length=50)
+    month_sort = models.IntegerField()
+    week_number = models.IntegerField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.client.name} - {self.date} - {self.calendar_type}"
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["client"]),
+            models.Index(fields=["date"]),
+            models.Index(fields=["fiscal_year"]),
+        ]
+        ordering = ["date"]
     
