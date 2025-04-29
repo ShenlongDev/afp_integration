@@ -6,8 +6,22 @@ from django.db.models.expressions import RawSQL
 from django.utils.timezone import make_aware
 
 from integrations.models.models import POSSales, Weather
-
+from integrations.models.xero.raw import XeroBudgetPeriodBalancesRaw
+import calendar
 logger = logging.getLogger(__name__)
+
+def get_weeks_in_month(year, month):
+    """Return a list of week start dates (YYYY-MM-DD) in the given month."""
+    cal = calendar.monthcalendar(year, month)
+    weeks = []
+    for week in cal:
+        # Find the first non-zero day (actual day in the month)
+        for day in week:
+            if day != 0:
+                date = datetime(year, month, day).date()
+                weeks.append(date.strftime('%Y-%m-%d'))
+                break
+    return weeks
 
 def get_weekly_sales_and_weather(site_id=None):
     """Get weekly sales and weather data from local database models."""
@@ -97,6 +111,54 @@ def get_weekly_sales_and_weather(site_id=None):
                 'temp': float(record['temp'] or 15),
                 'description': record['description'] or 'Partly cloudy'
             }
+
+        real_end_date = this_week_end - timedelta(days=1)
+        period = real_end_date.strftime('%Y-%m')
+        
+        budget_query = XeroBudgetPeriodBalancesRaw.objects.filter(
+            period=period,
+            reporting_code_name='Revenue'
+        )
+        if site_id:
+            budget_query = budget_query.filter(tracking_category_option=site_id)
+        
+        raw_data = budget_query.values('reporting_code_name', 'account_name', 'amount')
+        
+        # Calculate week percentage
+        year = real_end_date.year
+        month = real_end_date.month
+        weeks_in_month = get_weeks_in_month(year, month)
+        week = real_end_date.strftime('%Y-%m-%d')
+        week_index = weeks_in_month.index(week) if week in weeks_in_month else 0
+        percentage = (week_index + 1) / len(weeks_in_month) if weeks_in_month else 1
+        
+        total_amount = sum(float(item['amount'] or 0) for item in raw_data)
+        total_amount *= percentage
+        
+        # Distribute budget across days (0=Sunday, 1=Monday, ..., 6=Saturday)
+        daily_budgets = {
+            1: total_amount * 0.1074,  # Monday
+            2: total_amount * 0.1186,  # Tuesday
+            3: total_amount * 0.1277,  # Wednesday
+            4: total_amount * 0.132,   # Thursday
+            5: total_amount * 0.1712,  # Friday
+            6: total_amount * 0.2121,  # Saturday
+            0: total_amount * 0.1318   # Sunday
+        }
+        
+        # If no budget data, use sample budget
+        if not raw_data:
+            logger.info("No budget data found. Using sample budget.")
+            total_amount = 7000  # Sample weekly budget
+            daily_budgets = {
+                1: total_amount * 0.1074,
+                2: total_amount * 0.1186,
+                3: total_amount * 0.1277,
+                4: total_amount * 0.132,
+                5: total_amount * 0.1712,
+                6: total_amount * 0.2121,
+                0: total_amount * 0.1318
+            }
         
         # Fill in missing data with sample values
         if not sales_query.exists():
@@ -160,6 +222,30 @@ def get_weekly_sales_and_weather(site_id=None):
                 'description': weather_descriptions[i % len(weather_descriptions)]
             } for i, date in enumerate(date_spine)
         }
+
+        # Sample budget data for fallback
+        total_amount = 7000
+        daily_budgets = {
+            1: total_amount * 0.1074,
+            2: total_amount * 0.1186,
+            3: total_amount * 0.1277,
+            4: total_amount * 0.132,
+            5: total_amount * 0.1712,
+            6: total_amount * 0.2121,
+            0: total_amount * 0.1318
+        }
+
+    sales_to_budget = [
+        {
+            'date': date,
+            'variance': (
+                this_week_data.get(date, {'sales': 0}).get('sales', 0) -
+                daily_budgets.get(date.weekday(), 0)
+            )
+        }
+        for date in date_spine
+    ]
+    best_day = max(sales_to_budget, key=lambda x: x['variance'], default={'date': date_spine[0]})['date']
     
     # Build the final result using list comprehension instead of loop
     result = [
@@ -176,6 +262,14 @@ def get_weekly_sales_and_weather(site_id=None):
                 else 0
             ),
             'COVERS': this_week_data.get(date, {'covers': 1}).get('covers', 1),
+            'BUDGET': daily_budgets.get(date.weekday(), 0),
+            'BUDGET_VAR_PERCENTAGE': (
+                ((this_week_data.get(date, {'sales': 0}).get('sales', 0) - 
+                 daily_budgets.get(date.weekday(), 0)) / 
+                 daily_budgets.get(date.weekday(), 1)) * 100
+                if daily_budgets.get(date.weekday(), 0) > 0
+                else 0
+            ),
             'LW_COVERS': last_week_data.get(date - timedelta(days=7), {'covers': 1}).get('covers', 1),
             'COVERS_CHANGE_PCT': (
                 ((this_week_data.get(date, {'covers': 1}).get('covers', 1) - 
@@ -190,7 +284,8 @@ def get_weekly_sales_and_weather(site_id=None):
                       last_week_data.get(date - timedelta(days=7), {'covers': 1}).get('covers', 1) 
                       if last_week_data.get(date - timedelta(days=7), {'covers': 1}).get('covers', 1) else 0,
             'TEMPERATURE_VALUE': weather_by_date.get(date, {'temp': 15}).get('temp'),
-            'DESCRIPTION': weather_by_date.get(date, {'description': 'Partly cloudy'}).get('description')
+            'DESCRIPTION': weather_by_date.get(date, {'description': 'Partly cloudy'}).get('description'),
+            "BEST_DAY": date == best_day
         }
         for date in date_spine
     ]

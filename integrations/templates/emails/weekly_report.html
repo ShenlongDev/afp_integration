@@ -112,9 +112,12 @@
                     <th>Day</th>
                     <th>Net Sales</th>
                     <th>Covers</th>
+                    <th>Budget</th>
+                    <th>Budget Var%</th>
                     <th>LW Sales</th>
                     <th>LW %</th>
                     <th>Weather</th>
+                    <th>Best Day</th>
                 </tr>
             </thead>
             <tbody>
@@ -124,10 +127,18 @@
                     <td>{{ day.DATE|date:"l" }}</td>
                     <td>{{ day.SALES|floatformat:2 }} {{ day.CURRENCY }}</td>
                     <td>{{ day.COVERS|floatformat:0 }}</td>
+                    <td>{{ day.BUDGET|floatformat:2 }} {{ day.CURRENCY }}</td>
+                    <td>{{ day.BUDGET_VAR_PERCENTAGE|floatformat:1 }}%</td>
                     <td>{{ day.LW_SALES|floatformat:2 }} {{ day.CURRENCY }}</td>
                     <td>{{ day.SALES_CHANGE_PCT|floatformat:1 }}%</td>
                     <td>{{ day.TEMPERATURE_VALUE|floatformat:1 }}°C, {{ day.DESCRIPTION }}</td>
-                </tr>
+                    <td>
+                        {% if day.BEST_DAY %}
+                            <span style="color: #27ae60;">Yes</span>
+                        {% else %}
+                            <span style="color: #e74c3c;">No</span>
+                        {% endif %}
+                    </tr>
                 {% endfor %}
             </tbody>
         </table>
