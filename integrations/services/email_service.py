@@ -107,14 +107,16 @@ def send_weekly_sales_report(recipients, data, site_name=""):
     
     context = {
         'site_name': site_name,
-        'data': data,
+        'data': data['data'],
         'total_sales': total_sales,
         'total_lw_sales': total_lw_sales,
         'sales_change': sales_change,
         'total_covers': total_covers,
         'total_lw_covers': total_lw_covers,
         'covers_change': covers_change,
-        'week_ending': data[-1]['DATE'] if data else 'N/A',
+        'week_ending': data['data'][-1]['DATE'] if data['data'] else 'N/A',
+        'commentary_box': data.get('COMMENTARY_BOX', ''),
+        'commentary_user': data.get('COMMENTARY_USER', ''),
     }
     
     try:
