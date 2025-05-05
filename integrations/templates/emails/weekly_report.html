@@ -69,6 +69,11 @@
             border-top: 1px solid #eee;
             padding-top: 10px;
         }
+        .commentary {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -138,15 +143,34 @@
                         {% else %}
                             <span style="color: #e74c3c;">No</span>
                         {% endif %}
-                    </tr>
+                    </td>
+                </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
-    
+
+    <div class="commentary">
+        <h3>Staff Commentary</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="color: black; padding: 10px;">Commentary</th>
+                    <th style="color: black; padding: 10px;">User</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="padding: 10px;">{{ commentary_box }}</td>
+                    <td style="padding: 10px;">{{ commentary_user }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
     <div class="footer">
         <p>This report is automatically generated. Please do not reply to this email.</p>
         <p>&copy; {% now "Y" %} Insights Analytics Platform</p>
     </div>
 </body>
-</html> 
+</html>

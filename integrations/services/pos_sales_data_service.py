@@ -4,9 +4,12 @@ from django.db.models import Sum, Avg, F, FloatField, Value, ExpressionWrapper, 
 from django.db.models.functions import TruncDate, ExtractWeekDay
 from django.db.models.expressions import RawSQL
 from django.utils.timezone import make_aware
+from django.utils import timezone
+import pytz
 
 from integrations.models.models import POSSales, Weather
 from integrations.models.xero.raw import XeroBudgetPeriodBalancesRaw
+from core.models import Commentary
 import calendar
 logger = logging.getLogger(__name__)
 
@@ -25,32 +28,48 @@ def get_weeks_in_month(year, month):
 
 def get_weekly_sales_and_weather(site_id=None):
     """Get weekly sales and weather data from local database models."""
-    today = datetime.now().date()
-    start_of_week = (today - timedelta(days=today.weekday()))
-    this_week_start = start_of_week
-    this_week_end = this_week_start + timedelta(days=6)
-    last_week_start = this_week_start - timedelta(days=7)
-    last_week_end = this_week_end - timedelta(days=7)
+    london_tz = pytz.timezone('Europe/London')
+    today = timezone.now().astimezone(london_tz).date()
+    yesterday = today - timedelta(days=1)
+    end_of_period = yesterday
+    start_of_period = end_of_period - timedelta(days=6)
     
-    # Create a date spine from this week
-    date_spine = [(start_of_week + timedelta(days=i)) for i in range(7)]
+    # Create a date spine for the last 7 days
+    date_spine = [(start_of_period + timedelta(days=i)) for i in range(7)]
     
     try:
         logger.info(f"Querying POSSales data for site_id: {site_id}")
         
-        # Combined query for both weeks' data
+        # Get commentary data for the period
+        commentary_query = Commentary.objects.filter(
+            site_id=site_id,
+            created_at__date__gte=start_of_period,
+            created_at__date__lte=end_of_period
+        ).select_related('user').order_by('created_at')
+        
+        # Get only the latest commentary (by created_at)
+        latest_commentary = commentary_query.last() if commentary_query.exists() else None
+        commentary_box = latest_commentary.comments if latest_commentary else ''
+        commentary_user = latest_commentary.user.email if latest_commentary else ''
+        
+        # Create a dictionary of commentary data by date (if you still want per-day)
+        commentary_by_date = {
+            c.created_at.date(): {
+                'comments': c.comments,
+                'takings': float(c.takings or 0)
+            }
+            for c in commentary_query
+        }
+        
+        # Combined query for the last 7 days' data
         sales_data = {}
         sales_query = POSSales.objects.filter(
             site_id=site_id,
-            date_ntz__date__gte=last_week_start,
-            date_ntz__date__lte=this_week_end
+            date_ntz__date__gte=start_of_period,
+            date_ntz__date__lte=end_of_period
         ).annotate(
-            sales_date=TruncDate('date_ntz'),
-            is_this_week=Case(
-                When(date_ntz__date__gte=this_week_start, then=Value(True)),
-                default=Value(False)
-            )
-        ).values('sales_date', 'is_this_week', 'currency').annotate(
+            sales_date=TruncDate('date_ntz')
+        ).values('sales_date', 'currency').annotate(
             sales=Sum('net_amount'),
             covers=Sum('covers')
         ).order_by('sales_date')
@@ -66,22 +85,18 @@ def get_weekly_sales_and_weather(site_id=None):
                 'covers': float(record['covers'] or 0) + 1,
                 'currency': record['currency'] or 'GBP'
             }
+            this_week_data[date] = data
             
-            if record['is_this_week']:
-                this_week_data[date] = data
-            else:
-                # For last week data, map the date to corresponding current week date
-                day_of_week = date.weekday()
-                equivalent_this_week = this_week_start + timedelta(days=day_of_week)
-                # Store with the equivalent date from last week
-                last_week_data[equivalent_this_week - timedelta(days=7)] = data
+            # For last week data, map the date to corresponding date from previous week
+            last_week_date = date - timedelta(days=7)
+            last_week_data[last_week_date] = data
         
         # Query weather data with aggregations
         weather_by_date = {}
         weather_query = Weather.objects.filter(
             site_id=site_id,
-            record_date__date__gte=this_week_start,
-            record_date__date__lte=this_week_end
+            record_date__date__gte=start_of_period,
+            record_date__date__lte=end_of_period
         ).annotate(
             weather_date=TruncDate('record_date')
         ).values('weather_date').annotate(
@@ -96,8 +111,8 @@ def get_weekly_sales_and_weather(site_id=None):
                 logger.info(f"Using weather data from site_id: {other_site}")
                 weather_query = Weather.objects.filter(
                     site_id=other_site,
-                    record_date__date__gte=this_week_start,
-                    record_date__date__lte=this_week_end
+                    record_date__date__gte=start_of_period,
+                    record_date__date__lte=end_of_period
                 ).annotate(
                     weather_date=TruncDate('record_date')
                 ).values('weather_date').annotate(
@@ -112,7 +127,7 @@ def get_weekly_sales_and_weather(site_id=None):
                 'description': record['description'] or 'Partly cloudy'
             }
 
-        real_end_date = this_week_end - timedelta(days=1)
+        real_end_date = end_of_period
         period = real_end_date.strftime('%Y-%m')
         
         budget_query = XeroBudgetPeriodBalancesRaw.objects.filter(
@@ -291,4 +306,8 @@ def get_weekly_sales_and_weather(site_id=None):
     ]
     
     logger.info(f"Generated report with {len(result)} days")
-    return result 
+    return {
+        'data': result,
+        'COMMENTARY_BOX': commentary_box,
+        'COMMENTARY_USER': commentary_user
+    } 
