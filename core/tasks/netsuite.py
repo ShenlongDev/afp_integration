@@ -101,6 +101,13 @@ def netsuite_import_budgets(integration_id, since_str=None):
     importer.import_budgets()
     logger.info(f"NetSuite budgets imported for integration: {integration_id}")
 
+
+@shared_task
+def netsuite_import_general_ledger(integration_id, since_str=None):
+    importer = get_netsuite_importer(integration_id, since_str)
+    importer.import_general_ledger()
+    logger.info(f"NetSuite general ledger imported for integration: {integration_id}")
+
 @shared_task
 def wait_60_seconds(integration_id):
     """
@@ -147,6 +154,8 @@ def sync_netsuite_data(integration_id, since_str: str = None):
         netsuite_import_locations.si(integration_id, since_str),
         wait_60_seconds.si(integration_id),
         netsuite_import_budgets.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        netsuite_import_general_ledger.si(integration_id, since_str),
     )
     task_chain.apply_async()
     logger.info(f"Dispatched NetSuite sync tasks for integration: {integration_id}")
@@ -179,6 +188,8 @@ def sync_single_netsuite_data(integration_id, since_str: str = None):
         netsuite_import_locations.si(integration_id, since_str),
         wait_60_seconds.si(integration_id),
         netsuite_import_budgets.si(integration_id, since_str),
+        wait_60_seconds.si(integration_id),
+        netsuite_import_general_ledger.si(integration_id, since_str),
     )
     task_chain.apply_async()
 

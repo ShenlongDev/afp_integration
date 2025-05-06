@@ -117,6 +117,7 @@ class Command(BaseCommand):
                         'transactions': importer.import_transactions,
                         'transaction_accounting_lines': importer.import_transaction_accounting_lines,
                         'transaction_lines': importer.import_transaction_lines,
+                        'general_ledger': importer.import_general_ledger,
                         'subsidiaries': importer.import_subsidiaries,
                         'departments': importer.import_departments,
                         'entities': importer.import_entities,

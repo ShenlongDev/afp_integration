@@ -522,3 +522,88 @@ class NetSuiteLocations(models.Model):
             models.Index(fields=['last_modified_date']),
         ]
 
+
+
+
+class NetSuiteGeneralLedger(models.Model):
+    tenant = models.ForeignKey(Organisation, on_delete=models.CASCADE)
+    type = models.CharField(max_length=255, null=True)
+    account_id = models.CharField(max_length=255, null=True)
+    account_name = models.CharField(max_length=255, null=True)
+    accounting_line_type = models.CharField(max_length=255, null=True)
+    approval_status = models.CharField(max_length=255, null=True)
+    balance_segment_status = models.CharField(max_length=255, null=True)
+    billing_status = models.CharField(max_length=255, null=True)
+    cleared = models.CharField(max_length=255, null=True)
+    close_date = models.DateField(null=True, blank=True)
+    comitment_firm = models.CharField(max_length=255, null=True)
+    created_by = models.CharField(max_length=255, null=True)
+    created_date = models.DateField(null=True, blank=True)
+    credit_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    credit_foreign_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=3, null=True, blank=True)
+    debit_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    document_number = models.CharField(max_length=255, null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    department = models.CharField(max_length=255, null=True, blank=True)
+    department_id = models.CharField(max_length=255, null=True, blank=True)
+    entity = models.CharField(max_length=255, null=True, blank=True)
+    entity_id = models.CharField(max_length=255, null=True, blank=True)
+    exchange_rate = models.DecimalField(max_digits=19, decimal_places=6, null=True, blank=True)
+    expense_account = models.CharField(max_length=255, null=True, blank=True)
+    expense_account_id = models.CharField(max_length=255, null=True, blank=True)
+    external_id = models.CharField(max_length=255, null=True, blank=True)
+    foreign_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    foreign_amount_paid = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    foreign_amount_unpaid = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    foreign_total = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    transaction_id = models.CharField(max_length=255, null=True, blank=True)
+    transaction_line_id = models.CharField(max_length=255, null=True, blank=True)
+    is_billable = models.CharField(max_length=255, null=True, blank=True)
+    is_closed = models.CharField(max_length=255, null=True, blank=True)
+    is_cogs = models.CharField(max_length=255, null=True, blank=True)
+    is_custom_gl_line = models.CharField(max_length=255, null=True, blank=True)
+    is_fully_shipped = models.CharField(max_length=255, null=True, blank=True)
+    is_inventory_affecting = models.CharField(max_length=255, null=True, blank=True)
+    is_reversal = models.CharField(max_length=255, null=True, blank=True)
+    is_rev_rec_transaction = models.CharField(max_length=255, null=True, blank=True)
+    last_modified_by = models.CharField(max_length=255, null=True, blank=True)
+    last_modified_date = models.DateField(null=True, blank=True)
+    line_sequence_number = models.IntegerField(null=True, blank=True)
+    match_bill_to_receipt = models.CharField(max_length=255, null=True, blank=True)
+    memo = models.TextField(null=True, blank=True)
+    net_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    nexus = models.CharField(max_length=255, null=True, blank=True)
+    number = models.DecimalField(max_digits=50, decimal_places=20, null=True, blank=True)
+    payment_hold = models.CharField(max_length=255, null=True, blank=True)
+    posting = models.CharField(max_length=255, null=True, blank=True)
+    posting_period = models.CharField(max_length=255, null=True, blank=True)
+    quantity_billed = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    quantity_rejected = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    quantity_ship_recv = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    record_type = models.CharField(max_length=255, null=True, blank=True)
+    source = models.CharField(max_length=255, null=True, blank=True)
+    status = models.CharField(max_length=255, null=True, blank=True)
+    subsidiary = models.CharField(max_length=255, null=True, blank=True)
+    subsidiary_id = models.CharField(max_length=255, null=True, blank=True)
+    tax_line = models.CharField(max_length=255, null=True, blank=True)
+    transaction_discount = models.CharField(max_length=255, null=True, blank=True)
+    transaction_number = models.CharField(max_length=255, null=True, blank=True)
+    tran_date = models.DateField(null=True, blank=True)
+    tran_id = models.CharField(max_length=255, null=True, blank=True)
+    tran_display_name = models.CharField(max_length=255, null=True, blank=True)
+    line_unique_key = models.CharField(max_length=255, null=True, blank=True)
+    void = models.CharField(max_length=255, null=True, blank=True)
+    voided = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"General Ledger {self.account_id} - {self.transaction_id}"
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['tenant_id', 'transaction_id','transaction_line_id']),
+            models.Index(fields=['tenant_id', 'line_unique_key']),
+        ]
+
+    
+
