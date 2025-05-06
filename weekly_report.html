@@ -69,17 +69,22 @@
             border-top: 1px solid #eee;
             padding-top: 10px;
         }
+        .commentary {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Weekly Sales Report</h1>
-        <h2>Opa at FIS</h2>
-        <p>Week Ending: 27/04/2025</p>
+        <h1>Daily Sales Report</h1>
+        <h2>Default Site</h2>
+        <p>Ending date: 05/05/2025</p>
     </div>
     
     <div class="summary">
-        <h3>Weekly Summary</h3>
+        <h3>Daily Summary</h3>
         
         <div class="metric">
             <div class="value">9100.00 GBP</div>
@@ -112,90 +117,198 @@
                     <th>Day</th>
                     <th>Net Sales</th>
                     <th>Covers</th>
+                    <th>Budget</th>
+                    <th>Budget Var%</th>
                     <th>LW Sales</th>
                     <th>LW %</th>
                     <th>Weather</th>
+                    <th>Best Day</th>
                 </tr>
             </thead>
             <tbody>
                 
                 <tr>
-                    <td>21/04/2025</td>
+                    <td>05/05/2025</td>
                     <td>Monday</td>
-                    <td>1000.00 GBP</td>
-                    <td>50</td>
-                    <td>900.00 GBP</td>
-                    <td>11.1%</td>
-                    <td>15.0°C, Sunny</td>
-                </tr>
-                
-                <tr>
-                    <td>22/04/2025</td>
-                    <td>Tuesday</td>
-                    <td>1100.00 GBP</td>
-                    <td>55</td>
-                    <td>990.00 GBP</td>
-                    <td>11.1%</td>
-                    <td>16.0°C, Partly cloudy</td>
-                </tr>
-                
-                <tr>
-                    <td>23/04/2025</td>
-                    <td>Wednesday</td>
-                    <td>1200.00 GBP</td>
-                    <td>60</td>
-                    <td>1080.00 GBP</td>
-                    <td>11.1%</td>
-                    <td>17.0°C, Cloudy</td>
-                </tr>
-                
-                <tr>
-                    <td>24/04/2025</td>
-                    <td>Thursday</td>
-                    <td>1300.00 GBP</td>
-                    <td>65</td>
-                    <td>1170.00 GBP</td>
-                    <td>11.1%</td>
-                    <td>18.0°C, Light rain</td>
-                </tr>
-                
-                <tr>
-                    <td>25/04/2025</td>
-                    <td>Friday</td>
-                    <td>1400.00 GBP</td>
-                    <td>70</td>
-                    <td>1260.00 GBP</td>
-                    <td>11.1%</td>
-                    <td>19.0°C, Moderate rain</td>
-                </tr>
-                
-                <tr>
-                    <td>26/04/2025</td>
-                    <td>Saturday</td>
-                    <td>1500.00 GBP</td>
-                    <td>75</td>
-                    <td>1350.00 GBP</td>
-                    <td>11.1%</td>
-                    <td>20.0°C, Heavy rain</td>
-                </tr>
-                
-                <tr>
-                    <td>27/04/2025</td>
-                    <td>Sunday</td>
-                    <td>1600.00 GBP</td>
+                    <td>1600.00</td>
                     <td>80</td>
-                    <td>1440.00 GBP</td>
+                    <td>922.60</td>
+                    <td>73.4%</td>
+                    <td>1440.00</td>
                     <td>11.1%</td>
-                    <td>21.0°C, Sunny</td>
+                    <td>16.1°C, overcast clouds</td>
+                    <td>
+                        
+                            <span style="color: #27ae60;">Yes</span>
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td>04/05/2025</td>
+                    <td>Sunday</td>
+                    <td>1500.00</td>
+                    <td>75</td>
+                    <td>1484.70</td>
+                    <td>1.0%</td>
+                    <td>1350.00</td>
+                    <td>11.1%</td>
+                    <td>20.3°C, overcast clouds</td>
+                    <td>
+                        
+                            <span style="color: #e74c3c;">No</span>
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td>03/05/2025</td>
+                    <td>Saturday</td>
+                    <td>1400.00</td>
+                    <td>70</td>
+                    <td>1198.40</td>
+                    <td>16.8%</td>
+                    <td>1260.00</td>
+                    <td>11.1%</td>
+                    <td>21.2°C, clear sky</td>
+                    <td>
+                        
+                            <span style="color: #e74c3c;">No</span>
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td>02/05/2025</td>
+                    <td>Friday</td>
+                    <td>1300.00</td>
+                    <td>65</td>
+                    <td>924.00</td>
+                    <td>40.7%</td>
+                    <td>1170.00</td>
+                    <td>11.1%</td>
+                    <td>14.7°C, overcast clouds</td>
+                    <td>
+                        
+                            <span style="color: #e74c3c;">No</span>
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td>01/05/2025</td>
+                    <td>Thursday</td>
+                    <td>1200.00</td>
+                    <td>60</td>
+                    <td>893.90</td>
+                    <td>34.2%</td>
+                    <td>1080.00</td>
+                    <td>11.1%</td>
+                    <td>13.8°C, overcast clouds</td>
+                    <td>
+                        
+                            <span style="color: #e74c3c;">No</span>
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td>30/04/2025</td>
+                    <td>Wednesday</td>
+                    <td>1100.00</td>
+                    <td>55</td>
+                    <td>830.20</td>
+                    <td>32.5%</td>
+                    <td>990.00</td>
+                    <td>11.1%</td>
+                    <td>15.9°C, overcast clouds</td>
+                    <td>
+                        
+                            <span style="color: #e74c3c;">No</span>
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td>29/04/2025</td>
+                    <td>Tuesday</td>
+                    <td>1000.00</td>
+                    <td>50</td>
+                    <td>751.80</td>
+                    <td>33.0%</td>
+                    <td>900.00</td>
+                    <td>11.1%</td>
+                    <td>20.4°C, broken clouds</td>
+                    <td>
+                        
+                            <span style="color: #e74c3c;">No</span>
+                        
+                    </td>
                 </tr>
                 
             </tbody>
         </table>
     </div>
-    
+
+    <div class="commentary">
+        <h3>Staff Commentary</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="color: black; padding: 10px;">Commentary</th>
+                    <th style="color: black; padding: 10px;">User</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+                <tr>
+                    <td style="padding: 10px;">Monday 5th 
+
+Floor: Scarlett / Calypso 
+Bar: Nero / Jack
+Manager: Arianna / Billy
+
+Started a little slow but had a reasonable amount of walkins around 1pm. The girls did well on the floor with selling 4 of the Magnum special leftovers from yesterday. Quite a few staff on for how quiet we were so got some downtime cleaning as well as Mapalone tasks. Two tables went for the 800g ribeye which they absolutely loved! Bar had a few drinkers and some returning guests from last night - Americans staying near by. Returning for some snacks and was raving about DD and IPA. Arianna 
+
+Cheers, 
+
+Arianna 
+
+Dinner Service Report
+Manager / Reception: Sergio
+Floor: Calypso
+Bar: Jack, Jasmine
+
+A quiet start between 4:00 PM and 5:30 PM, followed by a solid final hour of service with 19 covers, creating a warm and welcoming energy in the room despite the single seating. The atmosphere remained relaxed but pleasant throughout.
+
+We sold out of the magnum, and saw good sales on both the trout and the guinea fowl pie, which were well received.
+
+The bar had a few tables in until around 8:00 PM, after which it began to settle down.
+
+Sergio</td>
+                    <td style="padding: 10px;">sergio@thedelis.co.uk</td>
+                </tr>
+                
+                <tr>
+                    <td style="padding: 10px;">Didn&#x27;t make target today, but a good day that picked up around lunchtime. Sold a few new breakfast sandwiches which customers really enjoyed - bacon egg &amp; cheese is the favourite so far, hopefully even more so with some upselling.</td>
+                    <td style="padding: 10px;">saraheld@thedelis.co.uk</td>
+                </tr>
+                
+                <tr>
+                    <td style="padding: 10px;">Despite it being bank holiday today, we didn&#x27;t make much less than a usual Monday. We saw none of our regular customers, but instead the deli was full of families with their kids and some tourists, so it felt very busy.
+The morning was quiet, so we deep cleaned the display fridge, the shelves above the grill, the shop front and the window, the drinks fridge and more ready for a new week. 
+Today the grilled cheese was more popular than usual, followed by the bagels.
+I think tomorrow we will see our regulars return from a four day weekend and we&#x27;ll have the usual footfall</td>
+                    <td style="padding: 10px;">hello@thedelis.co.uk</td>
+                </tr>
+                
+            </tbody>
+        </table>
+    </div>
+
     <div class="footer">
         <p>This report is automatically generated. Please do not reply to this email.</p>
         <p>&copy; 2025 Insights Analytics Platform</p>
     </div>
 </body>
-</html> 
+</html>

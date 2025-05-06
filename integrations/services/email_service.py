@@ -91,11 +91,11 @@ def send_weekly_sales_report(recipients, data, site_name=""):
     Returns:
         bool: True if email was sent successfully
     """
-    for item in data:
+    for item in data['data']:
         if isinstance(item['DATE'], datetime):
             item['DATE'] = item['DATE'].strftime('%Y-%m-%d')
     
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(data['data'])
     
     total_sales = df['SALES'].sum()
     total_lw_sales = df['LW_SALES'].sum()
@@ -107,7 +107,7 @@ def send_weekly_sales_report(recipients, data, site_name=""):
     
     context = {
         'site_name': site_name,
-        'data': data['data'],
+        'data': list(reversed(data['data'])),
         'total_sales': total_sales,
         'total_lw_sales': total_lw_sales,
         'sales_change': sales_change,
@@ -115,15 +115,14 @@ def send_weekly_sales_report(recipients, data, site_name=""):
         'total_lw_covers': total_lw_covers,
         'covers_change': covers_change,
         'week_ending': data['data'][-1]['DATE'] if data['data'] else 'N/A',
-        'commentary_box': data.get('COMMENTARY_BOX', ''),
-        'commentary_user': data.get('COMMENTARY_USER', ''),
+        'comments': list(reversed(data['comments']))
     }
     
     try:
         html_content = render_to_string('emails/weekly_report.html', context)
         text_content = strip_tags(html_content)
         
-        subject = f"Weekly Sales Report for {site_name} - Week Ending {context['week_ending']}"
+        subject = f"Daily Sales Report for {site_name} - Ending date {context['week_ending']}"
         
         output_path = os.path.join(os.getcwd(), 'weekly_report.html')
         with open(output_path, 'w') as f:
