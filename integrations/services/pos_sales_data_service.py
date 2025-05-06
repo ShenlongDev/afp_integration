@@ -28,7 +28,7 @@ def get_weeks_in_month(year, month):
 
 def get_weekly_sales_and_weather(site_id=None):
     """Get weekly sales and weather data from local database models."""
-    london_tz = pytz.timezone('Europe/London')
+    london_tz = pytz.UTC
     today = timezone.now().astimezone(london_tz).date()
     yesterday = today - timedelta(days=1)
     end_of_period = yesterday
@@ -43,24 +43,14 @@ def get_weekly_sales_and_weather(site_id=None):
         # Get commentary data for the period
         commentary_query = Commentary.objects.filter(
             site_id=site_id,
-            created_at__date__gte=start_of_period,
-            created_at__date__lte=end_of_period
+            created_at__gte = datetime.combine(timezone.now().astimezone(london_tz).date(), datetime.min.time(), tzinfo=london_tz) - timedelta(days=1),
         ).select_related('user').order_by('created_at')
         
-        # Get only the latest commentary (by created_at)
-        latest_commentary = commentary_query.last() if commentary_query.exists() else None
-        commentary_box = latest_commentary.comments if latest_commentary else ''
-        commentary_user = latest_commentary.user.email if latest_commentary else ''
-        
-        # Create a dictionary of commentary data by date (if you still want per-day)
-        commentary_by_date = {
-            c.created_at.date(): {
-                'comments': c.comments,
-                'takings': float(c.takings or 0)
-            }
+        comments = [
+            {"commentary": c.comments, "user": c.user.email}
             for c in commentary_query
-        }
-        
+        ]
+
         # Combined query for the last 7 days' data
         sales_data = {}
         sales_query = POSSales.objects.filter(
@@ -308,6 +298,5 @@ def get_weekly_sales_and_weather(site_id=None):
     logger.info(f"Generated report with {len(result)} days")
     return {
         'data': result,
-        'COMMENTARY_BOX': commentary_box,
-        'COMMENTARY_USER': commentary_user
+        'comments': comments
     } 
