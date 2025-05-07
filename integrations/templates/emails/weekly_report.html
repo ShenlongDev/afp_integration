@@ -152,6 +152,7 @@
 
     <div class="commentary">
         <h3>Staff Commentary</h3>
+        {% if comments %}
         <table style="width: 100%; border-collapse: collapse;">
             <thead>
                 <tr>
@@ -168,6 +169,9 @@
                 {% endfor %}
             </tbody>
         </table>
+        {% else %}
+        <p>Commentary was not completed today.</p>
+        {% endif %}
     </div>
 
     <div class="footer">
