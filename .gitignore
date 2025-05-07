@@ -14,6 +14,7 @@ __pycache__/
 *.db
 *.sqlite3-journal
 *.db-journal
+.venv/
 venv/
 .env
 requirements/.env

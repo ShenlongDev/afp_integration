@@ -25,7 +25,6 @@ from integrations.models.netsuite.analytics import (
     NetSuiteTransformedTransaction,
     NetSuiteBudgets,
     NetSuiteLocations,
-    NetSuiteGeneralLedger,
 )
 from core.models import Site, IntegrationSiteMapping
 
@@ -376,7 +375,7 @@ class NetSuiteImporter:
 
         # Determine the start date and build the date filter clause.
         start_date = last_import_date or self.since_date
-        date_filter_clause = self.build_date_clause("LASTMODIFIEDDATE", start_date, None)
+        date_filter_clause = self.build_date_clause("LASTMODIFIEDDATE", start_date, self.until_date)
         
         while True:
             # Build query for the next batch.
@@ -440,6 +439,29 @@ class NetSuiteImporter:
                 FETCH NEXT {batch_size} ROWS ONLY
             """
             
+            dateFilterNew = self.build_date_clause("Transaction.TranDate", since=start_date, until=self.until_date)
+
+            # # count(Distinct TransactionAccountingLine.Transaction) AS transaction
+            # query2 = f"""
+            #     SELECT *
+            #     FROM
+            #         TransactionAccountingLine
+            #     LEFT OUTER JOIN Transaction ON TransactionAccountingLine.Transaction = Transaction.ID
+            #     Where 
+            #         TransactionAccountingLine.transaction > 0
+            #         {dateFilterNew}
+            #     FETCH NEXT 4 ROWS ONLY
+            # """
+            # count_resp = self.client.execute_suiteql(query2)
+            # count = list(count_resp)
+            # print(count)
+            # # save count in a json file
+            # with open('demo data.json', 'w') as f:
+            #     import json
+            #     json.dump(count, f)
+
+            # return
+
             rows = list(self.client.execute_suiteql(query))
             print(f"Fetched {len(rows)} transaction records at min_id {min_id}")
             if not rows:
@@ -447,6 +469,7 @@ class NetSuiteImporter:
 
             for r in rows:
                 txn_id = r.get("id")
+                print(txn_id)
                 if not txn_id:
                     continue
 
@@ -671,7 +694,7 @@ class NetSuiteImporter:
         limit = 500
         total_imported = 0
         start_date = start_date or self.since_date
-        data = []
+
         date_filter_clause = ""
         if last_modified_after:
             date_filter_clause += f" AND LASTMODIFIEDDATE > TO_DATE('{last_modified_after}', 'YYYY-MM-DD HH24:MI:SS')"
@@ -751,9 +774,8 @@ class NetSuiteImporter:
                     )
                 except Exception as e:
                     logger.error(f"Error importing transaction accounting line row: {e}", exc_info=True)
-            #adding rows to the data list
-            # this will be used to save the data in the database later
-            data.append(rows)
+
+            BatchUtils.process_in_batches(rows, process_accounting_line, batch_size=limit)
             total_imported += len(rows)
 
             last_row = rows[-1]
@@ -772,231 +794,11 @@ class NetSuiteImporter:
                 logger.info("Fewer rows than limit fetched. Likely reached end of records.")
                 break
 
-        print(f"Total imported transaction accounting lines: {total_imported}")
-        for rows in data:
-
-            BatchUtils.process_in_batches(rows, process_accounting_line, batch_size=limit)
-            logger.info(f"Processed batch of {len(rows)} transaction accounting lines.")
-        
-
         self.log_import_event(module_name="netsuite_transaction_accounting_lines", fetched_records=total_imported)
         logger.info(f"Imported Transaction Accounting Lines: {total_imported} records processed.")
 
 
         
-    def import_general_ledger(self):
-        logger.info("Importing NetSuite General Ledger...")
-
-        #creating date clause for sync
-        date_clause = self.build_date_clause("lastmodifieddate", self.since_date, self.until_date)
-        batch_size = 500
-        # count of total rows imported in this suync
-        total_imported = 0
-
-        # the key for the minmum value of transaction line unique id
-        min_key = 0  
-
-        # list to append data for each batch
-        # this will be used to save the data in the database later
-        total_data = []
-
-        while True:
-            #optimized General Ledger Script using Transaction and TransactionLine
-            query2 = f"""
-                SELECT
-                BUILTIN.DF( L.account ) AS account, L.account AS accountid,
-                L.memo, L.accountinglinetype, L.id as lineid, L.cleared, L.closedate, L.commitmentfirm, L.creditforeignamount, 
-                        BUILTIN.DF( L.department ) AS department, L.department AS departmentid, L.documentnumber, 
-                        L.donotdisplayline, L.eliminate, BUILTIN.DF( L.entity ) AS entity, L.entity AS entityid, 
-                        L.expenseaccount AS expenseaccountid, BUILTIN.DF( L.expenseaccount ) AS expenseaccount, 
-                        L.foreignamount, L.foreignamountpaid, L.foreignamountunpaid, L.id, L.isbillable, L.isclosed, 
-                        L.iscogs, L.iscustomglline, L.isfullyshipped, L.isfxvariance, L.isinventoryaffecting, 
-                        L.isrevrectransaction, L.linelastmodifieddate, L.linesequencenumber, L.mainline, 
-                        L.matchbilltoreceipt, L.netamount, L.oldcommitmentfirm, L.quantitybilled, L.quantityrejected, 
-                        L.quantityshiprecv, BUILTIN.DF( L.subsidiary ) AS subsidiary, L.subsidiary AS subsidiaryid, 
-                        L.taxline, L.transaction, L.transactiondiscount, L.uniquekey,
-                        L.location AS line_location_id, BUILTIN.DF(L.location) AS line_location_name,
-                        L.class, Transaction.ID, Transaction.TranID, Transaction.TranDate,
-                        BUILTIN.DF(Transaction.PostingPeriod) AS PostingPeriod,
-                        Transaction.Memo,
-                        Transaction.Posting,
-                        BUILTIN.DF(Transaction.Status) AS Status,
-                        BUILTIN.DF(Transaction.CreatedBy) AS CreatedBy,
-                        BUILTIN.DF(Transaction.Subsidiary) AS Subsidiary,
-                        BUILTIN.DF(Transaction.Entity) AS Entity,
-                        Transaction.Type AS type,
-                        Transaction.CreatedDate AS createddate,
-                        BUILTIN.DF(Transaction.Currency) AS currency,
-                        Transaction.AbbrevType AS abbrevtype,
-                        BUILTIN.DF(Transaction.ApprovalStatus) AS approvalstatus,
-                        BUILTIN.DF(Transaction.BalSegStatus) AS balsegstatus,
-                        Transaction.BillingStatus AS billingstatus,
-                        Transaction.CloseDate AS closedate,
-                        Transaction.CustomType AS customtype,
-                        Transaction.DaysOpen AS daysopen,
-                        Transaction.DaysOverdueSearch AS daysoverduesearch,
-                        Transaction.DueDate AS duedate,
-                        Transaction.ExchangeRate AS exchangerate,
-                        Transaction.ExternalId AS externalid,
-                        Transaction.ForeignAmountPaid AS foreignamountpaid,
-                        Transaction.ForeignAmountUnpaid AS foreignamountunpaid,
-                        Transaction.ForeignTotal AS foreigntotal,
-                        Transaction.IsFinChrg AS isfinchrg,
-                        Transaction.IsReversal AS isreversal,
-                        BUILTIN.DF(Transaction.LastModifiedBy) AS lastmodifiedby,
-                        Transaction.LastModifiedDate AS lastmodifieddate,
-                        Transaction.Nexus AS nexus,
-                        Transaction.Number AS number,
-                        Transaction.OrdPicked AS ordpicked,
-                        Transaction.PaymentHold AS paymenthold,
-                        Transaction.PrintedPickingTicket AS printedpickingticket,
-                        Transaction.RecordType AS recordtype,
-                        Transaction.Source AS source,
-                        Transaction.ToBePrinted AS tobeprinted,
-                        Transaction.TranDate AS trandate,
-                        Transaction.TranDisplayName AS trandisplayname,
-                        Transaction.TranId AS tranid,
-                        Transaction.TransactionNumber AS transactionnumber,
-                        Transaction.Void AS void,
-                        Transaction.Voided AS voided,
-                        Transaction.Location AS location_id,
-                        BUILTIN.DF(Transaction.Terms) AS terms,
-                        BUILTIN.DF(Transaction.Location) AS locations,
-                        GREATEST(-1*L.AMOUNT,0) AS Credit,
-                        GREATEST(L.AMOUNT,0) AS Debit
-                From TransactionLine L
-                Left Join Transaction on L.transaction = Transaction.id
-                Where L.uniquekey > {min_key}
-                {date_clause}
-                Order By L.uniquekey ASC
-                Fetch NEXT {batch_size} ROWS ONLY
-                """
-
-
-            rows = list(self.client.execute_suiteql(query2))
-            
-            logger.info("Fetched rows: ", len(rows), " with boundaries: ", min_key)
-            if len(rows)> 0:
-                logger.info(f"Fetched {len(rows)} rows with boundaries: .")
-
-                #adding current fetch to the total data list to save later
-                total_data.append(rows)
-
-                total_imported += len(rows)
-                
-                #setting the minimum key to the last row of the current batch
-                # this will be used to fetch the next batch of data
-                min_key = rows[-1].get("uniquekey")
-
-                if len(rows) < batch_size:
-                    logger.info("Fewer rows than limit fetched. Likely reached end of records.")
-                    break
-            else:
-                logger.info(f"No more rows to fetch, ending loop. Total Fetched: {total_imported}")
-                break
-            
-            # #save to json file
-            # with open('GLdata.json', 'w') as f:
-            #     import json
-            #     json.dump(rows, f,indent=4)
-        def processRow(r):
-            try:
-                # print(f"Processing transaction accounting line: {r.get('uniquekey')}")
-                last_modified = self.parse_datetime(r.get("lastmodifieddate"))
-                NetSuiteGeneralLedger.objects.update_or_create(
-                    transaction_line_id=r.get("lineid"),
-                    transaction_id=r.get("transaction"),
-                    tenant_id=self.org.id,
-                    defaults={
-                        "tenant_id": self.org.id,
-                        "type": r.get("abbrevtype"),
-                        'account_id': r.get("accountid"),
-                        "account_name": r.get("account"),
-                        "accounting_line_type": r.get("accountinglinetype"),
-                        "approval_status": r.get("approvalstatus"),
-                        "balance_segment_status": r.get("balsegstatus"),
-                        "billing_status": r.get("billingstatus"),
-                        "cleared": r.get("cleared"),
-                        "close_date": self.parse_date(r.get("closedate")),
-                        "comitment_firm": r.get("commitmentfirm"),
-                        "created_by": r.get("createdby"),
-                        "created_date": self.parse_date(r.get("createddate")),
-                        "credit_amount": decimal_or_none(r.get("credit")),
-                        "credit_foreign_amount": decimal_or_none(r.get("creditforeignamount")),
-                        "currency": r.get("currency"),
-                        "debit_amount": decimal_or_none(r.get("debit")),
-                        "document_number": r.get("documentnumber"),
-                        "due_date": self.parse_date(r.get("duedate")),
-                        "department": r.get("department"),
-                        "department_id": r.get("departmentid"),
-                        "entity": r.get("entity"),
-                        "entity_id": r.get("entityid"),
-                        "exchange_rate": decimal_or_none(r.get("exchangerate")),
-                        "expense_account": r.get("expenseaccount"),
-                        "expense_account_id": r.get("expenseaccountid"),
-                        "external_id": r.get("externalid"),
-                        "foreign_amount": decimal_or_none(r.get("foreignamount")),
-                        "foreign_amount_paid": decimal_or_none(r.get("foreignamountpaid")),
-                        "foreign_amount_unpaid": decimal_or_none(r.get("foreignamountunpaid")),
-                        "foreign_total": decimal_or_none(r.get("foreigntotal")),
-                        "transaction_id" : r.get("id"),
-                        "transaction_line_id": r.get("lineid"),
-                        "is_billable": r.get("isbillable"),
-                        "is_closed": r.get("isclosed"),
-                        "is_cogs": r.get("iscogs"),
-                        "is_custom_gl_line": r.get("iscustomglline"),
-                        "is_fully_shipped": r.get("isfullyshipped"),
-                        "is_inventory_affecting": r.get("isinventoryaffecting"),
-                        "is_reversal": r.get("isreversal"),
-                        "is_rev_rec_transaction": r.get("isrevrectransaction"),
-                        "last_modified_date": last_modified,
-                        "last_modified_by": r.get("lastmodifiedby"),
-                        "line_sequence_number": r.get("linesequencenumber"),
-                        "match_bill_to_receipt": r.get("matchbilltoreceipt"),
-                        "memo": r.get("memo"),
-                        "net_amount": decimal_or_none(r.get("netamount")),
-                        "nexus": r.get("nexus"),
-                        "number": r.get("number"),
-                        "payment_hold": r.get("paymenthold"),
-                        "posting": r.get("posting"),
-                        "posting_period": r.get("postingperiod"),
-                        "quantity_billed": decimal_or_none(r.get("quantitybilled")),
-                        "quantity_rejected": decimal_or_none(r.get("quantityrejected")),
-                        "quantity_ship_recv": decimal_or_none(r.get("quantityshiprecv")),
-                        "record_type": r.get("recordtype"),
-                        "source": r.get("source"),
-                        "status": r.get("status"),
-                        "subsidiary": r.get("subsidiary"),
-                        "subsidiary_id": r.get("subsidiaryid"),
-                        "tax_line": r.get("taxline"),
-                        "transaction_discount": r.get("transactiondiscount"),
-                        "transaction_number": r.get("transactionnumber"),
-                        "tran_date": self.parse_date(r.get("trandate")),
-                        "tran_display_name": r.get("trandisplayname"),
-                        "tran_id": r.get("tranid"),
-                        "line_unique_key": r.get("uniquekey"),
-                        "void": r.get("void"),
-                        "voided": r.get("voided"),
-                    })
-            except Exception as e:
-                logger.error(f"Error importing transaction accounting line row: {e}", exc_info=True)
-                return
-        
-        print("total  Rows fetched: ", total_imported)
-        for rows in total_data:
-            #pulling the data from the list and processing it in batches
-            for row in rows:
-                # processing each row inside the batch
-                # using single rather than batch import as the data might be too large sometime
-                processRow(row)
-                
-
-
-
-        
-
-
-
     # ------------------------------------------------------------
     # 11) Import Budgets
     # ------------------------------------------------------------
