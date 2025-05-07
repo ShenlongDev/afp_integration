@@ -751,11 +751,9 @@ class NetSuiteImporter:
                     )
                 except Exception as e:
                     logger.error(f"Error importing transaction accounting line row: {e}", exc_info=True)
-
-
+            #adding rows to the data list
+            # this will be used to save the data in the database later
             data.append(rows)
-
-            
             total_imported += len(rows)
 
             last_row = rows[-1]
