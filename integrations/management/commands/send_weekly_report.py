@@ -1,6 +1,6 @@
 import os
 from django.core.management.base import BaseCommand
-from core.models import Site
+from core.models import Site, Organisation
 from integrations.services.email_service import send_weekly_sales_report
 from integrations.services.pos_sales_data_service import get_weekly_sales_and_weather
 
@@ -19,7 +19,13 @@ class Command(BaseCommand):
         
         try:
             site = Site.objects.filter(id=site_id).first()
-            site_name = site.name if site else f"Site ID: {site_id}"
+            orgnisation = Organisation.objects.filter(id=site.organisation_id).first()
+            print(f"Site: {site.name}, Organisation: {orgnisation.name}")
+            site_name = ""
+            if not site.name == "Default Site":
+                site_name = site.name if site else f"Site ID: {site_id}"
+            else:
+                site_name = orgnisation.name if orgnisation else f"Organisation ID: {site.organisation_id}"
             
             self.stdout.write(f"Sending weekly report for {site_name} to {', '.join(emails)}")
             
