@@ -164,7 +164,11 @@
                 {% for comment in comments %}
                 <tr>
                     <td style="padding: 10px;">{{ comment.commentary }}</td>
-                    <td style="padding: 10px;">{{ comment.user }}</td>
+                    <td style="padding: 10px;">
+                        <a href="https://wsinsights.com/daily-dish" target="_blank" style="color: #3498db; text-decoration: none;">
+                            {{ comment.user }}
+                        </a>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
