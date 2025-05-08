@@ -51,6 +51,8 @@ def get_weekly_sales_and_weather(site_id=None):
             for c in commentary_query
         ]
 
+        print(f"Comments: {comments}")
+
         # Combined query for the last 7 days' data
         sales_data = {}
         sales_query = POSSales.objects.filter(
