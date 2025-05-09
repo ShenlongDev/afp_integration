@@ -122,7 +122,7 @@
                     <th>LW Sales</th>
                     <th>LW %</th>
                     <th>Weather</th>
-                    <th>Best Day</th>
+                    <!-- <th>Best Day</th> -->
                 </tr>
             </thead>
             <tbody>
@@ -137,13 +137,13 @@
                     <td>{{ day.LW_SALES|floatformat:2 }}</td>
                     <td>{{ day.SALES_CHANGE_PCT|floatformat:1 }}%</td>
                     <td>{{ day.TEMPERATURE_VALUE|floatformat:1 }}°C, {{ day.DESCRIPTION }}</td>
-                    <td>
+                    <!-- <td>
                         {% if day.BEST_DAY %}
                             <span style="color: #27ae60;">Yes</span>
                         {% else %}
                             <span style="color: #e74c3c;">No</span>
                         {% endif %}
-                    </td>
+                    </td> -->
                 </tr>
                 {% endfor %}
             </tbody>
@@ -164,7 +164,11 @@
                 {% for comment in comments %}
                 <tr>
                     <td style="padding: 10px;">{{ comment.commentary }}</td>
-                    <td style="padding: 10px;">{{ comment.user }}</td>
+                    <td style="padding: 10px;">
+                        <a href="mailto:{{ comment.user }}" style="color: #3498db; text-decoration: none;">
+                            {{ comment.user }}
+                        </a>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -174,8 +178,10 @@
         {% endif %}
     </div>
 
+    <p>Please click <a href="https://wsinsights.com/daily-dish" target="_blank" style="color: #3498db; text-decoration: none;">
+        here</a> to access the interactive report online</p>
+    <p><i>This report is automatically generated.</i></p>
     <div class="footer">
-        <p>This report is automatically generated. Please do not reply to this email.</p>
         <p>&copy; {% now "Y" %} Insights Analytics Platform</p>
     </div>
 </body>

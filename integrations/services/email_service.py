@@ -48,7 +48,7 @@ def send_email(recipients, subject, html_content, text_content=None):
                 "to": [{"email": recipient} for recipient in recipients]
             }
         ],
-        "from": {"email": from_email},
+        "from": {"email": from_email, "name": "Service Report"},
         "subject": subject,
         "content": [
             {

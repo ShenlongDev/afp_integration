@@ -9,7 +9,7 @@ import pytz
 
 from integrations.models.models import POSSales, Weather
 from integrations.models.xero.raw import XeroBudgetPeriodBalancesRaw
-from core.models import Commentary
+from core.models import Commentary, Site, Organisation
 import calendar
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def get_weekly_sales_and_weather(site_id=None):
     
     # Create a date spine for the last 7 days
     date_spine = [(start_of_period + timedelta(days=i)) for i in range(7)]
-    
+
     try:
         logger.info(f"Querying POSSales data for site_id: {site_id}")
         
@@ -51,6 +51,8 @@ def get_weekly_sales_and_weather(site_id=None):
             for c in commentary_query
         ]
 
+        print(f"Comments: {comments}")
+
         # Combined query for the last 7 days' data
         sales_data = {}
         sales_query = POSSales.objects.filter(
@@ -60,26 +62,112 @@ def get_weekly_sales_and_weather(site_id=None):
         ).annotate(
             sales_date=TruncDate('date_ntz')
         ).values('sales_date', 'currency').annotate(
-            sales=Sum('net_amount'),
-            covers=Sum('covers')
+            sales=Sum(
+                Case(
+                    When(
+                        id__in=POSSales.objects.filter(
+                            site_id=site_id,
+                            date_ntz__date__gte=start_of_period,
+                            date_ntz__date__lte=end_of_period
+                        ).order_by('order_id', '-modified').distinct('order_id').values_list('id', flat=True),
+                        then=F('net_amount')
+                    ),
+                    default=Value(0),
+                    output_field=FloatField()
+                )
+            ),
+            item_sales=Sum(
+                Case(
+                    When(
+                        id__in=POSSales.objects.filter(
+                            site_id=site_id,
+                            date_ntz__date__gte=start_of_period,
+                            date_ntz__date__lte=end_of_period
+                        ).order_by('order_id', '-modified').distinct('order_id').values_list('id', flat=True),
+                        then=F('item_net_amount')
+                    ),
+                    default=Value(0),
+                    output_field=FloatField()
+                )
+            ),
+            covers=Sum(
+                Case(
+                    When(
+                        id__in=POSSales.objects.filter(
+                            site_id=site_id,
+                            date_ntz__date__gte=start_of_period,
+                            date_ntz__date__lte=end_of_period
+                        ).order_by('order_id', '-modified').distinct('order_id').values_list('id', flat=True),
+                        then=F('covers')
+                    ),
+                    default=Value(0),
+                    output_field=FloatField()
+                )
+            )
         ).order_by('sales_date')
         
         # Process query results to prepare this_week_data and last_week_data dictionaries
         this_week_data = {}
-        last_week_data = {}
-        
         for record in sales_query:
             date = record['sales_date']
             data = {
                 'sales': float(record['sales'] or 0),
-                'covers': float(record['covers'] or 0) + 1,
+                'covers': float(record['covers'] or 0),
                 'currency': record['currency'] or 'GBP'
             }
             this_week_data[date] = data
-            
-            # For last week data, map the date to corresponding date from previous week
-            last_week_date = date - timedelta(days=7)
-            last_week_data[last_week_date] = data
+
+        # Query for last week's data
+        last_week_start = start_of_period - timedelta(days=7)
+        last_week_end = end_of_period - timedelta(days=7)
+
+        last_week_query = POSSales.objects.filter(
+            site_id=site_id,
+            date_ntz__date__gte=last_week_start,
+            date_ntz__date__lte=last_week_end
+        ).annotate(
+            sales_date=TruncDate('date_ntz')
+        ).values('sales_date', 'currency').annotate(
+            sales=Sum(
+                Case(
+                    When(
+                        id__in=POSSales.objects.filter(
+                            site_id=site_id,
+                            date_ntz__date__gte=last_week_start,
+                            date_ntz__date__lte=last_week_end
+                        ).order_by('order_id', '-modified').distinct('order_id').values_list('id', flat=True),
+                        then=F('net_amount')
+                    ),
+                    default=Value(0),
+                    output_field=FloatField()
+                )
+            ),
+            covers=Sum(
+                Case(
+                    When(
+                        id__in=POSSales.objects.filter(
+                            site_id=site_id,
+                            date_ntz__date__gte=last_week_start,
+                            date_ntz__date__lte=last_week_end
+                        ).order_by('order_id', '-modified').distinct('order_id').values_list('id', flat=True),
+                        then=F('covers')
+                    ),
+                    default=Value(0),
+                    output_field=FloatField()
+                )
+            )
+        ).order_by('sales_date')
+
+        # Process last week's query results
+        last_week_data = {}
+        for record in last_week_query:
+            date = record['sales_date']
+            data = {
+                'sales': float(record['sales'] or 0),
+                'covers': float(record['covers'] or 0),
+                'currency': record['currency'] or 'GBP'
+            }
+            last_week_data[date] = data
         
         # Query weather data with aggregations
         weather_by_date = {}
@@ -116,74 +204,10 @@ def get_weekly_sales_and_weather(site_id=None):
                 'temp': float(record['temp'] or 15),
                 'description': record['description'] or 'Partly cloudy'
             }
-
-        real_end_date = end_of_period
-        period = real_end_date.strftime('%Y-%m')
-        
-        budget_query = XeroBudgetPeriodBalancesRaw.objects.filter(
-            period=period,
-            reporting_code_name='Revenue'
-        )
-        if site_id:
-            budget_query = budget_query.filter(tracking_category_option=site_id)
-        
-        raw_data = budget_query.values('reporting_code_name', 'account_name', 'amount')
-        
-        # Calculate week percentage
-        year = real_end_date.year
-        month = real_end_date.month
-        weeks_in_month = get_weeks_in_month(year, month)
-        week = real_end_date.strftime('%Y-%m-%d')
-        week_index = weeks_in_month.index(week) if week in weeks_in_month else 0
-        percentage = (week_index + 1) / len(weeks_in_month) if weeks_in_month else 1
-        
-        total_amount = sum(float(item['amount'] or 0) for item in raw_data)
-        total_amount *= percentage
-        
-        # Distribute budget across days (0=Sunday, 1=Monday, ..., 6=Saturday)
-        daily_budgets = {
-            1: total_amount * 0.1074,  # Monday
-            2: total_amount * 0.1186,  # Tuesday
-            3: total_amount * 0.1277,  # Wednesday
-            4: total_amount * 0.132,   # Thursday
-            5: total_amount * 0.1712,  # Friday
-            6: total_amount * 0.2121,  # Saturday
-            0: total_amount * 0.1318   # Sunday
-        }
-        
-        # If no budget data, use sample budget
-        if not raw_data:
-            logger.info("No budget data found. Using sample budget.")
-            total_amount = 7000  # Sample weekly budget
-            daily_budgets = {
-                1: total_amount * 0.1074,
-                2: total_amount * 0.1186,
-                3: total_amount * 0.1277,
-                4: total_amount * 0.132,
-                5: total_amount * 0.1712,
-                6: total_amount * 0.2121,
-                0: total_amount * 0.1318
-            }
         
         # Fill in missing data with sample values
         if not sales_query.exists():
             logger.info("No sales data found. Using sample data for demonstration.")
-            # Create sample data for all dates at once using dictionary comprehensions
-            this_week_data = {
-                date_spine[i]: {
-                    'sales': 1000 + i * 100,
-                    'covers': 50 + i * 5,
-                    'currency': 'GBP'
-                } for i in range(7)
-            }
-            
-            last_week_data = {
-                date_spine[i] - timedelta(days=7): {
-                    'sales': 900 + i * 90,
-                    'covers': 45 + i * 4,
-                    'currency': 'GBP'
-                } for i in range(7)
-            }
         
         # Fill in missing weather data with deterministic values
         weather_descriptions = ['Sunny', 'Partly cloudy', 'Cloudy', 'Light rain', 'Moderate rain', 'Heavy rain']
@@ -198,46 +222,59 @@ def get_weekly_sales_and_weather(site_id=None):
         
         # Update weather data with missing values
         weather_by_date.update(missing_weather)
-    
+
+        # Budget data
+        period = end_of_period.strftime('%Y-%m')
+        site = Site.objects.filter(id=site_id).first()
+        orgnisation = Organisation.objects.filter(id=site.organisation_id).first()
+        
+        budget_query = XeroBudgetPeriodBalancesRaw.objects.filter(
+            period=period,
+            reporting_code_name='Revenue'
+        )
+        if not site.name == "Default Site":
+            budget_query = budget_query.filter(tracking_category_option=site.name)
+        else:
+            budget_query = budget_query.filter(tenant_id=orgnisation.id)
+        raw_data = budget_query.values('amount')
+
+        total_budget = 0
+        for record in raw_data:
+            total_budget += float(record['amount'] or 0)
+        
+
+        year, month = map(int, period.split('-'))
+        month_calendar = calendar.monthcalendar(year, month)
+        sunday_count = sum(1 for week in month_calendar if week[calendar.SUNDAY] != 0)        
+        
+        weekly_budget = total_budget / sunday_count if sunday_count else 0
+        print(f"Weekly budget: {weekly_budget}")
+
+        daily_budgets = {
+            0: weekly_budget * 0.107415,
+            1: weekly_budget * 0.118575,
+            2: weekly_budget * 0.127685,
+            3: weekly_budget * 0.132044,
+            4: weekly_budget * 0.171243,
+            5: weekly_budget * 0.216067,
+            6: weekly_budget * 0.131847
+        }
+
     except Exception as e:
         logger.error(f"Error querying database: {str(e)}")
         logger.info("Falling back to sample data")
         
-        # Create sample data using comprehensions instead of loops
-        this_week_data = {
-            date_spine[i]: {
-                'sales': 1000 + i * 100,
-                'covers': 50 + i * 5,
-                'currency': 'GBP'
-            } for i in range(7)
-        }
-        
-        last_week_data = {
-            date_spine[i] - timedelta(days=7): {
-                'sales': 900 + i * 90,
-                'covers': 45 + i * 4,
-                'currency': 'GBP'
-            } for i in range(7)
-        }
-        
-        weather_descriptions = ['Sunny', 'Partly cloudy', 'Cloudy', 'Light rain', 'Moderate rain', 'Heavy rain']
-        weather_by_date = {
-            date: {
-                'temp': 15 + (i % 10),
-                'description': weather_descriptions[i % len(weather_descriptions)]
-            } for i, date in enumerate(date_spine)
-        }
-
-        # Sample budget data for fallback
-        total_amount = 7000
+        # Define fallback daily budgets
+        total_budget = 7000  # Example fallback budget
+        weekly_budget = total_budget / 4  # Assume 4 weeks in a month as a fallback
         daily_budgets = {
-            1: total_amount * 0.1074,
-            2: total_amount * 0.1186,
-            3: total_amount * 0.1277,
-            4: total_amount * 0.132,
-            5: total_amount * 0.1712,
-            6: total_amount * 0.2121,
-            0: total_amount * 0.1318
+            0: weekly_budget * 0.131847,
+            1: weekly_budget * 0.107415,
+            2: weekly_budget * 0.118575,
+            3: weekly_budget * 0.127685,
+            4: weekly_budget * 0.132044,
+            5: weekly_budget * 0.171243,
+            6: weekly_budget * 0.216067
         }
 
     sales_to_budget = [
@@ -299,4 +336,4 @@ def get_weekly_sales_and_weather(site_id=None):
     return {
         'data': result,
         'comments': comments
-    } 
+    }
