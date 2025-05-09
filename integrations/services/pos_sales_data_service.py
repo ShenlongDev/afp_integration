@@ -256,7 +256,7 @@ def get_weekly_sales_and_weather(site_id=None):
             2: weekly_budget * 0.127685,
             3: weekly_budget * 0.132044,
             4: weekly_budget * 0.171243,
-            5: weekly_budget * 0.216067,
+            5: weekly_budget * 0.211193,
             6: weekly_budget * 0.131847
         }
 
@@ -265,16 +265,16 @@ def get_weekly_sales_and_weather(site_id=None):
         logger.info("Falling back to sample data")
         
         # Define fallback daily budgets
-        total_budget = 7000  # Example fallback budget
+        total_budget = 0  # Example fallback budget
         weekly_budget = total_budget / 4  # Assume 4 weeks in a month as a fallback
         daily_budgets = {
-            0: weekly_budget * 0.131847,
-            1: weekly_budget * 0.107415,
-            2: weekly_budget * 0.118575,
-            3: weekly_budget * 0.127685,
-            4: weekly_budget * 0.132044,
-            5: weekly_budget * 0.171243,
-            6: weekly_budget * 0.216067
+            0: weekly_budget * 0.107415,
+            1: weekly_budget * 0.118575,
+            2: weekly_budget * 0.127685,
+            3: weekly_budget * 0.132044,
+            4: weekly_budget * 0.171243,
+            5: weekly_budget * 0.211193,
+            6: weekly_budget * 0.131847
         }
 
     sales_to_budget = [
