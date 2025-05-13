@@ -38,7 +38,7 @@ def send_email(recipients, subject, html_content, text_content=None):
     
     url = "https://api.sendgrid.com/v3/mail/send"
     headers = {
-        "Authorization": f"Bearer {sg_api_key}",
+        "Authorization": f"Bearer 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",
         "Content-Type": "application/json"
     }
     
@@ -48,7 +48,7 @@ def send_email(recipients, subject, html_content, text_content=None):
                 "to": [{"email": recipient} for recipient in recipients]
             }
         ],
-        "from": {"email": from_email, "name": "Service Report"},
+        "from": {"email": "servicereport@williamsstanley.co", "name": "Service Report"},
         "subject": subject,
         "content": [
             {

@@ -46,7 +46,14 @@ app.conf.beat_schedule = {
         'task': 'integrations.tasks.send_weekly_sales_report',
         'schedule': crontab(minute=0, hour=6),
         'args': ([
-            't.stanley@williamsstanley.co',  'm.nouman@williamsstanley.co'
+            't.stanley@williamsstanley.co', 
+            'p.watson@williamsstanley.co', 
+            'Sara@thedelis.co.uk', 
+            'austin@gtportlandstreetdeli.co.uk',
+            'l.bartholomew@williamsstanley.co',
+            's.sandhu@williamsstanley.co',
+            'ellen@chilternstreetdeli.co.uk',
+            'aidan@thedelis.co.uk'
         ],),
         'kwargs': {'site_id': '3'},
         'options': {
