@@ -168,7 +168,59 @@ def get_weekly_sales_and_weather(site_id=None):
                 'currency': record['currency'] or 'GBP'
             }
             last_week_data[date] = data
-        
+
+        # last year data
+        last_year_start = start_of_period.replace(year=start_of_period.year - 1)
+        last_year_end = end_of_period.replace(year=end_of_period.year - 1)
+
+        last_year_query = POSSales.objects.filter(
+            site_id=site_id,
+            date_ntz__date__gte=last_year_start,
+            date_ntz__date__lte=last_year_end
+        ).annotate(
+            sales_date=TruncDate('date_ntz')
+        ).values('sales_date', 'currency').annotate(
+            sales=Sum(
+                Case(
+                    When(
+                        id__in=POSSales.objects.filter(
+                            site_id=site_id,
+                            date_ntz__date__gte=last_year_start,
+                            date_ntz__date__lte=last_year_end
+                        ).order_by('order_id', '-modified').distinct('order_id').values_list('id', flat=True),
+                        then=F('net_amount')
+                    ),
+                    default=Value(0),
+                    output_field=FloatField()
+                )
+            ),
+            covers=Sum(
+                Case(
+                    When(
+                        id__in=POSSales.objects.filter(
+                            site_id=site_id,
+                            date_ntz__date__gte=last_year_start,
+                            date_ntz__date__lte=last_year_end
+                        ).order_by('order_id', '-modified').distinct('order_id').values_list('id', flat=True),
+                        then=F('covers')
+                    ),
+                    default=Value(0),
+                    output_field=FloatField()
+                )
+            )
+        ).order_by('sales_date')
+
+        # Process last year's query results
+        last_year_data = {}
+        for record in last_year_query:
+            date = record['sales_date']
+            data = {
+                'sales': float(record['sales'] or 0),
+                'covers': float(record['covers'] or 0),
+                'currency': record['currency'] or 'GBP'
+            }
+            last_year_data[date] = data
+
         # Query weather data with aggregations
         weather_by_date = {}
         weather_query = Weather.objects.filter(
@@ -296,11 +348,19 @@ def get_weekly_sales_and_weather(site_id=None):
             'CURRENCY': this_week_data.get(date, {'currency': 'GBP'}).get('currency', 'GBP'),
             'SALES': this_week_data.get(date, {'sales': 0}).get('sales', 0),
             'LW_SALES': last_week_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0),
+            'LY_SALES': last_year_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0),
             'SALES_CHANGE_PCT': (
                 ((this_week_data.get(date, {'sales': 0}).get('sales', 0) - 
                  last_week_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0)) / 
                  last_week_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 1)) * 100
                 if last_week_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0) > 0
+                else 0
+            ),
+            'SALES_CHANGE_PCT_LY': (
+                ((this_week_data.get(date, {'sales': 0}).get('sales', 0) - 
+                 last_year_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0)) / 
+                 last_year_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 1)) * 100
+                if last_year_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0) > 0
                 else 0
             ),
             'COVERS': this_week_data.get(date, {'covers': 1}).get('covers', 1),
