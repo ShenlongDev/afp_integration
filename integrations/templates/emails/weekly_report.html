@@ -134,11 +134,29 @@
                     <td>{{ day.DATE|date:"l" }}</td>
                     <td>{{ day.SALES|floatformat:2 }}</td>
                     <td>{{ day.BUDGET|floatformat:2 }}</td>
-                    <td>{{ day.BUDGET_VAR_PERCENTAGE|floatformat:1 }}%</td>
+                    <td class="{% if day.BUDGET_VAR_PERCENTAGE >= 0 %}change-positive{% else %}change-negative{% endif %}">
+                        {% if day.BUDGET_VAR_PERCENTAGE >= 0 %}
+                            {{ day.BUDGET_VAR_PERCENTAGE|floatformat:2 }}%
+                        {% else %}
+                            ({{ day.BUDGET_VAR_PERCENTAGE|abs|floatformat:2 }})%
+                        {% endif %}
+                    </td>
                     <td>{{ day.LW_SALES|floatformat:2 }}</td>
-                    <td>{{ day.SALES_CHANGE_PCT|floatformat:1 }}%</td>
+                    <td class="{% if day.SALES_CHANGE_PCT >= 0 %}change-positive{% else %}change-negative{% endif %}">
+                        {% if day.SALES_CHANGE_PCT >= 0 %}
+                            {{ day.SALES_CHANGE_PCT|floatformat:1 }}%
+                        {% else %}
+                            ({{ day.SALES_CHANGE_PCT|abs|floatformat:1 }})%
+                        {% endif %}
+                    </td>
                     <td>{{ day.LY_SALES|floatformat:2 }}</td>
-                    <td>{{ day.SALES_CHANGE_PCT_LY|floatformat:1 }}%</td>
+                    <td class="{% if day.SALES_CHANGE_PCT_LY >= 0 %}change-positive{% else %}change-negative{% endif %}">
+                        {% if day.SALES_CHANGE_PCT_LY >= 0 %}
+                            {{ day.SALES_CHANGE_PCT_LY|floatformat:1 }}%
+                        {% else %}
+                            ({{ day.SALES_CHANGE_PCT_LY|abs|floatformat:1 }})%
+                        {% endif %}
+                    </td>
                     <td>{{ day.TEMPERATURE_VALUE|floatformat:1 }}°C, {{ day.DESCRIPTION }}</td>
                     <td>{{ day.COVERS|floatformat:0 }}</td>
                     <!-- <td>
@@ -150,6 +168,36 @@
                     </td> -->
                 </tr>
                 {% endfor %}
+                <tr>
+                    <td style="text-align: right; font-weight: bold;">Total:</td>
+                    <td></td>
+                    <td>{{ total_sales|floatformat:2 }}</td>
+                    <td>{{ total_budgets|floatformat:2 }}</td>
+                    <td class="{% if total_budgets_percent >= 0 %}change-positive{% else %}change-negative{% endif %}">
+                        {% if total_budgets_percent >= 0 %}
+                            {{ total_budgets_percent|floatformat:2 }}%
+                        {% else %}
+                            ({{ total_budgets_percent|abs|floatformat:2 }})%
+                        {% endif %}
+                    </td>
+                    <td>{{ total_lw_sales|floatformat:2 }}</td>
+                    <td class="{% if total_lw_sales_percent >= 0 %}change-positive{% else %}change-negative{% endif %}">
+                        {% if total_lw_sales_percent >= 0 %}
+                            {{ total_lw_sales_percent|floatformat:2 }}%
+                        {% else %}
+                            ({{ total_lw_sales_percent|abs|floatformat:2 }})%
+                        {% endif %}
+                    </td>
+                    <td>{{ total_ly_sales|floatformat:2 }}</td>
+                    <td class="{% if total_ly_sales_percent >= 0 %}change-positive{% else %}change-negative{% endif %}">
+                        {% if total_ly_sales_percent >= 0 %}
+                            {{ total_ly_sales_percent|floatformat:2 }}%
+                        {% else %}
+                            ({{ total_ly_sales_percent|abs|floatformat:2 }})%
+                        {% endif %}
+                    </td>
+                    <td></td>
+                    <td>{{ total_covers|floatformat:0 }}</td>
             </tbody>
         </table>
     </div>
