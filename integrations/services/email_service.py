@@ -99,8 +99,22 @@ def send_weekly_sales_report(recipients, data, site_name=""):
     
     total_sales = df['SALES'].sum()
     total_lw_sales = df['LW_SALES'].sum()
+    if total_lw_sales == 0:
+        total_lw_sales_percent = 0
+    else:
+        total_lw_sales_percent = (total_sales - total_lw_sales) / total_lw_sales * 100
+    total_ly_sales = df['LY_SALES'].sum()
+    if total_ly_sales == 0:
+        total_ly_sales_percent = 0
+    else:
+        total_ly_sales_percent = (total_sales - total_ly_sales) / total_ly_sales * 100
     total_covers = df['COVERS'].sum()
     total_lw_covers = df['LW_COVERS'].sum()
+    total_budgets = df['BUDGET'].sum()
+    if total_budgets == 0:
+        total_budgets_percent = 0
+    else:
+        total_budgets_percent = (total_sales - total_budgets) / total_budgets * 100
     
     sales_change = ((total_sales - total_lw_sales) / total_lw_sales * 100) if total_lw_sales else 0
     covers_change = ((total_covers - total_lw_covers) / total_lw_covers * 100) if total_lw_covers else 0
@@ -112,8 +126,13 @@ def send_weekly_sales_report(recipients, data, site_name=""):
         'total_lw_sales': total_lw_sales,
         'sales_change': sales_change,
         'total_covers': total_covers,
+        'total_ly_sales': total_ly_sales,
+        'total_budgets': total_budgets,
         'total_lw_covers': total_lw_covers,
         'covers_change': covers_change,
+        'total_lw_sales_percent': total_lw_sales_percent,
+        'total_ly_sales_percent': total_ly_sales_percent,
+        'total_budgets_percent': total_budgets_percent,
         'week_ending': data['data'][-1]['DATE'] if data['data'] else 'N/A',
         'comments': list(reversed(data['comments']))
     }
