@@ -38,7 +38,7 @@ class SendEmailView(APIView):
             sg.client.verify_ssl = False
             
             message = Mail(
-                from_email=settings.SENDGRID_FROM_EMAIL,
+                from_email=f"Service Report <servicereport@williamsstanley.co>",
                 to_emails=data['to'],
                 subject=data['subject'],
                 html_content=data['body']
@@ -73,4 +73,4 @@ class SendEmailView(APIView):
             return Response(
                 {'error': f'Unexpected error: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            ) 
+            )
