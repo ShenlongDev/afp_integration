@@ -213,7 +213,7 @@ def get_weekly_sales_and_weather(site_id=None):
         # Process last year's query results
         last_year_data = {}
         for record in last_year_query:
-            date = record['sales_date']
+            date = record['sales_date'].replace(year=record['sales_date'].year + 1)
             data = {
                 'sales': float(record['sales'] or 0),
                 'covers': float(record['covers'] or 0),
@@ -300,7 +300,6 @@ def get_weekly_sales_and_weather(site_id=None):
         sunday_count = sum(1 for week in month_calendar if week[calendar.SUNDAY] != 0)        
         
         weekly_budget = total_budget / sunday_count if sunday_count else 0
-        print(f"Weekly budget: {weekly_budget}")
 
         daily_budgets = {
             0: weekly_budget * 0.107415,
@@ -348,7 +347,7 @@ def get_weekly_sales_and_weather(site_id=None):
             'CURRENCY': this_week_data.get(date, {'currency': 'GBP'}).get('currency', 'GBP'),
             'SALES': this_week_data.get(date, {'sales': 0}).get('sales', 0),
             'LW_SALES': last_week_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0),
-            'LY_SALES': last_year_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0),
+            'LY_SALES': last_year_data.get(date, {'sales': 0}).get('sales', 0),
             'SALES_CHANGE_PCT': (
                 ((this_week_data.get(date, {'sales': 0}).get('sales', 0) - 
                  last_week_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0)) / 
@@ -358,9 +357,9 @@ def get_weekly_sales_and_weather(site_id=None):
             ),
             'SALES_CHANGE_PCT_LY': (
                 ((this_week_data.get(date, {'sales': 0}).get('sales', 0) - 
-                 last_year_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0)) / 
-                 last_year_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 1)) * 100
-                if last_year_data.get(date - timedelta(days=7), {'sales': 0}).get('sales', 0) > 0
+                 last_year_data.get(date, {'sales': 0}).get('sales', 0)) / 
+                 last_year_data.get(date, {'sales': 0}).get('sales', 1)) * 100
+                if last_year_data.get(date, {'sales': 0}).get('sales', 0) > 0
                 else 0
             ),
             'COVERS': this_week_data.get(date, {'covers': 1}).get('covers', 1),
