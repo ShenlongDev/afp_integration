@@ -34,6 +34,11 @@ class Command(BaseCommand):
             help='Import orders data'
         )
         parser.add_argument(
+            '--orders_v2',
+            action='store_true',
+            help='Import orders data'
+        )
+        parser.add_argument(
             '--restaurants',
             action='store_true',
             help='Import restaurant and schedule data'
@@ -97,6 +102,7 @@ class Command(BaseCommand):
                 return
 
         run_orders = options.get('orders')
+        run_orders_v2 = options.get('orders_v2')
         run_restaurants = options.get('restaurants')
         run_revenue_centers = options.get('revenue_centers')
         run_restaurant_services = options.get('restaurant_services')
@@ -106,7 +112,7 @@ class Command(BaseCommand):
         run_payments = options.get('payments')
         run_all = options.get('all')
 
-        if not (run_orders or run_restaurants or run_revenue_centers or 
+        if not (run_orders_v2 or run_orders or run_restaurants or run_revenue_centers or 
                 run_restaurant_services or run_sales_categories or 
                 run_dining_options or run_service_areas or run_payments):
             run_all = True
@@ -130,12 +136,17 @@ class Command(BaseCommand):
             
             valid_integrations = []
             for integration in integrations:
+                print(f"Checking integration ID: {integration.id}")
                 settings = integration.settings
-                if settings.get('client_id') and settings.get('client_secret') and settings.get('api_url'):
-                    valid_integrations.append(integration)
+                valid_integrations.append(integration)
+                # if settings.get('client_id') and settings.get('client_secret') and settings.get('api_url'):
             
+            # print(valid_integrations)
             integrations = valid_integrations
             
+
+
+
             if not integrations:
                 self.stdout.write(self.style.WARNING("No valid Toast integrations found."))
                 return
@@ -150,6 +161,13 @@ class Command(BaseCommand):
                     orders = service.import_orders()
                     self.stdout.write(self.style.SUCCESS(f"Imported {len(orders)} orders for integration ID {integration.id}"))
                 
+
+                if run_all or run_orders_v2:
+                    self.stdout.write(f"Importing orders v2 for integration ID {integration.id}...")
+                    orders_v2 = service.import_orders_v2()
+                    self.stdout.write(self.style.SUCCESS(f"Imported {len(orders_v2)} orders v2 for integration ID {integration.id}"))
+
+
                 if run_all or run_restaurants:
                     self.stdout.write(f"Importing restaurant data for integration ID {integration.id}...")
                     restaurant_info = service.import_restaurant_and_schedule_data()

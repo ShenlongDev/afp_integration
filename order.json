@@ -1,0 +1,521 @@
+{
+    "guid": "63beef16-2c18-40c6-9ae8-8c2ade4ee0d5",
+    "entityType": "Order",
+    "externalId": null,
+    "revenueCenter": {
+        "guid": "b91b8553-bec0-4b46-b075-44c9dad0de32",
+        "entityType": "RevenueCenter",
+        "externalId": null
+    },
+    "displayNumber": "124",
+    "source": "In Store",
+    "voidDate": null,
+    "paidDate": "2025-05-05T06:35:09.095+0000",
+    "restaurantService": {
+        "guid": "80b25bfb-efa5-4bb5-a703-c039e8dd495a",
+        "entityType": "RestaurantService",
+        "externalId": null
+    },
+    "voided": false,
+    "estimatedFulfillmentDate": "2025-05-05T06:29:11.192+0000",
+    "requiredPrepTime": "PT0S",
+    "openedDate": "2025-05-05T06:29:11.192+0000",
+    "checks": [
+        {
+            "guid": "245cb8d9-e838-47b7-b7ed-13574578f62e",
+            "entityType": "Check",
+            "externalId": null,
+            "displayNumber": "124",
+            "payments": [
+                {
+                    "guid": "303a9eda-bdc9-4c9b-b80e-1f4e347940d1",
+                    "entityType": "OrderPayment",
+                    "externalId": null,
+                    "originalProcessingFee": 1.55,
+                    "cashDrawer": null,
+                    "isProcessedOffline": false,
+                    "type": "CREDIT",
+                    "voidInfo": null,
+                    "checkGuid": "245cb8d9-e838-47b7-b7ed-13574578f62e",
+                    "paidDate": "2025-05-05T06:34:30.925+0000",
+                    "mcaRepaymentAmount": 0.0,
+                    "createdDevice": {
+                        "id": "62be1b64bfc87842"
+                    },
+                    "tenderTransactionGuid": null,
+                    "paidBusinessDate": 20250504,
+                    "last4Digits": "1327",
+                    "refund": {
+                        "refundAmount": 23.9,
+                        "tipRefundAmount": 0.0,
+                        "refundDate": "2025-05-05T21:08:12.000+0000",
+                        "refundBusinessDate": 20250505,
+                        "refundTransaction": {
+                            "guid": "0a8838b3-90fa-4120-916d-29329ae7b243",
+                            "entityType": "RefundTransaction"
+                        },
+                        "refundStrategy": "IGNORE_REFUND_IN_AMOUNT_DUE"
+                    },
+                    "server": {
+                        "guid": "cc7043b9-ce78-4599-a20e-675c95b20171",
+                        "entityType": "RestaurantUser",
+                        "externalId": null
+                    },
+                    "surchargeAmount": null,
+                    "lastModifiedDevice": {
+                        "id": "62be1b64bfc87842"
+                    },
+                    "refundStatus": "PARTIAL",
+                    "otherPayment": null,
+                    "orderGuid": "63beef16-2c18-40c6-9ae8-8c2ade4ee0d5",
+                    "paymentMethodId": null,
+                    "cardEntryMode": "EMV_CHIP_SIGN",
+                    "paymentStatus": "CAPTURED",
+                    "amount": 51.14,
+                    "tipAmount": 0.0,
+                    "amountTendered": 0.0,
+                    "cardType": "VISA",
+                    "houseAccount": null,
+                    "cardProcessorType": null
+                }
+            ],
+            "appliedDiscounts": [],
+            "lastModifiedDevice": {
+                "id": "62be1b64bfc87842"
+            },
+            "voidDate": null,
+            "duration": null,
+            "openedBy": null,
+            "paidDate": "2025-05-05T06:35:09.095+0000",
+            "appliedLoyaltyInfo": null,
+            "voided": false,
+            "paymentStatus": "CLOSED",
+            "amount": 47.08,
+            "tabName": null,
+            "taxExempt": false,
+            "taxExemptionAccount": null,
+            "openedDate": "2025-05-05T06:29:26.975+0000",
+            "totalAmount": 51.14,
+            "selections": [
+                {
+                    "guid": "a3ac247d-3c3e-4399-a7f2-2e0fab75cd09",
+                    "entityType": "MenuItemSelection",
+                    "externalId": null,
+                    "deferred": false,
+                    "preDiscountPrice": 44.0,
+                    "voidReason": null,
+                    "optionGroup": null,
+                    "displayName": "Don Julio Blanco",
+                    "appliedDiscounts": [],
+                    "modifiers": [
+                        {
+                            "guid": "983f5e4f-ec5f-42bc-be4d-97bdcaca98f7",
+                            "entityType": "MenuItemSelection",
+                            "externalId": null,
+                            "deferred": false,
+                            "preDiscountPrice": 0.0,
+                            "voidReason": null,
+                            "optionGroup": {
+                                "guid": "f032ea47-4147-4ed5-81db-6b2a452f0d49",
+                                "entityType": "MenuOptionGroup",
+                                "externalId": null,
+                                "multiLocationId": "1100000000702965737"
+                            },
+                            "displayName": "NO MIXER",
+                            "appliedDiscounts": [],
+                            "modifiers": [],
+                            "seatNumber": 0,
+                            "voidDate": null,
+                            "fulfillmentStatus": "SENT",
+                            "optionGroupPricingMode": "INCLUDED",
+                            "giftCardSelectionInfo": null,
+                            "salesCategory": null,
+                            "splitOrigin": null,
+                            "selectionType": "NONE",
+                            "price": 0.0,
+                            "voided": false,
+                            "appliedTaxes": [],
+                            "storedValueTransactionId": null,
+                            "itemGroup": null,
+                            "item": {
+                                "guid": "6f440755-8af8-4569-8d53-6ff95ad7358b",
+                                "entityType": "MenuItem",
+                                "externalId": null,
+                                "multiLocationId": "1100000000780884189"
+                            },
+                            "taxInclusion": "INHERITED",
+                            "quantity": 2.0,
+                            "receiptLinePrice": 0.0,
+                            "unitOfMeasure": "NONE",
+                            "refundDetails": {
+                                "refundAmount": 0.0,
+                                "taxRefundAmount": 0.0,
+                                "refundTransaction": {
+                                    "guid": "0a8838b3-90fa-4120-916d-29329ae7b243",
+                                    "entityType": "RefundTransaction"
+                                }
+                            },
+                            "toastGiftCard": null,
+                            "tax": 0.0,
+                            "diningOption": {
+                                "guid": "9a652ccb-45d3-44cd-b23b-385764147655",
+                                "entityType": "DiningOption",
+                                "externalId": null
+                            },
+                            "voidBusinessDate": null,
+                            "createdDate": "2025-05-05T06:29:28.158+0000",
+                            "preModifier": null,
+                            "modifiedDate": "2025-05-06T01:08:13.984+0000"
+                        },
+                        {
+                            "guid": "b7de4fb3-3443-4599-8f76-d6648b9bf520",
+                            "entityType": "MenuItemSelection",
+                            "externalId": null,
+                            "deferred": false,
+                            "preDiscountPrice": 44.0,
+                            "voidReason": null,
+                            "optionGroup": {
+                                "guid": "2179a5a9-55ec-46f7-aa61-8c6aaacb80ed",
+                                "entityType": "MenuOptionGroup",
+                                "externalId": null,
+                                "multiLocationId": "1100000000787644108"
+                            },
+                            "displayName": "1.5 oz",
+                            "appliedDiscounts": [],
+                            "modifiers": [],
+                            "seatNumber": 0,
+                            "voidDate": null,
+                            "fulfillmentStatus": "SENT",
+                            "optionGroupPricingMode": "REPLACES_PRICE",
+                            "giftCardSelectionInfo": null,
+                            "salesCategory": null,
+                            "splitOrigin": null,
+                            "selectionType": "NONE",
+                            "price": 44.0,
+                            "voided": false,
+                            "appliedTaxes": [],
+                            "storedValueTransactionId": null,
+                            "itemGroup": null,
+                            "item": {
+                                "guid": "52251c53-95e9-4e29-9d9b-086680d89b1b",
+                                "entityType": "MenuItem",
+                                "externalId": null,
+                                "multiLocationId": "1100000000787644111"
+                            },
+                            "taxInclusion": "INHERITED",
+                            "quantity": 2.0,
+                            "receiptLinePrice": 0.0,
+                            "unitOfMeasure": "NONE",
+                            "refundDetails": {
+                                "refundAmount": 44.0,
+                                "taxRefundAmount": 0.0,
+                                "refundTransaction": {
+                                    "guid": "0a8838b3-90fa-4120-916d-29329ae7b243",
+                                    "entityType": "RefundTransaction"
+                                }
+                            },
+                            "toastGiftCard": null,
+                            "tax": 0.0,
+                            "diningOption": {
+                                "guid": "9a652ccb-45d3-44cd-b23b-385764147655",
+                                "entityType": "DiningOption",
+                                "externalId": null
+                            },
+                            "voidBusinessDate": null,
+                            "createdDate": "2025-05-05T06:29:28.153+0000",
+                            "preModifier": null,
+                            "modifiedDate": "2025-05-06T01:08:13.984+0000"
+                        },
+                        {
+                            "guid": "5b2c6c49-6469-48b0-ab82-a6199f55c28f",
+                            "entityType": "MenuItemSelection",
+                            "externalId": null,
+                            "deferred": false,
+                            "preDiscountPrice": 0.0,
+                            "voidReason": null,
+                            "optionGroup": {
+                                "guid": "7aedf3c2-2426-4108-a1fd-b6f1aeab8b83",
+                                "entityType": "MenuOptionGroup",
+                                "externalId": null,
+                                "multiLocationId": "1100000000411016183"
+                            },
+                            "displayName": "DO NOT MAKE",
+                            "appliedDiscounts": [],
+                            "modifiers": [],
+                            "seatNumber": 0,
+                            "voidDate": null,
+                            "fulfillmentStatus": "SENT",
+                            "optionGroupPricingMode": "INCLUDED",
+                            "giftCardSelectionInfo": null,
+                            "salesCategory": null,
+                            "splitOrigin": null,
+                            "selectionType": "NONE",
+                            "price": 0.0,
+                            "voided": false,
+                            "appliedTaxes": [],
+                            "storedValueTransactionId": null,
+                            "itemGroup": null,
+                            "item": {
+                                "guid": "bfc3f046-be9c-445c-824f-9266c8d07745",
+                                "entityType": "MenuItem",
+                                "externalId": null,
+                                "multiLocationId": "1100000000411096848"
+                            },
+                            "taxInclusion": "INHERITED",
+                            "quantity": 2.0,
+                            "receiptLinePrice": 0.0,
+                            "unitOfMeasure": "NONE",
+                            "refundDetails": {
+                                "refundAmount": 0.0,
+                                "taxRefundAmount": 0.0,
+                                "refundTransaction": {
+                                    "guid": "0a8838b3-90fa-4120-916d-29329ae7b243",
+                                    "entityType": "RefundTransaction"
+                                }
+                            },
+                            "toastGiftCard": null,
+                            "tax": 0.0,
+                            "diningOption": {
+                                "guid": "9a652ccb-45d3-44cd-b23b-385764147655",
+                                "entityType": "DiningOption",
+                                "externalId": null
+                            },
+                            "voidBusinessDate": null,
+                            "createdDate": "2025-05-05T06:29:28.156+0000",
+                            "preModifier": null,
+                            "modifiedDate": "2025-05-06T01:08:13.984+0000"
+                        },
+                        {
+                            "guid": "9ba3ceaf-c794-4887-85aa-28d6bddc3d71",
+                            "entityType": "MenuItemSelection",
+                            "externalId": null,
+                            "deferred": false,
+                            "preDiscountPrice": 0.0,
+                            "voidReason": null,
+                            "optionGroup": {
+                                "guid": "4244dea2-bc68-4bd9-8629-30cdae81a332",
+                                "entityType": "MenuOptionGroup",
+                                "externalId": null,
+                                "multiLocationId": "1100000000702967191"
+                            },
+                            "displayName": "Shot",
+                            "appliedDiscounts": [],
+                            "modifiers": [],
+                            "seatNumber": 0,
+                            "voidDate": null,
+                            "fulfillmentStatus": "SENT",
+                            "optionGroupPricingMode": "INCLUDED",
+                            "giftCardSelectionInfo": null,
+                            "salesCategory": null,
+                            "splitOrigin": null,
+                            "selectionType": "NONE",
+                            "price": 0.0,
+                            "voided": false,
+                            "appliedTaxes": [],
+                            "storedValueTransactionId": null,
+                            "itemGroup": null,
+                            "item": {
+                                "guid": "d5e0da0d-d464-41ee-9850-0cf0651a5dcb",
+                                "entityType": "MenuItem",
+                                "externalId": null,
+                                "multiLocationId": "1100000000702967233"
+                            },
+                            "taxInclusion": "INHERITED",
+                            "quantity": 2.0,
+                            "receiptLinePrice": 0.0,
+                            "unitOfMeasure": "NONE",
+                            "refundDetails": {
+                                "refundAmount": 0.0,
+                                "taxRefundAmount": 0.0,
+                                "refundTransaction": {
+                                    "guid": "0a8838b3-90fa-4120-916d-29329ae7b243",
+                                    "entityType": "RefundTransaction"
+                                }
+                            },
+                            "toastGiftCard": null,
+                            "tax": 0.0,
+                            "diningOption": {
+                                "guid": "9a652ccb-45d3-44cd-b23b-385764147655",
+                                "entityType": "DiningOption",
+                                "externalId": null
+                            },
+                            "voidBusinessDate": null,
+                            "createdDate": "2025-05-05T06:29:28.160+0000",
+                            "preModifier": null,
+                            "modifiedDate": "2025-05-06T01:08:13.984+0000"
+                        }
+                    ],
+                    "seatNumber": 0,
+                    "voidDate": null,
+                    "fulfillmentStatus": "SENT",
+                    "optionGroupPricingMode": null,
+                    "giftCardSelectionInfo": null,
+                    "salesCategory": {
+                        "guid": "a2aa4a47-1690-439d-a4fd-770c987f92be",
+                        "entityType": "SalesCategory",
+                        "externalId": null,
+                        "multiLocationId": null
+                    },
+                    "splitOrigin": null,
+                    "selectionType": "NONE",
+                    "price": 44.0,
+                    "voided": false,
+                    "appliedTaxes": [
+                        {
+                            "guid": "87f34e29-0c74-4dab-8f49-91535c2f0c48",
+                            "entityType": "AppliedTaxRate",
+                            "taxRate": {
+                                "guid": "713a6c23-655e-4982-afab-57b230218d6d",
+                                "entityType": "TaxRate"
+                            },
+                            "rate": 0.08625,
+                            "jurisdictionType": null,
+                            "displayName": null,
+                            "jurisdiction": null,
+                            "name": "Sales Tax 8.63%",
+                            "taxAmount": 3.79,
+                            "type": "PERCENT",
+                            "facilitatorCollectAndRemitTax": false
+                        }
+                    ],
+                    "storedValueTransactionId": null,
+                    "itemGroup": {
+                        "guid": "2c62e263-f07f-4e9e-9b36-db30a32fc4b5",
+                        "entityType": "MenuGroup",
+                        "externalId": null,
+                        "multiLocationId": "1100000000418106440"
+                    },
+                    "item": {
+                        "guid": "7719d81c-9e1d-41ff-b64a-ec407a015d89",
+                        "entityType": "MenuItem",
+                        "externalId": null,
+                        "multiLocationId": "1100000000787574597"
+                    },
+                    "taxInclusion": "NOT_INCLUDED",
+                    "quantity": 2.0,
+                    "receiptLinePrice": 22.0,
+                    "unitOfMeasure": "NONE",
+                    "refundDetails": {
+                        "refundAmount": 22.0,
+                        "taxRefundAmount": 1.9,
+                        "refundTransaction": {
+                            "guid": "0a8838b3-90fa-4120-916d-29329ae7b243",
+                            "entityType": "RefundTransaction"
+                        }
+                    },
+                    "toastGiftCard": null,
+                    "tax": 3.79,
+                    "diningOption": {
+                        "guid": "9a652ccb-45d3-44cd-b23b-385764147655",
+                        "entityType": "DiningOption",
+                        "externalId": null
+                    },
+                    "voidBusinessDate": null,
+                    "createdDate": "2025-05-05T06:29:28.226+0000",
+                    "preModifier": null,
+                    "modifiedDate": "2025-05-06T01:08:13.984+0000"
+                }
+            ],
+            "voidBusinessDate": null,
+            "createdDate": "2025-05-05T06:29:28.484+0000",
+            "deleted": false,
+            "createdDevice": {
+                "id": "62be1b64bfc87842"
+            },
+            "closedDate": "2025-05-05T06:35:09.095+0000",
+            "deletedDate": "1970-01-01T00:00:00.000+0000",
+            "modifiedDate": "2025-05-06T05:46:25.169+0000",
+            "taxAmount": 4.06,
+            "appliedServiceCharges": [
+                {
+                    "guid": "2c2d6a48-8681-4128-b2bc-5943a65d02c5",
+                    "entityType": "AppliedServiceCharge",
+                    "externalId": null,
+                    "delivery": false,
+                    "taxable": true,
+                    "serviceChargeCalculation": "POST_DISCOUNT",
+                    "paymentGuid": null,
+                    "refundDetails": null,
+                    "chargeType": "PERCENT",
+                    "destination": "RESTAURANT",
+                    "gratuity": false,
+                    "takeout": false,
+                    "serviceChargeCategory": "SERVICE_CHARGE",
+                    "serviceCharge": {
+                        "guid": "b508a00f-9042-459c-a770-21ca38c1f00e",
+                        "entityType": "ServiceCharge",
+                        "externalId": null
+                    },
+                    "name": "Health SF",
+                    "chargeAmount": 3.08,
+                    "appliedTaxes": [
+                        {
+                            "guid": "db66f98d-80d8-42b3-b4fb-2a5b02adedcc",
+                            "entityType": "AppliedTaxRate",
+                            "taxRate": {
+                                "guid": "713a6c23-655e-4982-afab-57b230218d6d",
+                                "entityType": "TaxRate"
+                            },
+                            "rate": 0.08625,
+                            "jurisdictionType": null,
+                            "displayName": null,
+                            "jurisdiction": null,
+                            "name": "Sales Tax 8.63%",
+                            "taxAmount": 0.27,
+                            "type": "PERCENT",
+                            "facilitatorCollectAndRemitTax": false
+                        }
+                    ],
+                    "dineIn": true
+                }
+            ],
+            "customer": null
+        }
+    ],
+    "createdDevice": {
+        "id": "62be1b64bfc87842"
+    },
+    "deletedDate": "1970-01-01T00:00:00.000+0000",
+    "modifiedDate": "2025-05-06T01:08:13.984+0000",
+    "promisedDate": null,
+    "pricingFeatures": [
+        "TAXESV2"
+    ],
+    "server": {
+        "guid": "cc7043b9-ce78-4599-a20e-675c95b20171",
+        "entityType": "RestaurantUser",
+        "externalId": null
+    },
+    "createdInTestMode": false,
+    "lastModifiedDevice": {
+        "id": "62be1b64bfc87842"
+    },
+    "duration": 357,
+    "businessDate": 20250504,
+    "excessFood": false,
+    "table": {
+        "guid": "34d53b42-3dca-4dd0-a6f4-9b1b0329d521",
+        "entityType": "Table",
+        "externalId": null
+    },
+    "approvalStatus": "APPROVED",
+    "deliveryInfo": null,
+    "serviceArea": {
+        "guid": "dbd52b37-30b1-467a-9d56-c4fa9608a1b2",
+        "entityType": "ServiceArea",
+        "externalId": null
+    },
+    "curbsidePickupInfo": null,
+    "numberOfGuests": 2,
+    "diningOption": {
+        "guid": "9a652ccb-45d3-44cd-b23b-385764147655",
+        "entityType": "DiningOption",
+        "externalId": null
+    },
+    "appliedPackagingInfo": null,
+    "voidBusinessDate": null,
+    "deleted": false,
+    "createdDate": "2025-05-05T06:29:28.530+0000",
+    "closedDate": "2025-05-05T06:35:09.095+0000",
+    "channelGuid": null
+}
