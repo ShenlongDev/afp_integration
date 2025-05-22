@@ -11,7 +11,7 @@ from integrations.models.toast.raw import (
     ToastDaySchedule, ToastWeeklySchedule, 
     ToastJoinedOpeningHours, ToastRevenueCenter,
     ToastRestaurantService, ToastSalesCategory, ToastDiningOption, ToastServiceArea,
-    ToastPayment
+    ToastPayment, ToastRefund
 )
 from integrations.models.models import SyncTableLogs
 from core.models import Site, IntegrationSiteMapping
@@ -1085,7 +1085,7 @@ class ToastIntegrationService:
             self.start_date = start_date
         if self.end_date is None:
             self.end_date = end_date
-        start_date_str = self.format_date_for_toast(self.start_date - timedelta(days=1))
+        start_date_str = self.format_date_for_toast(self.start_date - timedelta(hours=12))
         end_date_str = self.format_date_for_toast(self.end_date)
 
         restaurant_guids = self.get_restaurant_guid()
@@ -1112,9 +1112,9 @@ class ToastIntegrationService:
                         "Toast-Restaurant-External-ID": restaurant_guid
                     },
                     params={
-                        "businessDate": "20250504",
-                        # "startDate": start_date_str,
-                        # "endDate": end_date_str,
+                        # "businessDate": "20250504",
+                        "startDate": start_date_str,
+                        "endDate": end_date_str,
                         "pageSize": 100,
                         "page": page_number,
                     }
@@ -1175,7 +1175,7 @@ class ToastIntegrationService:
 
             print(f"Orders by date: {orders_by_date}")
 
-            # self.process_orders_v2(orders,restaurant_guid=restaurant_guid)
+            self.process_orders_v2(orders,restaurant_guid=restaurant_guid)
 
             return orders
 
@@ -1409,6 +1409,24 @@ class ToastIntegrationService:
                     check_refund = Decimal("0.00")
                     for payment in check_data.get("payments", []):
                         if payment.get("refund"):
+
+                            refund_defaults = {
+                                "order_guid": order_guid,
+                                "refund_amount": Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00"))),
+                                "tip_refund_amount": Decimal(str(payment.get("refund", {}).get("tipRefundAmount", "0.00"))),
+                                "refund_business_date": payment.get("refund", {}).get("refundBusinessDate"),
+                                "refund_date": parse_datetime(payment.get("refund", {}).get("refundDate")) if payment.get("refund", {}).get("refundDate") else None,
+                            }
+
+                            refund = ToastRefund.objects.update_or_create(
+                                order_guid=order_guid,
+                                check_guid=check_guid,
+                                payment_guid=payment.get("guid"),
+                                tenant_id=self.integration.organisation.id,
+                                
+                                defaults=refund_defaults
+                            )
+
                             refund_amt = Decimal(str(payment.get("refund", {}).get("refundAmount", "0.00")))
                             tip_refund_amt = Decimal(str(payment.get("refund", {}).get("tipRefundAmount", "0.00")))
                             
