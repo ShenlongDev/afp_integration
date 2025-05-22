@@ -1421,6 +1421,8 @@ class ToastIntegrationService:
                             refund = ToastRefund.objects.update_or_create(
                                 order_guid=order_guid,
                                 check_guid=check_guid,
+                                refund_transaction_guid=payment.get("refund", {}).get("refundTransaction", {}).get("guid"),
+                                refund_transaction_entity_type = payment.get("refund", {}).get("refundTransaction", {}).get("entityType"),
                                 payment_guid=payment.get("guid"),
                                 tenant_id=self.integration.organisation.id,
                                 
