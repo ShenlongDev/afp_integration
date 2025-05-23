@@ -1086,7 +1086,7 @@ class ToastIntegrationService:
         if self.end_date is None:
             self.end_date = end_date
         start_date_str = self.format_date_for_toast(self.start_date - timedelta(hours=12))
-        end_date_str = self.format_date_for_toast(self.end_date)
+        end_date_str = self.format_date_for_toast(self.end_date + timedelta(days=1))
 
         restaurant_guids = self.get_restaurant_guid()
         if not restaurant_guids:
@@ -1324,7 +1324,7 @@ class ToastIntegrationService:
                     print(f"Updated {process_count} order with GUID: {order_guid} and net sales: {net_sales} business date: {order_data.get('businessDate')}")
 
 
-                self.process_checks_v2(order_data, order_update)
+                self.process_checks_v2(order_data, order_update, restaurant_guid)
 
                 process_count += 1
             except Exception as e:
@@ -1338,7 +1338,7 @@ class ToastIntegrationService:
 
 
 
-    def process_checks_v2(self,order_data,order):
+    def process_checks_v2(self,order_data,order,restaurant_guid):
         
         order_guid = order_data.get("guid")
 
@@ -1425,6 +1425,7 @@ class ToastIntegrationService:
                                 refund_transaction_entity_type = payment.get("refund", {}).get("refundTransaction", {}).get("entityType"),
                                 payment_guid=payment.get("guid"),
                                 tenant_id=self.integration.organisation.id,
+                                restaurant_guid=restaurant_guid,
                                 
                                 defaults=refund_defaults
                             )
