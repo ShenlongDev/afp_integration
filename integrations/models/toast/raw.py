@@ -70,6 +70,24 @@ class ToastOrder(models.Model):
             models.Index(fields=["site"]),
         ]
 
+
+
+
+class ToastRefund(models.Model):
+    restaurant_guid = models.CharField(max_length=255, null=True, blank=True)
+    order_guid = models.CharField(max_length=255, db_index=True)
+    check_guid = models.CharField(max_length=255, db_index=True)
+    payment_guid = models.CharField(max_length=255, db_index=True)
+    refund_guid = models.CharField(max_length=255, db_index=True)
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    tip_refund_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    refund_date = models.DateTimeField(null=True, blank=True, db_index=True)
+    refund_business_date = models.IntegerField(null=True, blank=True)
+    refund_transaction_guid = models.CharField(null=True, blank=True)
+    refund_transaction_entity_type = models.CharField(max_length=100, null=True, blank=True)
+    tenant_id = models.IntegerField(db_index=True)
+
+
 class ToastCheck(models.Model):
     order = models.ForeignKey(ToastOrder, on_delete=models.CASCADE, related_name="checks")
     tenant_id = models.IntegerField(db_index=True)
