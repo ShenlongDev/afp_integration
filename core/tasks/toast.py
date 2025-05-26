@@ -56,7 +56,7 @@ def sync_toast_data(integration_id, start_date_str=None, end_date_str=None, modu
     # Process each requested module
     if 'orders' in modules:
         logger.info("Syncing Toast orders for integration %s", integration_id)
-        orders = importer.import_orders()
+        orders = importer.import_orders_v2()
         results['orders'] = len(orders)
         
     if 'restaurant_info' in modules:
